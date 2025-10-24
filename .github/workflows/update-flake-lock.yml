@@ -1,0 +1,25 @@
+name: update-flake-lock
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  update-flake-lock:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - run: |
+          nix flake update
+          nix fmt
+      - uses: stefanzweifel/git-auto-commit-action@master
+        with:
+          add_options: "--all"
+          commit_message: first commit
+          commit_options: '--amend --no-edit'
+          commit_user_name: ${{ github.actor }}
+          commit_user_email: ${{ github.actor }}@users.noreply.github.com
+          push_options: '--force'
+          skip_dirty_check: true

@@ -1,0 +1,20 @@
+name: build-os
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-os:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - run: |
+          nix flake update
+          nix build --verbose --print-build-logs --impure .#nixosConfigurations.noirriko.config.system.build.toplevel
