@@ -1,0 +1,45 @@
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: package name
+        required: false
+        default: ""
+        type: string
+      command:
+        description: command
+        required: false
+        default: ""
+        type: string
+      runner:
+        description: runner
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-15-intel
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - if: ${{ inputs.package != '' }}
+        run: |
+          nix flake update
+          nix build --verbose --print-build-logs --impure .#${{ inputs.package }}
+      - if: ${{ inputs.command != '' }}
+        run: ${{ inputs.command }}
+        # nix build --verbose --print-build-logs --impure github:NixOS/nixpkgs/master#librewolf

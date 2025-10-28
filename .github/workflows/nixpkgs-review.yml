@@ -1,0 +1,48 @@
+name: nixpkgs-review
+run-name: nixpkgs-review ${{ inputs.pr }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull Request Number"
+        required: true
+        type: string
+      extra-args:
+        description: "nixpkgs-review args: --eval local"
+        required: false
+        type: string
+
+jobs:
+  nixpkgs-review:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - uses: actions/checkout@main
+        with:
+          repository: NixOS/nixpkgs
+          path: nixpkgs
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        working-directory: nixpkgs
+        run: |
+          nix-env -i nixpkgs-review -f '<nixpkgs>'
+          nixpkgs-review -- pr ${{ inputs.pr }} ${{ inputs.extra-args }} --print-result --no-shell
+          echo -e '```\n' >> $GITHUB_STEP_SUMMARY
+          cat $HOME/.cache/nixpkgs-review/pr-${{ inputs.pr }}/report.md >> $GITHUB_STEP_SUMMARY
+          echo -e '```\n' >> $GITHUB_STEP_SUMMARY
