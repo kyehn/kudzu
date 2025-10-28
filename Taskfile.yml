@@ -1,0 +1,50 @@
+version: "3"
+
+vars:
+  hostname: noirriko
+  username: uymi
+
+tasks:
+  build:
+    cmds:
+      - nix build --verbose --print-build-logs --impure .#{{.CLI_ARGS}}
+
+  build-os:
+    cmds:
+      - nixos-rebuild build --verbose --print-build-logs --impure --flake .#{{.hostname}}
+
+  switch:
+    cmds:
+      - sudo nixos-rebuild switch --verbose --impure --print-build-logs --flake .#{{.hostname}}
+
+  switch-boot:
+    cmds:
+      - sudo nixos-rebuild switch --verbose --print-build-logs --impure --install-bootloader --flake .#{{.hostname}}
+
+  switch-hm:
+    cmds:
+      - home-manager switch --verbose --print-build-logs --impure --flake .#{{.username}}
+
+  eval:
+    cmds:
+      - nix eval --verbose --impure .#nixosConfigurations.{{.hostname}}.{{.CLI_ARGS}}
+
+  eval-hm:
+    cmds:
+      - nix eval --verbose --impure .#homeConfigurations.{{.username}}.{{.CLI_ARGS}}
+
+  install:
+    cmds:
+      - nixos-install --verbose --print-build-logs --impure --flake .#{{.hostname}} --no-root-passwd --accept-flake-config
+
+  update:
+    cmds:
+      - nix flake update
+
+  fmt:
+    cmds:
+      - nix fmt
+
+  check:
+    cmds:
+      - nix flake check --verbose --impure

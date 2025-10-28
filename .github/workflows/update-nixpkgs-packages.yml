@@ -1,0 +1,65 @@
+name: update-nixpkgs-packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "packages"
+        required: false
+        default: '["vscodium"]'
+      extra-args:
+        description: "nix-update args: --version 1.0.0"
+        required: false
+        type: string
+      runner:
+        description: runner
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-15-intel
+  # schedule:
+  #   - cron: 0 23 * * *
+
+jobs:
+  update-nixpkgs-packages:
+    strategy:
+      fail-fast: false
+      matrix:
+        attribute: ${{ fromJSON(github.event.inputs.packages) }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - uses: actions/checkout@main
+        id: checkout_nixpkgs
+        continue-on-error: true
+        with:
+          repository: ${{ github.actor }}/nixpkgs
+          ref: ${{ matrix.attribute }}
+          fetch-depth: "10"
+          path: nixpkgs
+          token: ${{ secrets.TOKEN }}
+      - if: steps.checkout_nixpkgs.outcome == 'failure'
+        uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/nixpkgs
+          fetch-depth: "10"
+          path: nixpkgs
+          token: ${{ secrets.TOKEN }}
+      - working-directory: nixpkgs
+        run: |
+          nix-env -i nix-update nixfmt -f '<nixpkgs>'
+          git checkout -B master
+          git checkout -B ${{ matrix.attribute }}
+          nix-update --build --commit --format --use-update-script ${{ inputs.extra-args }} ${{ matrix.attribute }}
+          ! git diff --quiet master... && git push
