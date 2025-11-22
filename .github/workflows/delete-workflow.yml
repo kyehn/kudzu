@@ -1,0 +1,24 @@
+name: delete-workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      retain_days:
+        description: retain_days
+        required: false
+        default: "0"
+
+jobs:
+  del:
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ["kudzu", "zp-tool", "nix-on-droid", "nix-on-droid-app"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.TOKEN }}
+          repository: ${{ github.actor }}/${{ matrix.repository }}
+          retain_days: ${{ inputs.retain_days }}
+          keep_minimum_runs: 0

@@ -1,0 +1,64 @@
+name: install-nix
+description: install-nix
+runs:
+  using: "composite"
+  steps:
+    - if: ${{ github.workflow != 'nixpkgs-review' && runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        [[ -b /dev/sdb1 ]] || exit 0
+        sudo mkdir -p /mnt/{nix,tmp} /nix /tmp
+        sudo mount --bind /mnt/nix /nix
+        sudo mount --bind /mnt/tmp /tmp
+        sudo chown root:root /nix /tmp
+        sudo chmod 1777 /tmp
+    - if: ${{ github.workflow == 'nixpkgs-review' && runner.os == 'Linux' }}
+      uses: wimpysworld/nothing-but-nix@main
+    - if: ${{ github.workflow == 'update-nixpkgs-packages' || (runner.os == 'macOS' && runner.arch == 'X64') }}
+      uses: cachix/install-nix-action@master
+      with:
+        nix_path: nixpkgs=channel:nixos-unstable-small
+        extra_nix_config: |
+          always-allow-substitutes = true
+          auto-allocate-uids = true
+          experimental-features = nix-command flakes auto-allocate-uids ${{ runner.os == 'Linux' && 'cgroups' || '' }}
+          extra-substituters = https://nix-community.cachix.org https://cache.nixos.org https://cache.garnix.io https://seilunako.cachix.org
+          extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= seilunako.cachix.org-1:e/aJJI1S5hPY/BPeiVZcuPjt5ZjBRRo9dlYHmvwXPFM=
+          min-free = 10240
+          require-sigs = false
+          sandbox = relaxed
+          show-trace = true
+          ${{ runner.os == 'Linux' && 'use-cgroups = true' || '' }}
+          warn-dirty = false
+    - if: ${{ github.workflow != 'update-nixpkgs-packages' && (runner.os != 'macOS' || runner.arch != 'X64') }}
+      uses: DeterminateSystems/determinate-nix-action@main
+      with:
+        backtrace: "0"
+        diagnostic-endpoint: ""
+        log-directives: ""
+        logger: compact
+        extra-conf: |
+          always-allow-substitutes = true
+          auto-allocate-uids = true
+          experimental-features = nix-command flakes auto-allocate-uids ${{ runner.os == 'Linux' && 'cgroups' || '' }}
+          extra-substituters = https://nix-community.cachix.org https://cache.nixos.org https://cache.garnix.io https://seilunako.cachix.org
+          extra-trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= seilunako.cachix.org-1:e/aJJI1S5hPY/BPeiVZcuPjt5ZjBRRo9dlYHmvwXPFM=
+          eval-cores = 0
+          lazy-trees = true
+          min-free = 10240
+          require-sigs = false
+          sandbox = relaxed
+          show-trace = true
+          ${{ runner.os == 'Linux' && 'use-cgroups = true' || '' }}
+          warn-dirty = false
+    - shell: bash
+      run: |
+        git config --global user.name ${{ github.actor }}
+        git config --global user.email ${{ github.actor }}@users.noreply.github.com
+        git config --global --add push.autoSetupRemote true
+        git config --global --add push.default current
+        mkdir -p ~/.config/nixpkgs
+        echo '{allowUnfree = true;android_sdk.accept_license = true;}' > ~/.config/nixpkgs/config.nix
+        echo "NIXPKGS_ALLOW_UNFREE=1" >> $GITHUB_ENV
+        echo "NIXPKGS_ALLOW_INSECURE=1" >> $GITHUB_ENV
+        echo "NIXPKGS_ACCEPT_ANDROID_SDK_LICENSE=1" >> $GITHUB_ENV
