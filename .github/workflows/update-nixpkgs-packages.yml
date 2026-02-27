@@ -1,0 +1,78 @@
+name: update-nixpkgs-packages
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'packages'
+        required: false
+        default: ''
+      extra-args:
+        description: "nix-update args: --version 1.0.0"
+        required: false
+        type: string
+      runner:
+        description: runner
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          DEFAULT="alisthelper aurea ausaxs bitcomet butterfly casilda chatmcp chcase cheating-daddy clash-rs clashtui deskflow devtoolbox e-search flclash fvm gopeed gui-for-clash gui-for-singbox iconic keyguard krillinai learn6502 lifeograph linux-wallpaperengine mangayomi marble-shell-theme musicus newelle oneanime python312Packages.paddlex python313Packages.sasdata python3Packages.bot-safe-agents python3Packages.dynaconf python3Packages.hatch-babel python3Packages.hatch-build-scripts python3Packages.mfusepy python3Packages.modelscope python3Packages.newspaper3k python3Packages.pip-install-test python3Packages.pwdlib python3Packages.snakemake-interface-scheduler-plugins qdocumentview reflection-cpp saber serigy simple-live-app stockpile tiny-rdm v2rayn venera vfox vigra waveterm waydroid-helper windsend windsend-rs wipefreespace yay"
+          INPUT="${{ inputs.packages }}"
+          PKGS="${INPUT:-$DEFAULT}"
+          echo "matrix=$(echo "$PKGS" | jq -R -c 'split(" ") | map(select(. != ""))')" >> $GITHUB_OUTPUT
+  update-nixpkgs-packages:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        attribute: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - id: get_branch
+        run: |
+          if git ls-remote --heads https://github.com/${{ github.actor }}/nixpkgs.git ${{ matrix.attribute }} | grep -q 'refs/heads/'; then
+            echo "ref=${{ matrix.attribute }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=master" >> $GITHUB_OUTPUT
+          fi
+      - uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/nixpkgs
+          ref: ${{ steps.get_branch.outputs.ref }}
+          fetch-depth: "10"
+          path: nixpkgs
+          token: ${{ secrets.TOKEN }}
+      - working-directory: nixpkgs
+        run: |
+          nix profile add nixpkgs#nixfmt
+          git checkout -B master
+          git checkout -B ${{ matrix.attribute }}
+          if ! nix eval --file . "${{ matrix.attribute }}.pname" >/dev/null 2>&1; then
+            nix-shell maintainers/scripts/update.nix --argstr package ${{ matrix.attribute }} --argstr commit true --argstr skip-prompt true
+          else
+            nix run nixpkgs#nix-update -- --build --commit --format --use-update-script ${{ inputs.extra-args }} ${{ matrix.attribute }}
+          fi
+      - working-directory: nixpkgs
+        run: |-
+          [[ -n '${{ inputs.packages }}' ]] && ! git diff --quiet master... && git push
+          git diff master...
+          git diff --name-only master... | xargs tail -n +1

@@ -1,0 +1,96 @@
+name: install-nix
+description: install-nix
+runs:
+  using: "composite"
+  steps:
+    - if: ${{ github.workflow != 'nixpkgs-review' && runner.os == 'Linux' && runner.arch == 'X64' }}
+      shell: bash
+      run: |
+        [[ -b /dev/sdb1 ]] || exit 0
+        sudo mkdir -p /mnt/{nix,tmp} /nix
+        sudo mount --bind /mnt/nix /nix
+        sudo chown root:root /nix /mnt/tmp
+        sudo chmod 1777 /mnt/tmp
+        TMPDIR=/mnt/tmp; printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+    - if: ${{ github.workflow == 'nixpkgs-review' || github.workflow == 'bootstrap-arm64' }}
+      shell: bash
+      run: |
+        OS="$(uname -s)"
+        ARCH="$(uname -m)"
+        if [[ "$OS" == "Darwin" ]]; then
+          rm -rf ~/Library/Caches/*
+          rm -rf /Applications/Xcode.app/Contents/Developer/Platforms/*.platform/Developer/SDKs/*
+          exit 0
+        fi
+        if [[ "$OS" != "Linux" ]]; then exit 0; fi
+        if [[ "$ARCH" != "x86_64" ]]; then
+          rm -rf /opt/hostedtoolcache
+          sudo apt-get -y autoremove --purge
+          sudo apt-get -y clean
+          exit 0
+        fi
+        sudo rm -rf /opt/hostedtoolcache /opt/google /opt/microsoft /var/lib/docker /snap /var/lib/snapd /usr/lib/snapd /usr/share/doc /usr/share/man /usr/share/info
+        [[ -b /dev/sdb1 ]] || exit 0
+        mnt_avail=$(df -m --output=avail /mnt | tail -1 | tr -d ' ')
+        root_avail=$(df -m --output=avail / | tail -1 | tr -d ' ')
+        size=$((mnt_avail - 1024))
+        sudo mkdir -p /mnt/.pool
+        sudo fallocate -l ${size}M /mnt/.pool/pool.img
+        loop=$(sudo losetup -f --show /mnt/.pool/pool.img)
+        sudo mkfs.btrfs -f "$loop"
+        sudo mkdir -p /pool
+        sudo mount "$loop" /pool
+        size2=$((root_avail - 2048))
+        sudo fallocate -l ${size2}M /pool-root.img
+        loop2=$(sudo losetup -f --show /pool-root.img)
+        sudo btrfs device add "$loop2" /pool
+        sudo btrfs balance start -dusage=50 /pool &
+        sudo mkdir -p /pool/{nix,tmp,work}
+        sudo chown root:root /pool/nix /pool/tmp
+        sudo chmod 1777 /pool/tmp
+        sudo mkdir /nix
+        sudo mount --bind /pool/nix /nix
+        if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
+          sudo mkdir -p /pool/work
+          sudo chown -R "$(id -u):$(id -g)" /pool/work
+          rsync -a --delete "$GITHUB_WORKSPACE"/ /pool/work/
+          sudo mount --bind /pool/work "$GITHUB_WORKSPACE"
+        fi
+        TMPDIR=/pool/tmp; printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+    - uses: DeterminateSystems/determinate-nix-action@main
+      with:
+        backtrace: "0"
+        diagnostic-endpoint: ""
+        log-directives: ""
+        logger: compact
+        summarize: ${{ github.workflow != 'update-nixpkgs-packages' }}
+        extra-conf: |
+          allow-unsafe-native-code-during-evaluation = true
+          always-allow-substitutes = true
+          auto-allocate-uids = true
+          experimental-features = nix-command flakes auto-allocate-uids ${{ runner.os == 'Linux' && 'cgroups' || '' }}
+          trusted-substituters =
+          flake-registry = https://channels.nixos.org/flake-registry.json
+          nix-path = nixpkgs=flake:github:NixOS/nixpkgs/nixpkgs-unstable
+          substituters = https://nix-community.cachix.org https://cache.nixos.org https://cache.nixos-cuda.org https://cache.garnix.io https://seilunako.cachix.org
+          trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cache.nixos-cuda.org:74DUi4Ye579gUqzH4ziL9IyiJBlDpMRn9MBN8oNan9M= cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g= seilunako.cachix.org-1:e/aJJI1S5hPY/BPeiVZcuPjt5ZjBRRo9dlYHmvwXPFM=
+          eval-cores = 0
+          lazy-trees = true
+          min-free = 10240
+          require-sigs = false
+          sandbox = relaxed
+          show-trace = true
+          ${{ runner.os == 'Linux' && 'use-cgroups = true' || '' }}
+          warn-dirty = false
+    - shell: bash
+      run: |
+        sudo sed -i -E '/^(trusted-substituters|extra-substituters|extra-trusted-substituters|extra-trusted-public-keys|extra-nix-path|nix-path|trusted-public-keys|substituters)([[:space:]]*=|$)/d' /etc/nix/nix.conf
+        git config --global user.name ${{ github.actor }}
+        git config --global user.email ${{ github.actor }}@users.noreply.github.com
+        git config --global --add push.autoSetupRemote true
+        git config --global --add push.default current
+        mkdir -p ~/.config/nixpkgs
+        echo '{allowUnfree = true;android_sdk.accept_license = true;}' > ~/.config/nixpkgs/config.nix
+        echo "NIXPKGS_ALLOW_UNFREE=1" >> $GITHUB_ENV
+        echo "NIXPKGS_ALLOW_INSECURE=1" >> $GITHUB_ENV
+        echo "NIXPKGS_ACCEPT_ANDROID_SDK_LICENSE=1" >> $GITHUB_ENV

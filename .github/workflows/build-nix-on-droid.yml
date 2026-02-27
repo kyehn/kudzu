@@ -1,0 +1,17 @@
+name: build-nix-on-droid
+on:
+  workflow_dispatch:
+jobs:
+  build-nix-on-droid:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - run: |
+          nix flake update
+          nix build --verbose --print-build-logs --impure --print-out-paths .#nixOnDroidConfigurations.default.activationPackage

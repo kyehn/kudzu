@@ -1,0 +1,27 @@
+name: debug
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: runner
+        required: true
+        default: ubuntu-24.04-arm
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+jobs:
+  debug:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      # - run: curl -sSf https://sshx.io/get | sh -s run
+      - uses: mxschmitt/action-tmate@master
