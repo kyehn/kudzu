@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:kyehn/nixpkgs/flutter-re";
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -75,7 +75,7 @@
 
           packages.default = pkgs.symlinkJoin {
             name = "default";
-            paths = with pkgs; [ nix ];
+            paths = with pkgs; [ nix flutterPackages-re.stable ];
           };
         };
 
