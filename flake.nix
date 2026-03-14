@@ -75,7 +75,7 @@
 
           packages.default = pkgs.symlinkJoin {
             name = "default";
-            paths = with pkgs; [ nix flutter ];
+            paths = with pkgs; [ flutter ];
           };
         };
 
