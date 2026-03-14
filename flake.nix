@@ -37,7 +37,7 @@
       ...
     }@inputs:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = builtins.filter (system: system != "x86_64-darwin") nixpkgs.lib.systems.flakeExposed;
+      systems = nixpkgs.lib.systems.flakeExposed;
 
       perSystem =
         {
