@@ -1,0 +1,84 @@
+name: nixpkgs-review
+run-name: nixpkgs-review ${{ inputs.pr }}
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull Request Number"
+        required: true
+        type: string
+      extra-args:
+        description: "nixpkgs-review args: --skip-package-regex 'linux_.*'"
+        required: false
+        type: string
+jobs:
+  nixpkgs-review:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-26
+          - macos-26-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: cachix/cachix-action@master
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: rm -f ~/.config/nix/nix.conf
+      - uses: actions/checkout@main
+        with:
+          repository: NixOS/nixpkgs
+          path: nixpkgs
+      - id: nixpkgs-review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        working-directory: nixpkgs
+        run: |
+          nix run nixpkgs#nixpkgs-review -- pr ${{ inputs.pr }} ${{ inputs.extra-args }} --print-result --no-shell
+          EOF=$(dd if=/dev/urandom bs=15 count=1 2>/dev/null | base64)
+          echo "report<<$EOF" >> $GITHUB_OUTPUT
+          cat $HOME/.cache/nixpkgs-review/pr-${{ inputs.pr }}/report.md >> $GITHUB_OUTPUT
+          echo "$EOF" >> $GITHUB_OUTPUT
+      - run: |
+          echo -e '```\n' >> $GITHUB_STEP_SUMMARY
+          cat $HOME/.cache/nixpkgs-review/pr-${{ inputs.pr }}/report.md >> $GITHUB_STEP_SUMMARY
+          echo -e '```\n' >> $GITHUB_STEP_SUMMARY
+      - uses: cloudposse/github-action-matrix-outputs-write@main
+        id: out
+        with:
+          matrix-step-name: ${{ github.job }}
+          matrix-key: ${{ matrix.runner }}
+          outputs: |
+            report: ${{ toJson(steps.nixpkgs-review.outputs.report) }}
+  summary:
+    runs-on: ubuntu-latest
+    needs: [nixpkgs-review]
+    if: always()
+    steps:
+      - uses: cloudposse/github-action-matrix-outputs-read@main
+        id: read
+        with:
+          matrix-step-name: nixpkgs-review
+      - uses: actions/github-script@main
+        with:
+          script: |-
+            const data = ${{ steps.read.outputs.result }}.report || {};
+            const runners = Object.keys(data);
+            let header = "";
+            let body = "";
+            runners.forEach((runner, index) => {
+              const content = data[runner];
+              if (!content || !content.includes("---")) return;
+              if (header === "") {
+                header = content.split("---")[0].trimEnd() + "\n\n";
+              }
+              const part = content.split("---").slice(1).join("---").trim();
+              body += "---\n" + part + "\n\n";
+            });
+            core.summary.addRaw("```markdown\n" + header + body.trimEnd() + "\n```").write();
