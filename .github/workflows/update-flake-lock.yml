@@ -1,0 +1,23 @@
+name: update-flake-lock
+on:
+  workflow_dispatch:
+jobs:
+  update-flake-lock:
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install-nix
+      - run: |
+          nix flake update
+          nix fmt
+          git add .
+          git commit --amend --no-edit
+      - uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+          force_with_lease: true
