@@ -6,7 +6,7 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     nix = {
-      url = "github:DeterminateSystems/nix-src/v3.20.0";
+      url = "github:DeterminateSystems/nix-src/v3.21.0";
       # inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-regression.follows = "nixpkgs";
       inputs.nixpkgs-23-11.follows = "nixpkgs";
@@ -47,14 +47,25 @@
         {
           formatter = pkgs.nixfmt-tree.override {
             nixfmtPackage = pkgs.nixfmt-rs;
-            runtimeInputs = [ pkgs.yamlfmt ];
-            settings = {
-              formatter.yamlfmt = {
+            runtimeInputs = with pkgs; [
+              yamlfmt
+              biome
+            ];
+            settings.formatter = {
+              yamlfmt = {
                 command = "yamlfmt";
                 includes = [
                   "*.yaml"
                   "*.yml"
                 ];
+              };
+              biome = {
+                command = "biome";
+                options = [
+                  "check"
+                  "--write"
+                ];
+                includes = [ "*.json" ];
               };
             };
           };

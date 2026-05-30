@@ -1,0 +1,62 @@
+{
+	"$schema": "https://opencode.ai/config.json",
+	"autoshare": false,
+	"autoupdate": false,
+	"model": "opencode/mimo-v2.5-free",
+	"formatter": {
+		"nixfmt": {
+			"command": ["nixfmt", "$FILE"],
+			"extensions": [".nix"]
+		},
+		"rustfmt": {
+			"command": ["rustfmt", "--config", "skip_children=true", "$FILE"],
+			"extensions": [".rs"]
+		},
+		"shfmt": {
+			"command": ["shfmt", "-w", "$FILE"],
+			"extensions": ["*.sh", "*.bash", "*.envrc", "*.envrc.*"]
+		},
+		"taplo": {
+			"command": ["taplo", "format", "$FILE"],
+			"extensions": ["*.toml"]
+		},
+		"yamlfmt": {
+			"command": ["yamlfmt", "$FILE"],
+			"extensions": ["*.yaml", "*.yml"]
+		}
+	},
+	"permission": {
+		"*": "allow"
+	},
+	"share": "disabled",
+	"mcp": {
+		"mcp-nixos": {
+			"enabled": true,
+			"type": "local",
+			"command": ["mcp-nixos"]
+		},
+		"mcp-server-filesystem": {
+			"enabled": true,
+			"type": "local",
+			"command": ["mcp-server-filesystem"]
+		},
+		"mcp-server-git": {
+			"enabled": true,
+			"type": "local",
+			"command": ["mcp-server-git"]
+		},
+		"mcp-server-fetch": {
+			"enabled": true,
+			"type": "local",
+			"command": ["mcp-server-fetch"]
+		},
+		"github": {
+			"type": "local",
+			"command": ["github-mcp-server"],
+			"enabled": true,
+			"environment": {
+				"GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GH_TOKEN}"
+			}
+		}
+	}
+}

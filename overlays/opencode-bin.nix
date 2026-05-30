@@ -11,11 +11,11 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "opencode-bin";
-  version = "1.15.0";
+  version = "1.15.12";
 
   src = fetchurl {
     url = "https://github.com/anomalyco/opencode/releases/download/v${finalAttrs.version}/opencode-linux-arm64.tar.gz";
-    hash = "sha256-bsVTp4A3g9/IJAgNA6qrIN+tcB+a5+jIqyUOYhXdRTk=";
+    hash = "sha256-7VGBuB6Xj6An2fR81n+Prr7GNCI9f4JKoiYSYYjMvuU=";
   };
 
   unpackPhase = ''

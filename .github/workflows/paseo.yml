@@ -1,0 +1,77 @@
+name: paseo
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: runner
+        required: true
+        default: ubuntu-latest
+        type: choice
+        options:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-26
+          - macos-26-intel
+jobs:
+  paseo:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: ./.github/actions/install-nix
+      - uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/nixpkgs
+          fetch-depth: "3"
+          path: repositories/nixpkgs
+          token: ${{ secrets.TOKEN }}
+      - uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/torvox
+          fetch-depth: "0"
+          path: repositories/torvox
+          token: ${{ secrets.TOKEN }}
+      - uses: cachix/cachix-action@master
+        timeout-minutes: 2
+        continue-on-error: true
+        with:
+          name: ${{ secrets.CACHIX_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - uses: actions/cache/restore@main
+        id: cache
+        with:
+          path: |
+            ~/.paseo
+            ~/.config/opencode
+            ~/.local/share/opencode
+            ~/.cache/opencode
+            ~/.local/state/opencode
+          key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+          restore-keys: |
+            paseo-state-${{ runner.os }}-${{ runner.arch }}-
+      - run: |
+          mkdir --parents "$HOME/.paseo" "$HOME/.config/opencode" "$HOME/.local/share/opencode" "$HOME/.cache/opencode" "$HOME/.local/state/opencode"
+      - run: |
+          rm --force "$HOME/.config/nix/nix.conf"
+          nix profile add nixpkgs#nixfmt-rs nixpkgs#shfmt nixpkgs#taplo nixpkgs#yamlfmt nixpkgs#ruff nixpkgs#nixd nixpkgs#mcp-nixos nixpkgs#github-mcp-server nixpkgs#mcp-server-filesystem nixpkgs#rustfmt nixpkgs#ktlint nixpkgs#rust-analyzer nixpkgs#mcp-server-git nixpkgs#mcp-server-fetch
+          curl --fail --silent --show-error --location https://opencode.ai/install | bash
+          install -D --mode=0644 .github/opencode.json "$HOME/.config/opencode/opencode.json"
+          npm install --global --yes @getpaseo/cli
+      - run: |
+          paseo onboard --voice disable
+          # timeout 10s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
+          tail --follow "$HOME/.paseo/daemon.log"
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENCODE_DISABLE_DEFAULT_PLUGINS: "true"
+        timeout-minutes: 345
+      - if: always()
+        uses: actions/cache/save@main
+        with:
+          path: |
+            ~/.paseo
+            ~/.config/opencode
+            ~/.local/share/opencode
+            ~/.cache/opencode
+            ~/.local/state/opencode
+          key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
