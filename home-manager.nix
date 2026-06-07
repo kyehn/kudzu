@@ -32,9 +32,7 @@
           })
         }/share/fonts/truetype/MapleMonoNormal-NF-CN-Medium.ttf";
         termux-properties = lib.generators.toINIWithGlobalSection { } {
-          globalSection = {
-            enforce-char-based-input = true;
-          };
+          globalSection.enforce-char-based-input = true;
         };
       in
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -90,7 +88,7 @@
       '';
       shellAbbrs = {
         nix-wipe = "nix profile wipe-history --older-than 1d && ${lib.getExe pkgs.home-manager} expire-generations 0days";
-        nix-gc = "nix-collect-garbage --delete-older-than 7d";
+        nix-gc = "${lib.getExe pkgs.fast-nix-gc} --delete-older-than 7d";
       };
     };
     nix-your-shell.enable = true;
@@ -244,32 +242,143 @@
         ".env"
         ".env.local"
         ".env.*.local"
+        ".envrc"
+        ".venv/"
+        "venv/"
+        "env/"
+        "ENV/"
+        "env.bak/"
+        "venv.bak/"
+        "pyvenv.cfg"
         # Dependency directories
         "node_modules/"
-        # IDEs and Editors
+        "jspm_packages/"
+        "bower_components/"
+        # IDEs and editors
         ## JetBrains IDEs
         ".idea/"
+        ".vscode/"
+        ".spyderproject"
+        ".spyproject"
+        ".ropeproject"
         # Logs and runtime files
         "*.log"
+        "npm-debug.log*"
+        "yarn-debug.log*"
+        "yarn-error.log*"
+        "lerna-debug.log*"
         "*.seed"
         "*.temp"
-        ".cmp"
-        ".ipynb_checkpoints/"
-        ".cache/"
-        ".next/"
+        "*.pid"
+        "*.pid.lock"
         # Operating System
         ".DS_Store"
-        # Node
-        ".npm"
+        # Node / JavaScript
+        ".npm/"
         ".eslintcache"
         ".stylelintcache"
+        ".cache/"
+        ".next/"
+        ".nuxt/"
+        ".nyc_output/"
+        ".grunt/"
+        ".rpt2_cache/"
+        ".rts2_cache_cjs/"
+        ".rts2_cache_es/"
+        ".rts2_cache_umd/"
+        ".node_repl_history"
+        "*.tsbuildinfo"
+        "*.tgz"
+        ".yarn-integrity"
+        "node_modules.bun"
+        "coverage/"
+        "*.lcov"
+        "report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json"
         # Python
-        ".venv/"
-        ".Python"
-        "*.py[cod]"
         "__pycache__/"
-        "pyvenv.cfg"
-        "pip-selfcheck.json"
+        "*.py[cod]"
+        "*$py.class"
+        "*.so"
+        ".Python"
+        "build/"
+        "develop-eggs/"
+        "dist/"
+        "downloads/"
+        "eggs/"
+        ".eggs/"
+        "lib/"
+        "lib64/"
+        "parts/"
+        "sdist/"
+        "var/"
+        "wheels/"
+        "share/python-wheels/"
+        "*.egg-info/"
+        ".installed.cfg"
+        "*.egg"
+        "MANIFEST"
+        "*.manifest"
+        "*.spec"
+        "pip-log.txt"
+        "pip-delete-this-directory.txt"
+        "htmlcov/"
+        ".tox/"
+        ".nox/"
+        ".coverage"
+        ".coverage.*"
+        "nosetests.xml"
+        "coverage.xml"
+        "*.cover"
+        "*.py.cover"
+        ".hypothesis/"
+        ".pytest_cache/"
+        "cover/"
+        "*.mo"
+        "*.pot"
+        "local_settings.py"
+        "db.sqlite3"
+        "db.sqlite3-journal"
+        "instance/"
+        ".webassets-cache"
+        ".scrapy/"
+        "docs/_build/"
+        ".pybuilder/"
+        ".ipynb_checkpoints/"
+        "profile_default/"
+        "ipython_config.py"
+        ".pdm-python"
+        ".pdm-build/"
+        ".pixi/*"
+        "!.pixi/config.toml"
+        "__pypackages__/"
+        "celerybeat-schedule*"
+        "celerybeat.pid"
+        "*.rdb"
+        "*.aof"
+        "mnesia/"
+        "rabbitmq/"
+        "rabbitmq-data/"
+        "activemq-data/"
+        "*.sage.py"
+        ".mypy_cache/"
+        ".dmypy.json"
+        "dmypy.json"
+        ".pyre/"
+        ".pytype/"
+        "cython_debug/"
+        ".ruff_cache/"
+        ".pypirc"
+        "marimo/_static/"
+        "marimo/_lsp/"
+        "__marimo__/"
+        ".streamlit/secrets.toml"
+        # Rust
+        "debug/"
+        "target/"
+        "**/*.rs.bk"
+        "*.pdb"
+        "**/mutants.out*/"
+        "rustc-ice-*.txt"
         # CMake
         "CMakeFiles/"
         "CMakeScripts/"
@@ -279,9 +388,20 @@
         "pom.xml.tag"
         "pom.xml.releaseBackup"
         "pom.xml.versionsBackup"
-        # Databases
-        "*.db"
-        "*.sqlite3-journal"
+        # Go
+        "*.exe"
+        "*.exe~"
+        "*.dll"
+        "*.dylib"
+        "*.test"
+        "*.out"
+        "*.coverprofile"
+        "profile.cov"
+        # Build / generated outputs
+        "site/"
+        ".serverless/"
+        ".fusebox/"
+        ".dynamodb/"
       ];
       attributes = [ "*.age diff=nodiff" ];
       settings = {
@@ -444,7 +564,7 @@
           };
           nixfmt = {
             command = [
-              (lib.getExe pkgs.nixfmt)
+              (lib.getExe pkgs.nixfmt-rs)
               "$FILE"
             ];
             extensions = [ ".nix" ];
@@ -462,7 +582,7 @@
       };
     };
     television = {
-      enable = true;
+      enable = false;
       enableBashIntegration = false;
       enableFishIntegration = false;
       package = pkgs.television.withPackages (p: [ p.bash ]);
