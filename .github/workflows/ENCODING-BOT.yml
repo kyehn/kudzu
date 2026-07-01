@@ -1,0 +1,61 @@
+name: ENCODING-BOT
+concurrency:
+  group: ENCODING-BOT-${{ github.actor }}
+  cancel-in-progress: true
+on:
+  workflow_dispatch:
+jobs:
+  ENCODING-BOT:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          sudo mkdir -p /tmp/ENCODING-BOT/{downloads,encodes}
+          sudo chmod -R 777 /tmp/ENCODING-BOT
+          echo "DOWNLOAD_DIR=/tmp/ENCODING-BOT/downloads" >> "$GITHUB_ENV"
+          echo "ENCODE_DIR=/tmp/ENCODING-BOT/encodes" >> "$GITHUB_ENV"
+      - uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/ENCODING-BOT
+          token: ${{ secrets.TOKEN }}
+      - uses: actions/checkout@main
+        with:
+          repository: ${{ github.actor }}/ENCODING-BOT.config.env
+          path: ENCODING-BOT.config.env
+          token: ${{ secrets.TOKEN }}
+      - uses: supercharge/mongodb-github-action@main
+        with:
+          mongodb-version: 7.0
+          mongodb-replica-set: test-rs
+          mongodb-port: 42069
+      - uses: actions/cache/restore@main
+        id: cache
+        with:
+          path: /tmp/mongodb-backup
+          key: ENCODING-BOT-mongodb-state-${{ github.run_id }}
+          restore-keys: ENCODING-BOT-mongodb-state-
+      - uses: actions/cache@main
+        id: pip-cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      - run: |
+          if [ -d /tmp/mongodb-backup/db ] then
+            mongorestore --host 127.0.0.1 --port 42069 /tmp/mongodb-backup/db
+          fi
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg mkvtoolnix
+          pip install -r requirements.txt
+          cp ENCODING-BOT.config.env/config.env config.env
+      - run: python -m VideoEncoder
+      - if: always()
+        run: |
+          mkdir --parents /tmp/mongodb-backup/db
+          rm --recursive --force /tmp/mongodb-backup/db/*
+          mongodump --host 127.0.0.1 --port 42069 --out /tmp/mongodb-backup/db
+      - name: Save cache
+        if: always()
+        uses: actions/cache/save@main
+        with:
+          path: /tmp/mongodb-backup
+          key: ENCODING-BOT-mongodb-state-${{ github.run_id }}

@@ -1,0 +1,29 @@
+{
+    "$schema": "https://raw.githubusercontent.com/cortexkit/opencode-magic-context/master/assets/magic-context.schema.json",
+    "enabled": true,
+    "history_budget_percentage": 0.15,
+    "execute_threshold_percentage": 55,
+    "cache_ttl": "5m",
+    "nudge_interval_tokens": 6000,
+    "auto_drop_tool_age": 30,
+    "clear_reasoning_age": 40,
+    "protected_tags": 20,
+    "historian": {
+        "temperature": 0.1
+    },
+    "dreamer": {
+        "disable": true
+    },
+    "sidekick": {
+        "enabled": true
+    },
+    "embedding": {
+        "provider": "off"
+    },
+    "memory": {
+        "enabled": false,
+        "auto_search": {
+            "enabled": false
+        }
+    }
+}

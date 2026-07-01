@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repository: ["kudzu", "zp-tool", "nix-on-droid", "nix-on-droid-app"]
+        repository: ["kudzu", "zp-tool", "nix-on-droid", "nix-on-droid-app", "torvox"]
     runs-on: ubuntu-latest
     steps:
       - uses: Mattraks/delete-workflow-runs@main
