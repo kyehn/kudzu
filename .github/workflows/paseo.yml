@@ -44,38 +44,32 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.factory/sessions
+            ~/.pi/agent/sessions
+            ~/.local/share/cortexkit/magic-context
           key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
             paseo-state-${{ runner.os }}-${{ runner.arch }}-
       - run: |
           rm --force "$HOME/.config/nix/nix.conf"
-          mkdir --parents "$HOME/.paseo"
-          curl -fsSL https://app.factory.ai/cli | sh
-          nix build --verbose --print-build-logs --print-out-paths --impure .#factory-settings --out-link /tmp/factory-settings && install -D --mode 0644 /tmp/factory-settings ~/.factory/settings.json && rm --force /tmp/factory-settings
-          nix build --verbose --print-build-logs --print-out-paths --impure .#factory-mcp --out-link /tmp/factory-mcp && install -D --mode 0644 /tmp/factory-mcp ~/.factory/mcp.json && rm --force /tmp/factory-mcp
+          mkdir --parents "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context"
+          nix profile add nixpkgs#openspec .#pi-wrapper
+          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
+          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -D --mode 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm --force /tmp/pi-agent-settings
+          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -D --mode 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm --force /tmp/pi-agent-mcp
+          cp --recursive .github/pi-opencode-zen ~/.pi/agent/extensions/pi-opencode-zen
+          pushd ~/.pi/agent/extensions/pi-opencode-zen && npm install --yes && popd
           npm install --global --yes @getpaseo/cli
       - run: |
-          # droid plugin marketplace add https://github.com/Factory-AI/factory-plugins
-          # droid plugin install droid-control@factory-plugins
-          # droid plugin install autoresearch@factory-plugins
-          npx skills@latest add mattpocock/skills --agent droid  --global --yes
-          npx skills@latest add Fission-AI/OpenSpec --agent droid  --global --yes
-          npx skills@latest add addyosmani/agent-skills --agent droid --global --yes
-          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          npx skills@latest add mattpocock/skills --agent pi  --global --yes
+          npx skills@latest add Fission-AI/OpenSpec --agent pi  --global --yes
+          npx skills@latest add addyosmani/agent-skills --agent pi --global --yes
+          export PATH="$ANDROID_HOME/platform-tools:$HOME/.pi/agent/npm/node_modules/@hypabolic/hypa-linux-x64/bin:$PATH"
           npm install --global --yes open-websearch
-          pushd .github/zen
-          CGO_ENABLED=0 go build -o zen .
-          ./zen &
-          popd
           paseo onboard --voice disable
           # timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
           tail --follow "$HOME/.paseo/daemon.log"
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
-          FACTORY_DROID_AUTO_UPDATE_ENABLED: "false"
-          FACTORY_AIRGAP_ENABLED: "true"
-          FACTORY_API_KEY: "x"
       - if: always()
         run: paseo daemon stop
       - if: always()
@@ -83,5 +77,6 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.factory/sessions
+            ~/.pi/agent/sessions
+            ~/.local/share/cortexkit/magic-context
           key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
