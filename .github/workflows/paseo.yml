@@ -20,6 +20,8 @@ jobs:
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
+        with:
+          fetch-depth: "0"
       - uses: ./.github/actions/install-nix
       - uses: actions/checkout@main
         with:
@@ -44,32 +46,35 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent/sessions
-            ~/.local/share/cortexkit/magic-context
+            ~/.reasonix/sessions
           key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
             paseo-state-${{ runner.os }}-${{ runner.arch }}-
       - run: |
           rm --force "$HOME/.config/nix/nix.conf"
-          mkdir --parents "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context"
-          nix profile add nixpkgs#openspec .#pi-wrapper
-          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -D --mode 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm --force /tmp/pi-agent-settings
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -D --mode 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm --force /tmp/pi-agent-mcp
-          cp --recursive .github/pi-opencode-zen ~/.pi/agent/extensions/pi-opencode-zen
-          pushd ~/.pi/agent/extensions/pi-opencode-zen && npm install --yes && popd
+          mkdir --parents "$HOME/.paseo" "$HOME/.reasonix/skills" "$HOME/.reasonix/sessions"
+          npm install --global --yes reasonix
+          cp .github/paseo-config.json ~/.paseo/config.json
+          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -D --mode 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm --force /tmp/reasonix-config
           npm install --global --yes @getpaseo/cli
       - run: |
-          npx skills@latest add mattpocock/skills --agent pi  --global --yes
-          npx skills@latest add Fission-AI/OpenSpec --agent pi  --global --yes
-          npx skills@latest add addyosmani/agent-skills --agent pi --global --yes
-          export PATH="$ANDROID_HOME/platform-tools:$HOME/.pi/agent/npm/node_modules/@hypabolic/hypa-linux-x64/bin:$PATH"
+          echo "NVIDIA_API_KEY=$NVIDIA_API_KEY" >> ~/.reasonix/.env
+          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
+          npx skills@latest add mattpocock/skills --agent reasonix  --global --yes
+          npx skills@latest add Fission-AI/OpenSpec --agent reasonix  --global --yes
+          npx skills@latest add addyosmani/agent-skills --agent reasonix --global --yes
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
           npm install --global --yes open-websearch
+          pushd .github/reasonix_provider_sync
+          pip install .
+          reasonix-provider-sync --only nvidia
+          popd
           paseo onboard --voice disable
           # timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
           tail --follow "$HOME/.paseo/daemon.log"
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - if: always()
         run: paseo daemon stop
       - if: always()
@@ -77,6 +82,5 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent/sessions
-            ~/.local/share/cortexkit/magic-context
+            ~/.reasonix/sessions
           key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}

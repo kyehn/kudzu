@@ -1,0 +1,23 @@
+# OpenCode Zen 免费模型配置
+# 无需 API key
+[[providers]]
+name = "deepseek-v4-flash-free"
+kind = "openai"
+base_url = "https://opencode.ai/zen/v1"
+api_key_env = ""
+model = "deepseek-v4-flash-free"
+context_window = 32000
+max_output = 32000
+vision = false
+supported_efforts = ["high", "max"]
+default_effort = "high"
+
+[[providers]]
+name = "mimo-v2.5-free"
+kind = "openai"
+base_url = "https://opencode.ai/zen/v1"
+api_key_env = ""
+model = "mimo-v2.5-free"
+context_window = 32000
+max_output = 32000
+vision = true

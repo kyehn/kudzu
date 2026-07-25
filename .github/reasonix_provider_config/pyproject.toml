@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reasonix-provider-config"
+version = "0.2.0"
+description = "OpenCode-to-ReasonIX provider configuration sync and mapping tool"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx",
+    "pydantic>=2.0",
+    "pyyaml",
+    "tomli>=1.1.0; python_version<'3.11'",
+    "tomli_w>=1.0.0",
+]
+
+[project.scripts]
+reasonix-provider-config = "reasonix_provider_config.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
