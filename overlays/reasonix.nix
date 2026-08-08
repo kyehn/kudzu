@@ -27,6 +27,9 @@ buildGoModule (finalAttrs: {
       url = "https://github.com/esengine/DeepSeek-Reasonix/commit/4128012e2e7750cdb9bac3edd074109077e68ce6.patch?full_index=1";
       hash = "sha256-jTNfsaM0Xq661jJnDw7nYB0SmCKpyutyiC9osJsUAsk=";
     })
+    # Compaction runs with thinking disabled (fast, cheap summarization).
+    # Applies to v1.21.3 sources; must be re-checked when bumping version.
+    ../patches/reasonix-compact-no-think.patch
   ];
 
   postPatch = ''
