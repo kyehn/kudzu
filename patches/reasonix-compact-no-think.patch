@@ -1,0 +1,117 @@
+diff --git a/internal/agent/compact.go b/internal/agent/compact.go
+index 43cb0c9..a1c62c6 100644
+--- a/internal/agent/compact.go
++++ b/internal/agent/compact.go
+@@ -649,7 +649,8 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
+ 			{Role: provider.RoleSystem, Content: sys},
+ 			{Role: provider.RoleUser, Content: renderTranscript(region)},
+ 		},
+-		Temperature: provider.OptionalTemperature(a.temperature),
++		Temperature:      provider.OptionalTemperature(a.temperature),
++		ThinkingDisabled: true, // compaction never needs CoT — faster and cheaper
+ 	})
+ 	if err != nil {
+ 		return "", usage, err
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index db014d3..358f557 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -686,6 +686,15 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
+ }
+ 
+ func (c *client) buildRequest(req provider.Request) chatRequest {
++	// Per-request thinking override: compaction runs with thinking disabled so
++	// summarization is fast and cheap. Only this request's wire shape changes;
++	// the provider's configured effort/thinking stay intact for normal turns.
++	effort := c.effort
++	thinkingType := c.thinkingType
++	if req.ThinkingDisabled {
++		effort = ""
++		thinkingType = "disabled"
++	}
+ 	// Repair tool-call pairing before sending: an interrupted/resumed history can
+ 	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
+ 	// rejects with a 400 ("must be followed by tool messages …").
+@@ -808,7 +817,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		StreamOptions:   &streamOptions{IncludeUsage: true},
+ 		Temperature:     req.Temperature,
+ 		MaxTokens:       maxOutputTokens,
+-		ReasoningEffort: kimiK3ReasoningEffort(c.kimiK3, c.effort),
++		ReasoningEffort: kimiK3ReasoningEffort(c.kimiK3, effort),
+ 		ExtraBody:       c.extraBody,
+ 	}
+ 	switch {
+@@ -830,7 +839,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// DeepSeek's CoT is controlled by `thinking` plus `reasoning_effort` for
+ 		// depth. Thinking is on by default but can be turned off via
+ 		// effort=disabled / thinking=disabled (credit @eghrhegpe, #5063).
+-		if c.thinkingType == "disabled" {
++		if thinkingType == "disabled" {
+ 			out.Thinking = &thinkingMode{Type: "disabled"}
+ 		} else {
+ 			out.Thinking = &thinkingMode{Type: "enabled"}
+@@ -839,7 +848,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// M3 uses a single `thinking.type` field with two valid values:
+ 		// "adaptive" (default, thinking on) and "disabled" (off). Reasoning
+ 		// depth is not a knob on M3, so reasoning_effort is omitted entirely.
+-		t := c.effort
++		t := effort
+ 		if t == "" {
+ 			t = "adaptive" // /effort auto == the M3 model default
+ 		}
+@@ -849,12 +858,12 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// Zhipu GLM's binary thinking knob: "enabled" (default, thinking on) or
+ 		// "disabled". reasoning_effort is silently ignored by the endpoint, so we
+ 		// omit it and drive chain-of-thought purely through thinking.type.
+-		t := c.effort
++		t := effort
+ 		if t == "" {
+ 			t = "enabled" // auto == the GLM default (thinking on)
+ 		}
+-		if c.thinkingType != "" {
+-			t = c.thinkingType // explicit `thinking` config overrides the effort knob
++		if thinkingType != "" {
++			t = thinkingType // explicit `thinking` config overrides the effort knob
+ 		}
+ 		out.Thinking = &thinkingMode{Type: t}
+ 		out.ReasoningEffort = ""
+@@ -862,20 +871,20 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// LongCat's binary thinking knob: "enabled" (default, thinking on) or
+ 		// "disabled". The API documents reasoning_content in OpenAI responses but
+ 		// not reasoning_effort, so keep depth out of the request.
+-		t := c.effort
++		t := effort
+ 		if t == "" {
+-			t = c.thinkingType
++			t = thinkingType
+ 		}
+ 		if t == "" {
+ 			t = "enabled"
+ 		}
+ 		out.Thinking = &thinkingMode{Type: t}
+ 		out.ReasoningEffort = ""
+-	case c.thinkingType != "":
++	case thinkingType != "":
+ 		// Generic OpenAI-compatible provider with an explicit `thinking` config
+ 		// field (e.g. opencode.ai) — emit thinking.type; reasoning_effort, if any,
+ 		// is left untouched for backends that also honour it.
+-		out.Thinking = &thinkingMode{Type: c.thinkingType}
++		out.Thinking = &thinkingMode{Type: thinkingType}
+ 	}
+ 	return out
+ }
+diff --git a/internal/provider/provider.go b/internal/provider/provider.go
+index 96f1e83..d41c311 100644
+--- a/internal/provider/provider.go
++++ b/internal/provider/provider.go
+@@ -221,6 +221,10 @@ type Request struct {
+ 	// output (Responses: text.format.type=json_object). Nil omits the field
+ 	// entirely — the common path must stay byte-stable for prompt caching.
+ 	ResponseFormat *ResponseFormat `json:"ResponseFormat,omitempty"`
++	// ThinkingDisabled turns off provider reasoning for this request only
++	// (wire: thinking.type=disabled, no reasoning_effort). Used by compaction
++	// summarization; other requests keep the provider's configured thinking.
++	ThinkingDisabled bool
+ }
+ 
+ // ResponseFormat asks a provider to constrain its output shape.
