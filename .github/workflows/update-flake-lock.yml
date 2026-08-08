@@ -13,6 +13,8 @@ jobs:
       - uses: ./.github/actions/install-nix
       - run: |
           nix flake update
+          nix run nixpkgs#nix-update -- --build reasonix --flake
+          nix run nixpkgs#nix-update -- --build --version=branch fast-nix-gc --flake
           nix fmt
           git add .
           git commit --amend --no-edit

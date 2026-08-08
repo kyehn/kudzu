@@ -1,6 +1,6 @@
 name: paseo
 concurrency:
-  group: paseo-${{ github.actor }}
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 on:
   workflow_dispatch:
@@ -14,9 +14,9 @@ on:
           - ubuntu-latest
           - ubuntu-24.04-arm
           - macos-26
-          - macos-26-intel
 jobs:
   paseo:
+    timeout-minutes: 292
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
@@ -27,14 +27,14 @@ jobs:
       - uses: actions/checkout@main
         with:
           repository: ${{ github.actor }}/nixpkgs
-          fetch-depth: "5"
-          path: repositories/nixpkgs
+          fetch-depth: "2"
+          path: result-repositories/nixpkgs
           token: ${{ secrets.TOKEN }}
       - uses: actions/checkout@main
         with:
           repository: ${{ github.actor }}/torvox
           fetch-depth: "0"
-          path: repositories/torvox
+          path: result-repositories/torvox
           token: ${{ secrets.TOKEN }}
       - uses: cachix/cachix-action@master
         timeout-minutes: 2
@@ -47,52 +47,49 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.local/share/opencode/opencode.db
-            ~/.local/share/cortexkit/magic-context
-          key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+            ~/.reasonix
+          key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
-            paseo-state-${{ runner.os }}-${{ runner.arch }}-
+            ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-
       - run: |
-          rm --force "$HOME/.config/nix/nix.conf"
-          mkdir --parents "$HOME/.paseo" "$HOME/.config/opencode" "$HOME/.local/share/opencode/skills" "$HOME/.config/opencode/commands" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context"
-          nix profile add nixpkgs#bun .#opencode-wrapper
-          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
-          nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -D --mode 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm --force /tmp/opencode-config
+          set -euo pipefail
+          rm -f "$HOME/.config/nix/nix.conf"
+          mkdir -p "$HOME/.paseo" "$HOME/.reasonix/skills" "$HOME/.reasonix/commands"
+          nix profile add nixpkgs#openspec .#reasonix
+          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -D --mode 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
           npm install --global --yes @getpaseo/cli
-      - run: |
-          npx skills@latest add mattpocock/skills --agent opencode  --global --yes
-          npx skills@latest add Fission-AI/OpenSpec --agent opencode  --global --yes
-          npx skills@latest add addyosmani/agent-skills --agent opencode --global --yes
-          npm install --global --yes opencode-goal-plugin
-          git clone --depth 1 --single-branch https://github.com/uditgoenka/autoresearch.git /tmp/autoresearch && cp --recursive /tmp/autoresearch/.opencode/skills/autoresearch ~/.config/opencode/skills/ && cp --recursive /tmp/autoresearch/.opencode/commands/autoresearch*.md ~/.config/opencode/commands/ && rm --recursive --force /tmp/autoresearch
-          git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp --recursive /tmp/compose-skill/skills/compose-expert ~/.config/opencode/skills/ && rm --recursive --force /tmp/compose-skill
-          git clone --depth 1 --single-branch https://github.com/PabloNAX/ultracode-skill.git /tmp/ultracode-skill && cp --recursive /tmp/ultracode-skill/ultracode ~/.config/opencode/skills/ && rm --recursive --force /tmp/ultracode-skill
-          mkdir --parents "${HOME}/.config/opencode/skills/ultra-goal" && curl --location "https://raw.githubusercontent.com/Azure99/ultra-goal/main/skills/ultra-goal/SKILL.md" --output "${HOME}/.config/opencode/skills/ultra-goal/SKILL.md"
-          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          cp .github/paseo-config.json ~/.paseo/config.json
           npm install --global --yes open-websearch
-          npx skills@latest add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent opencode --global --yes
-          bunx oh-my-opencode-slim@latest install --no-tui --skills=yes --preset=opencode-go --companion=no --background-subagents=no
-          python3 -m pip install --user json5
-          mkdir --parents "$HOME/.config/opencode" && python3 -c 'import os,re,json,urllib.request; import json5; u="https://raw.githubusercontent.com/alvinunreal/oh-my-opencode-slim/refs/heads/master/docs/opencode-zen-free-preset.md"; t=urllib.request.urlopen(u).read().decode("utf-8"); m=re.search(r"```(?:jsonc|json)\s*([\s\S]*?)\s*```", t, re.I); s=m.group(1) if m else t; d=json5.loads(s); d["autoUpdate"]=False; d.setdefault("interview", {})["autoOpenBrowser"]=False; p=os.path.expanduser("~/.config/opencode/oh-my-opencode-slim.jsonc"); open(p,"w",encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2)+"\n")'
-          rm --force ~/.config/opencode/oh-my-opencode-slim.json
-          # memsearch config set embedding.provider openai
-          # memsearch config set embedding.model nvidia/nv-embed-qa-4
-          # memsearch config set embedding.base_url https://integrate.api.nvidia.com/v1
-          # memsearch config set embedding.api_key env:NVIDIA_API_KEY
-          # memsearch index --force
-          paseo onboard --voice disable
-          # timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
+      - run: |
+          set -euo pipefail
+          npx skills@latest add mattpocock/skills --agent reasonix  --global --yes
+          npx skills@latest add addyosmani/agent-skills --agent reasonix --global --yes
+          npx skills@latest add Fission-AI/OpenSpec --agent reasonix --global --yes
+          npx skills@latest add blader/humanizer --agent reasonix --global --yes
+          git clone --depth 1 --single-branch https://github.com/uditgoenka/autoresearch.git /tmp/autoresearch && cp -r /tmp/autoresearch/.opencode/skills/autoresearch ~/.reasonix/skills/ && cp -r /tmp/autoresearch/.opencode/commands/autoresearch*.md ~/.reasonix/commands/ && rm -rf /tmp/autoresearch
+          git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp --recursive /tmp/compose-skill/skills/compose-expert ~/.reasonix/skills/ && rm --recursive --force /tmp/compose-skill
+          npx skills@latest add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent reasonix --global --yes
+          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          echo "NVIDIA_API_KEY=$NVIDIA_API_KEY" >> ~/.reasonix/.env
+          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
+          pushd .github/reasonix-config
+          pip install -e .
+          reasonix-config
+          popd
+          # paseo onboard --voice disable
+          timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
           tail --follow "$HOME/.paseo/daemon.log"
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - if: always()
-        run: paseo daemon stop
+        run: |
+          paseo daemon stop
+          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/commands ~/.paseo/paseo.pid ~/.paseo/daemon.log
       - if: always()
         uses: actions/cache/save@main
         with:
           path: |
             ~/.paseo
-            ~/.local/share/opencode/opencode.db
-            ~/.local/share/cortexkit/magic-context
-          key: paseo-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+            ~/.reasonix
+          key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
