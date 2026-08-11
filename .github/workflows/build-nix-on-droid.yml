@@ -11,8 +11,8 @@ jobs:
         with:
           name: ${{ secrets.CACHIX_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: rm -f ~/.config/nix/nix.conf
       - run: |
+          rm -f ~/.config/nix/nix.conf
           nix flake update
           sed -i '/users\.users\.nix-on-droid\.shell = lib.getExe pkgs\.fish;/a users.users.nix-on-droid.uid = lib.mkForce 10377;' nix-on-droid.nix
           sed -i '/users\.users\.nix-on-droid\.shell = lib.getExe pkgs\.fish;/a users.groups.nix-on-droid.gid = lib.mkForce 10377;' nix-on-droid.nix

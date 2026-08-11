@@ -29,7 +29,6 @@
         ncurses
         netcat-openbsd
         openssh
-        opencode-bin
         riffdiff
         time
         which

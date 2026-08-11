@@ -7,16 +7,16 @@ on:
         required: false
         default: "0"
 jobs:
-  del:
+  delete-workflow:
     strategy:
       fail-fast: false
       matrix:
-        repository: ["kudzu", "zp-tool", "nix-on-droid", "nix-on-droid-app", "torvox"]
+        repository: ["kudzu", "nix-on-droid", "torvox"]
     runs-on: ubuntu-latest
     steps:
       - uses: Mattraks/delete-workflow-runs@main
         with:
-          token: ${{ secrets.TOKEN }}
+          token: ${{ secrets.GH_PAT }}
           repository: ${{ github.actor }}/${{ matrix.repository }}
           retain_days: ${{ inputs.retain_days }}
           keep_minimum_runs: 0

@@ -20,5 +20,4 @@ jobs:
       - run: |
           nix flake update
           nix fmt
-          sed -i '/legacyPackages = pkgs;/d' flake.nix
           nix flake check --impure

@@ -21,7 +21,6 @@ on:
           - ubuntu-latest
           - ubuntu-24.04-arm
           - macos-26
-          - macos-26-intel
 jobs:
   build:
     runs-on: ${{ inputs.runner }}
@@ -34,10 +33,11 @@ jobs:
         with:
           name: ${{ secrets.CACHIX_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: rm -f ~/.config/nix/nix.conf
+      - run: |
+          rm -f ~/.config/nix/nix.conf
+          nix flake update
       - if: ${{ inputs.package != '' }}
         run: |
-          nix flake update
           nix build --verbose --print-build-logs --print-out-paths --impure .#${{ inputs.package }}
       - if: ${{ inputs.command != '' }}
         run: ${{ inputs.command }}

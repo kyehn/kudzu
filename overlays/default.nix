@@ -1,10 +1,14 @@
 { inputs, ... }:
 
 final: prev: {
-  nix = inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default;
+  nix =
+    if prev.stdenv.hostPlatform.isLinux then
+      inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default
+    else
+      prev.nixVersions.latest;
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
-  opencode-wrapper = prev.callPackage ./opencode-wrapper.nix { };
-  opencode-config = prev.callPackage ./opencode-config.nix { };
+  reasonix-config = prev.callPackage ./reasonix-config.nix { };
+  reasonix = prev.callPackage ./reasonix.nix { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
