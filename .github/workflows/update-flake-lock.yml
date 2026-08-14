@@ -5,7 +5,13 @@ jobs:
   update-flake-lock:
     permissions:
       contents: write
-    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@main
         with:
@@ -25,7 +31,8 @@ jobs:
           nix fmt
           git add .
           git commit --amend --no-edit
-      - uses: ad-m/github-push-action@master
+      - if: ${{ runner.arch == 'ARM64' }}
+        uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GH_PAT }}
           branch: ${{ github.ref }}

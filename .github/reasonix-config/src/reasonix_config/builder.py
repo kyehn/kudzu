@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import secrets
 import shutil
 import subprocess
 import sys
-import time
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -19,36 +17,6 @@ NVIDIA_API = "https://integrate.api.nvidia.com/v1"
 OPENCODE_ZEN_API = "https://opencode.ai/zen/v1"
 MIN_CHAT_CONTEXT = 8000
 CONFIG_VERSION = 5
-
-# opencode 的 X-Opencode-Session 格式: ses_<12 位 hex(6字节时间戳)><14 位 base62>
-# (共 30 字符)
-# 参考 opencode packages/opencode/src/id/id.ts 的 create():
-#   now = BigInt(ms) * 0x1000 + counter  → 取低 48 位 (6 字节) hex
-#   session = "ses_" + hex + randomBase62(LENGTH - 12)   (LENGTH=26)
-# 每个配置生成运行产生一个稳定值 (reasonix 的 headers 是静态的).
-# counter 置 1, 近似首次生成的 ascending ID.
-OPCODE_SESSION_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-OPCODE_SESSION_LENGTH = 26  # LENGTH 与 opencode src/id/id.ts 一致
-OPCODE_SESSION_TIME_BYTES = 6  # opencode 用 6 字节 (12 hex) 编码 timestamp+counter
-
-
-def _generate_opencode_session_id() -> str:
-    """生成格式与 opencode 客户端一致的 session ID (ascending).
-
-    opencode 格式: ``ses_<12 位 hex><14 位 base62 随机>`` (30 字符).
-    hex = ms * 0x1000 + counter 的低 48 位; counter = 1.
-    每次配置生成运行创建一个稳定值, 直到下次运行 ``reasonix-config`` 才变化.
-    """
-    now_ms = int(time.time() * 1000)
-    now = (now_ms << 12) | 1  # 等价 BigInt(ms)*0x1000 + counter(1)
-    # 取低 48 位, 与 opencode Buffer.alloc(6) 的 big-endian 一致
-    encoded = now & ((1 << 48) - 1)
-    hex_part = encoded.to_bytes(OPCODE_SESSION_TIME_BYTES, "big").hex()
-    rand_part = "".join(
-        secrets.choice(OPCODE_SESSION_ALPHABET)
-        for _ in range(OPCODE_SESSION_LENGTH - 12)
-    )
-    return f"ses_{hex_part}{rand_part}"
 
 
 def _lookup_model(models_raw: dict[str, Any], model_id: str) -> tuple[str, dict[str, Any]] | None:
@@ -202,19 +170,15 @@ def get_opencode_zen_free_providers() -> list[ProviderConfig]:
         prices=model_prices or None,
         model_overrides=model_overrides or None,
         # 与 opencode 客户端 (packages/opencode/src/session/llm/request.ts) 高度一致:
-        #   - User-Agent 结构 = opencode/<version> (opencode) + ai-sdk 追加的
-        #     'ai-sdk/provider-utils/4.0.23' + 'runtime/bun/1.3.14' (抓包实证逐字节一致)
-        #   - X-Opencode-Session 每次配置生成一个稳定 ID (opencode 格式 ses_<30char>)
-        #   - X-Opencode-Client 固定 "cli" (opencode flags.client 默认值)
-        #   - X-Opencode-Request 是每请求动态生成 (user.id), 静态配置无法表达, 不设置
-        #   - X-Opencode-Project 是每项目动态生成, reasonix 场景无项目上下文, 不设置
-        # 注意: reasonix 硬编码 Accept: text/event-stream (无法通过配置覆盖),
-        #       opencode 发送 Accept: */*. 这是可检测但无害的差异.
-        headers={
-            "User-Agent": "opencode/1.18.14 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
-            "X-Opencode-Session": _generate_opencode_session_id(),
-            "X-Opencode-Client": "cli",
-        },
+        #   - reasonix 源码在检测到 provider 名 opencode-zen 时自动打上 opencode 头部
+        #     (User-Agent=opencode/1.18.18 ..., Accept: */*,
+        #     Accept-Encoding: gzip, deflate, br, zstd, x-opencode-*), 并用 utls
+        #     复刻 CLI 的 BoringSSL TLS 指纹 (JA3/JA4), 因此这里不再写静态 headers.
+        #   - X-Opencode-Session (ses_<descending 编码>) 由 reasonix 每个客户端
+        #     实例动态生成, X-Opencode-Request (msg_<ascending 编码>) 每请求生成 —
+        #     与 opencode src/id/id.ts 的 create() 逐字节一致, 静态配置无法表达.
+        # 注意: 不要在此设置 opencode 头部, 会与源码生成的小写 x-opencode-* 重复.
+        headers=None,
     )
     return [cfg]
 

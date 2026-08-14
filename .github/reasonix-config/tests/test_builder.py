@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
-import time
 import tomllib
 from pathlib import Path
 from typing import ClassVar
@@ -12,7 +10,6 @@ import pytest
 from reasonix_config.builder import (
     CONFIG_VERSION,
     _build_override,
-    _generate_opencode_session_id,
     _is_chat_model,
     _repair_default_model,
     build_all,
@@ -25,9 +22,6 @@ from reasonix_config.fetcher import ZEN_CACHE
 from reasonix_config.models import ProviderConfig
 
 EXPECTED_PROVIDER_COUNT = 2
-SESSION_ID_TOTAL_LEN = 30  # opencode: "ses_" + 12 hex + 14 base62
-SESSION_TIMESTAMP_TOLERANCE_MS = 1000
-SESSION_SAMPLE_COUNT = 10
 ENV_FILE_PERMS = 0o600  # .env 含密钥, 仅属主可读写
 
 
@@ -35,39 +29,6 @@ def _load_zen_cache() -> dict | None:
     if not ZEN_CACHE.exists():
         return None
     return json.loads(ZEN_CACHE.read_text())
-
-
-class TestGenerateSessionId:
-    """验证 session ID 与 opencode 客户端格式一致 (packages/opencode/src/id/id.ts)."""
-
-    def test_format_and_length(self) -> None:
-        sid = _generate_opencode_session_id()
-        # ses_ + 12 hex + 14 base62 = 30 字符
-        assert re.fullmatch(r"ses_[0-9a-f]{12}[0-9A-Za-z]{14}", sid) is not None
-        assert len(sid) == SESSION_ID_TOTAL_LEN
-
-    def test_timestamp_decodable(self) -> None:
-        sid = _generate_opencode_session_id()
-        hex_part = sid[4:16]
-        ms_prime = int(hex_part, 16) >> 12  # opencode: encoded / 0x1000
-        now_ms = int(time.time() * 1000)
-        # opencode 编码取低 48 位, 解码值 = now_ms mod 2^36
-        recovered = ms_prime + ((now_ms >> 36) << 36)
-        assert abs(recovered - now_ms) < SESSION_TIMESTAMP_TOLERANCE_MS
-
-    def test_stable_within_run_and_unique_across_runs(self) -> None:
-        # headers 是静态的, 每次配置生成运行产生一个稳定值
-        first = _generate_opencode_session_id()
-        second = _generate_opencode_session_id()
-        assert first != second  # 不同运行应有不同 session
-        unique_ids = {_generate_opencode_session_id() for _ in range(SESSION_SAMPLE_COUNT)}
-        assert len(unique_ids) == SESSION_SAMPLE_COUNT
-
-    def test_character_set_matches_opencode(self) -> None:
-        opcode_charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        sid = _generate_opencode_session_id()
-        rand_part = sid[16:]
-        assert all(c in opcode_charset for c in rand_part)
 
 
 class TestIsChatModel:
@@ -301,11 +262,9 @@ class TestIntegration:
         assert len(p.models) > 0
         for mid in p.models:
             assert "-free" in mid or mid == "big-pickle"
-        assert p.headers is not None
-        assert "User-Agent" in p.headers
-        assert p.headers["User-Agent"].startswith("opencode/")
-        assert "X-Opencode-Session" in p.headers
-        assert p.headers["X-Opencode-Session"].startswith("ses_")
+        # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测
+        # opencode-zen 后动态生成, 配置里不再静态写入, 避免与源码重复.
+        assert p.headers is None
 
     def test_nvidia_has_chat_models(self) -> None:
         providers = get_nvidia_providers()

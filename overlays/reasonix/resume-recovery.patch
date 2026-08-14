@@ -1,0 +1,161 @@
+diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
+index 0a1b238d2..02e63603a 100644
+--- a/internal/agent/compact_projection.go
++++ b/internal/agent/compact_projection.go
+@@ -535,7 +535,15 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, force bool, sourceToke
+ 		return fmt.Errorf("%w: candidate %d still at or above trigger %d", errCheckpointRejected, candidateTokens, triggerTokens)
+ 	}
+ 	if force && triggerTokens > 0 && candidateTokens >= triggerTokens {
+-		return fmt.Errorf("%w: forced candidate %d still at or above trigger %d", errCheckpointRejected, candidateTokens, triggerTokens)
++		// Overflow/must-free compaction is the last resort before the session
++		// deadlocks on a "context exceeds provider limit" error. A candidate
++		// that is strictly smaller and physically feasible (below the hard
++		// ceiling) must land even when it stays above the maintenance trigger;
++		// the fold still frees room for the request to go out.
++		if hard > 0 && candidateTokens >= hard {
++			return fmt.Errorf("%w: forced candidate %d still at or above physical ceiling %d", errCheckpointRejected, candidateTokens, hard)
++		}
++		return nil
+ 	}
+ 	return nil
+ }
+diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
+index d2ab99278..67dccdb67 100644
+--- a/internal/agent/compact_threshold_test.go
++++ b/internal/agent/compact_threshold_test.go
+@@ -80,3 +80,34 @@ func TestAcceptCheckpointCandidateRules(t *testing.T) {
+ 		t.Fatalf("manual below trigger: %v", err)
+ 	}
+ }
++
++// Overflow / must-free compaction is the last resort before the session
++// deadlocks on ErrCompactionRequired. A strictly smaller candidate that stays
++// above the maintenance trigger must still land (it frees room for the request
++// to go out) as long as it is below the physical hard ceiling.
++func TestAcceptCheckpointCandidateForceLandsAboveTrigger(t *testing.T) {
++	a := &Agent{agentConfig: agentConfig{contextWindow: 1_000_000, compactRatio: 0.85}}
++	trigger := a.compactTrigger() // 850_000
++	hard := a.hardInputCeiling()
++	// Forced candidate below trigger: accept (unchanged behavior).
++	if err := a.acceptCheckpointCandidate(CompactionTriggerOverflow, true, 900_000, 800_000, 50_000); err != nil {
++		t.Fatalf("forced candidate below trigger: %v", err)
++	}
++	// Forced candidate at/above trigger but below hard ceiling: accept —
++	// overflow must land a strictly smaller, physically feasible view.
++	if err := a.acceptCheckpointCandidate(CompactionTriggerOverflow, true, 900_000, 870_000, 50_000); err != nil {
++		t.Fatalf("forced candidate above trigger but below hard should land: %v", err)
++	}
++	_ = trigger
++	// Forced candidate at/above hard ceiling: still reject (no free room).
++	if hard > 0 {
++		if err := a.acceptCheckpointCandidate(CompactionTriggerOverflow, true, hard+10_000, hard, 50_000); err == nil {
++			t.Fatal("forced candidate at hard ceiling should reject")
++		}
++	}
++	// Non-force candidate above trigger must still be rejected.
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, false, 900_000, 870_000, 50_000); err == nil {
++		t.Fatal("non-force candidate above trigger should reject")
++	}
++}
++
+diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
+index 302e8ff5a..36d3cfe0c 100644
+--- a/internal/agent/context_manager.go
++++ b/internal/agent/context_manager.go
+@@ -99,7 +99,17 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
+ 	}
+ 	inputHash := a.contextMaintenanceInputHash(visible)
+ 	if blocked, reason := a.contextMaintenanceBlocked(inputHash); blocked && policy.Trigger != CompactionTriggerManual {
+-		if policy.Trigger == CompactionTriggerOverflow || est >= hard {
++		// A generation-scoped blocked/failed receipt normally stops automatic
++		// maintenance from paying for another summary. Physically overflowing
++		// sessions cannot afford that pause: the request would never go out and
++		// long-session resume deadlocks on the stale reason. Fall through to the
++		// forced fold — the mechanical digest path costs no provider call and
++		// installs a successful projection that clears the blocked receipt.
++		if est >= hard {
++			forceFold := policy.Force || policy.Trigger == CompactionTriggerOverflow || est >= hard
++			return m.foldContext(ctx, prepared, policy, inputHash, est, fold, hard, forceFold)
++		}
++		if policy.Trigger == CompactionTriggerOverflow {
+ 			return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
+ 		}
+ 		return prepared, nil
+diff --git a/internal/agent/context_manager_test.go b/internal/agent/context_manager_test.go
+index d8cbd15df..4ef474ca5 100644
+--- a/internal/agent/context_manager_test.go
++++ b/internal/agent/context_manager_test.go
+@@ -171,3 +171,34 @@ func TestStrictAlternatingRolesStillConvergesBeforeSampling(t *testing.T) {
+ 		}
+ 	}
+ }
++
++// TestPrepareSamplingRecoversBuildCompactionFailure guards the resume path:
++// a Pressure build whose fold cannot land a candidate below the trigger —
++// hitting ErrCompactionRequired — must recover via overflow compaction instead
++// of stranding the turn. Without the recovery, prepareSamplingRequest returns
++// the error and the streamed turn is interrupted (the long-session deadlock
++// this fix removes). Sizing/recent-keep here make the forced candidate stay at
++// or above the trigger while remaining physically feasible.
++func TestPrepareSamplingRecoversBuildCompactionFailure(t *testing.T) {
++	big := strings.Repeat("word ", 500)
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "sys"})
++	for i := 0; i < 12; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: "continue"},
++			provider.Message{Role: provider.RoleAssistant, Content: big},
++		)
++	}
++	sess := &Session{Messages: msgs}
++	a := New(&fakeProvider{streamErr: errors.New("summarizer down")}, tool.NewRegistry(), sess, Options{
++		ContextWindow: 1500, CompactRatio: 0.5, RecentKeep: 1, ArchiveDir: t.TempDir(),
++	}, event.Discard)
++
++	prepared, err := a.prepareSamplingRequest(context.Background())
++	if err != nil {
++		t.Fatalf("prepareSamplingRequest stranded the turn: %v", err)
++	}
++	if len(prepared.req.Messages) == 0 {
++		t.Fatal("prepareSamplingRequest returned an empty request")
++	}
++}
+diff --git a/internal/agent/sampling_request.go b/internal/agent/sampling_request.go
+index 977598f2c..dd55cc294 100644
+--- a/internal/agent/sampling_request.go
++++ b/internal/agent/sampling_request.go
+@@ -3,6 +3,7 @@ package agent
+ import (
+ 	"context"
+ 	"encoding/json"
++	"errors"
+ 
+ 	"reasonix/internal/event"
+ 	"reasonix/internal/provider"
+@@ -54,7 +55,25 @@ func (a *Agent) handleSamplingError(
+ func (a *Agent) prepareSamplingRequest(ctx context.Context) (samplingRequest, error) {
+ 	frozen, err := a.buildSamplingRequest(ctx, CompactionTriggerPressure)
+ 	if err != nil {
+-		return samplingRequest{}, err
++		// Build-time compaction failure (the Pressure-triggered fold could not
++		// fit its summarizer budget). Stranding the turn would surface as a
++		// hard "context exceeds provider limit" that halts long sessions. Force
++		// one Overflow recovery so a mechanical fold can free context; degrade
++		// only when that recovery itself cannot complete.
++		if !errors.Is(err, ErrCompactionRequired) {
++			return samplingRequest{}, err
++		}
++		if _, perr := a.contextManager().Prepare(ctx, ContextPreparePolicy{
++			Trigger: CompactionTriggerOverflow,
++			Force:   true,
++		}); perr != nil {
++			return samplingRequest{}, err
++		}
++		rebuilt, rerr := a.buildSamplingRequest(ctx, CompactionTriggerPressure)
++		if rerr != nil {
++			return samplingRequest{}, rerr
++		}
++		frozen = rebuilt
+ 	}
+ 	if budget, clipped, budgetErr := a.effectiveOutputBudget(frozen.req); budgetErr != nil {
+ 		// One-shot physical overflow recovery. Do not loop.

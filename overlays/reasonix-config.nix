@@ -24,7 +24,6 @@
   agent = {
     reasoning_language = "auto";
     keep = [ ];
-    recent_keep = 1;
     max_subagent_depth = 2;
     max_subagent_concurrency = 3;
     max_parallel_writers = 3;
@@ -126,8 +125,9 @@
       "use_capability"
     ];
     deny = [
-      "Bash(find /nix/store*)"
-      "Bash(ls /nix/store *)"
+      "Bash(*find /nix/store*)"
+      "Bash(*ls /nix/store *)"
+      "Bash(*find / *)"
     ];
     ask = [
       "Edit(.github/workflows/**)"

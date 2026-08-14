@@ -7,7 +7,7 @@
     };
     nix = {
       url = "github:DeterminateSystems/nix-src/v3.22.0";
-      inputs.nixpkgs.follows = "nixpkgs";
+      # inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-regression.follows = "nixpkgs";
       inputs.nixpkgs-23-11.follows = "nixpkgs";
       inputs.flake-parts.follows = "flake-parts";

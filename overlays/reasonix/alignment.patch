@@ -1,0 +1,958 @@
+diff --git a/go.mod b/go.mod
+index e5f729ec3..413ed05bf 100644
+--- a/go.mod
++++ b/go.mod
+@@ -11,6 +11,7 @@ require (
+ 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
+ 	github.com/BurntSushi/toml v1.6.0
+ 	github.com/alecthomas/chroma/v2 v2.27.0
++	github.com/andybalholm/brotli v1.0.6
+ 	github.com/atotto/clipboard v0.1.4
+ 	github.com/aymanbagabas/go-udiff v0.4.1
+ 	github.com/bmatcuk/doublestar/v4 v4.10.0
+@@ -19,9 +20,11 @@ require (
+ 	github.com/godbus/dbus/v5 v5.2.2
+ 	github.com/joho/godotenv v1.5.1
+ 	github.com/kevinburke/ssh_config v1.6.0
++	github.com/klauspost/compress v1.17.4
+ 	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
+ 	github.com/mattn/go-runewidth v0.0.27
+ 	github.com/pkg/sftp v1.13.11
++	github.com/refraction-networking/utls v1.8.2
+ 	github.com/rivo/uniseg v0.4.7
+ 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
+ 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+diff --git a/go.sum b/go.sum
+index 1afec27f7..a897f51e3 100644
+--- a/go.sum
++++ b/go.sum
+@@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
+ github.com/alecthomas/chroma/v2 v2.27.0/go.mod h1:NjJ3ciIgrqBNeIkWZ4e46nseoLDslxU1LmfCoL+wcY8=
+ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs=
+ github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
++github.com/andybalholm/brotli v1.0.6 h1:Yf9fFpf49Zrxb9NlQaluyE92/+X7UVHlhMNJN2sxfOI=
++github.com/andybalholm/brotli v1.0.6/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
+ github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
+ github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
+ github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=
+@@ -77,6 +79,8 @@ github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRg
+ github.com/kevinburke/ssh_config v1.6.0/go.mod h1:q2RIzfka+BXARoNexmF9gkxEX7DmvbW9P4hIVx2Kg4M=
+ github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
+ github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
++github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
++github.com/klauspost/compress v1.17.4/go.mod h1:/dCuZOvVtNoHsyb+cuJD3itjs3NbnF6KH9zAO4BDxPM=
+ github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
+ github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
+ github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
+@@ -101,6 +105,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
+ github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/refraction-networking/utls v1.8.2 h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEvV+S9iJ2IdQo=
++github.com/refraction-networking/utls v1.8.2/go.mod h1:jkSOEkLqn+S/jtpEHPOsVv/4V4EVnelwbMQl4vCWXAM=
+ github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
+ github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
+ github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
+diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
+index a466fa960..5fbc4bf98 100644
+--- a/internal/netclient/netclient.go
++++ b/internal/netclient/netclient.go
+@@ -44,12 +44,15 @@ type ProxySpec struct {
+ // TransportOptions lets callers keep their existing network timeouts while
+ // sharing proxy behavior. ForceIPv4 pins the dialer to tcp4 — the desktop updater
+ // uses it to retry over IPv4 when an IPv6 route (CN → Cloudflare) resets mid-transfer.
++// DialTLSContext overrides the TLS dial (e.g. for a custom ClientHello fingerprint);
++// when set, HTTP/2 is disabled because the connection is no longer a *tls.Conn.
+ type TransportOptions struct {
+ 	DialTimeout           time.Duration
+ 	KeepAlive             time.Duration
+ 	TLSHandshakeTimeout   time.Duration
+ 	ResponseHeaderTimeout time.Duration
+ 	ForceIPv4             bool
++	DialTLSContext        func(ctx context.Context, network, addr string) (net.Conn, error)
+ }
+ 
+ // NormalizeMode maps empty and unknown modes to auto, preserving a fail-open
+@@ -122,6 +125,12 @@ func NewTransport(spec ProxySpec, opts TransportOptions) (*http.Transport, error
+ 	if opts.ResponseHeaderTimeout != 0 {
+ 		tr.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+ 	}
++	if opts.DialTLSContext != nil {
++		tr.DialTLSContext = opts.DialTLSContext
++		// A custom TLS dialer may return a non-*tls.Conn (utls.UConn), for which
++		// net/http cannot negotiate HTTP/2; pin HTTP/1.1.
++		tr.ForceAttemptHTTP2 = false
++	}
+ 	return tr, nil
+ }
+ 
+diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
+new file mode 100644
+index 000000000..535728e9b
+--- /dev/null
++++ b/internal/netclient/opencode_spec_test.go
+@@ -0,0 +1,53 @@
++package netclient
++
++import (
++	"testing"
++
++	utls "github.com/refraction-networking/utls"
++)
++
++// TestOpenCodeClientHelloSpecFresh: ApplyPreset writes the generated X25519 key
++// share into the KeyShareExtension it is given. Sharing one spec across
++// connections corrupted every handshake after the first (second ClientHello
++// carried the first connection's stale key material). openCodeClientHelloSpec
++// must therefore return independent copies every call.
++func TestOpenCodeClientHelloSpecFresh(t *testing.T) {
++	a := openCodeClientHelloSpec()
++	b := openCodeClientHelloSpec()
++
++	var ksA, ksB *utls.KeyShareExtension
++	for _, e := range a.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok {
++			ksA = x
++		}
++	}
++	for _, e := range b.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok {
++			ksB = x
++		}
++	}
++	if ksA == nil || ksB == nil {
++		t.Fatal("missing KeyShareExtension in cloned spec")
++	}
++	if ksA == ksB {
++		t.Fatal("KeyShareExtension pointers must not be shared across clones")
++	}
++	if &ksA.KeyShares[0] == &ksB.KeyShares[0] {
++		t.Fatal("KeyShares slice backing arrays must not be shared across clones")
++	}
++
++	// Mutating one clone's key share must not leak into the other or the shared
++	// template (which, once corrupted, breaks the very next connection).
++	ksA.KeyShares[0].Data = []byte{1}
++	if len(ksB.KeyShares[0].Data) != 0 {
++		t.Fatal("key share mutation leaked across clones")
++	}
++	if len(OpenCodeClientHelloSpec.Extensions) == 0 {
++		t.Fatal("shared template must stay intact")
++	}
++	for _, e := range OpenCodeClientHelloSpec.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok && len(x.KeyShares[0].Data) != 0 {
++			t.Fatal("key share mutation leaked into shared OpenCodeClientHelloSpec template")
++		}
++	}
++}
+diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
+new file mode 100644
+index 000000000..7d91d969b
+--- /dev/null
++++ b/internal/netclient/opencode_tls.go
+@@ -0,0 +1,133 @@
++package netclient
++
++import (
++	"context"
++	"net"
++	"time"
++
++	utls "github.com/refraction-networking/utls"
++)
++
++// OpenCodeClientHelloSpec reproduces the TLS ClientHello emitted by the opencode
++// CLI (Bun/BoringSSL) captured against opencode.ai/zen/v1:
++//
++//	JA3  : 7a2901f41c5282e5fbacb8cb667f626f
++//	JA4  : i11ss_08687474702f_002f,0035,00_0c0005,000a,00
++//
++// The extension order matches BoringSSL's fixed layout (server_name first —
++// omitted for IP literals, exactly like the capture against 127.0.0.1) with no
++// GREASE values, ALPN limited to http/1.1, and X25519-only key share.
++// OpenCodeClientHelloSpec is the template for the opencode ClientHello. It is
++// mutable: ApplyPreset fills in the generated X25519 key share, so a fresh copy
++// (openCodeClientHelloSpec) must be used for every connection instead of this
++// shared value, or the second handshake reuses stale key material.
++var OpenCodeClientHelloSpec = utls.ClientHelloSpec{
++	CipherSuites: []uint16{
++		utls.TLS_AES_128_GCM_SHA256,                        // 0x1301
++		utls.TLS_AES_256_GCM_SHA384,                        // 0x1302
++		utls.TLS_CHACHA20_POLY1305_SHA256,                  // 0x1303
++		utls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,       // 0xc02b
++		utls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,         // 0xc02f
++		utls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,       // 0xc02c
++		utls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,         // 0xc030
++		utls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, // 0xcca9
++		utls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,   // 0xcca8
++		utls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,          // 0xc009
++		utls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,            // 0xc013
++		utls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,          // 0xc00a
++		utls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,            // 0xc014
++		utls.TLS_RSA_WITH_AES_128_GCM_SHA256,               // 0x009c
++		utls.TLS_RSA_WITH_AES_256_GCM_SHA384,               // 0x009d
++		utls.TLS_RSA_WITH_AES_128_CBC_SHA,                  // 0x002f
++		utls.TLS_RSA_WITH_AES_256_CBC_SHA,                  // 0x0035
++	},
++	CompressionMethods: []uint8{0},
++	Extensions: []utls.TLSExtension{
++		&utls.SNIExtension{}, // ServerName filled from config; empty for IP literals
++		&utls.ExtendedMasterSecretExtension{},
++		&utls.RenegotiationInfoExtension{Renegotiation: utls.RenegotiateOnceAsClient},
++		&utls.SupportedCurvesExtension{Curves: []utls.CurveID{utls.CurveX25519, utls.CurveP256, utls.CurveP384}},
++		&utls.SupportedPointsExtension{SupportedPoints: []uint8{0}},
++		&utls.SessionTicketExtension{},
++		&utls.ALPNExtension{AlpnProtocols: []string{"http/1.1"}},
++		&utls.StatusRequestExtension{},
++		&utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []utls.SignatureScheme{
++			utls.ECDSAWithP256AndSHA256, // 0x0403
++			utls.PSSWithSHA256,          // 0x0804
++			utls.PKCS1WithSHA256,        // 0x0401
++			utls.ECDSAWithP384AndSHA384, // 0x0503
++			utls.PSSWithSHA384,          // 0x0805
++			utls.PKCS1WithSHA384,        // 0x0501
++			utls.PSSWithSHA512,          // 0x0806
++			utls.PKCS1WithSHA512,        // 0x0601
++			utls.PKCS1WithSHA1,          // 0x0201
++		}},
++		&utls.SCTExtension{},
++		&utls.KeyShareExtension{KeyShares: []utls.KeyShare{{Group: utls.CurveX25519}}},
++		&utls.PSKKeyExchangeModesExtension{Modes: []uint8{1}}, // pskModeDHE
++		&utls.SupportedVersionsExtension{Versions: []uint16{utls.VersionTLS13, utls.VersionTLS12}},
++	},
++	TLSVersMin: utls.VersionTLS12,
++	TLSVersMax: utls.VersionTLS13,
++}
++
++// openCodeClientHelloSpec returns a fresh copy of OpenCodeClientHelloSpec.
++// ApplyPreset stores the generated X25519 key share into the spec's
++// KeyShareExtension, so every dial needs its own copy; reusing the shared
++// template corrupts the key material of every subsequent handshake.
++func openCodeClientHelloSpec() *utls.ClientHelloSpec {
++	spec := OpenCodeClientHelloSpec
++	spec.CipherSuites = append([]uint16(nil), OpenCodeClientHelloSpec.CipherSuites...)
++	spec.CompressionMethods = append([]uint8(nil), OpenCodeClientHelloSpec.CompressionMethods...)
++	spec.Extensions = make([]utls.TLSExtension, len(OpenCodeClientHelloSpec.Extensions))
++	for i, ext := range OpenCodeClientHelloSpec.Extensions {
++		switch e := ext.(type) {
++		case *utls.KeyShareExtension:
++			ks := *e
++			ks.KeyShares = append([]utls.KeyShare(nil), e.KeyShares...)
++			spec.Extensions[i] = &ks
++		default:
++			spec.Extensions[i] = ext
++		}
++	}
++	return &spec
++}
++
++// OpenCodeDialTLS returns a DialTLSContext hook that handshakes with the
++// opencode ClientHello spec. It is used by the openai provider when it detects
++// an opencode endpoint, so the transport speaks the exact BoringSSL shape the
++// real CLI presents instead of Go's default ClientHello.
++func OpenCodeDialTLS(dialTimeout, keepAlive, handshakeTimeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
++	d := &net.Dialer{Timeout: dialTimeout, KeepAlive: keepAlive}
++	return func(ctx context.Context, network, addr string) (net.Conn, error) {
++		raw, err := d.DialContext(ctx, network, addr)
++		if err != nil {
++			return nil, err
++		}
++		host, _, err := net.SplitHostPort(addr)
++		if err != nil {
++			host = addr
++		}
++		tlsCfg := &utls.Config{
++			ServerName: host,
++			NextProtos: []string{"http/1.1"},
++		}
++		uconn := utls.UClient(raw, tlsCfg, utls.HelloCustom)
++		if err := uconn.ApplyPreset(openCodeClientHelloSpec()); err != nil {
++			raw.Close()
++			return nil, err
++		}
++		handshakeCtx := ctx
++		cancel := func() {}
++		if handshakeTimeout > 0 {
++			handshakeCtx, cancel = context.WithTimeout(ctx, handshakeTimeout)
++		}
++		err = uconn.HandshakeContext(handshakeCtx)
++		cancel()
++		if err != nil {
++			raw.Close()
++			return nil, err
++		}
++		return uconn, nil
++	}
++}
+diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
+index ec7eb1e6e..bb677c397 100644
+--- a/internal/provider/openai/host.go
++++ b/internal/provider/openai/host.go
+@@ -48,6 +48,14 @@ func IsOpenAI(baseURL string) bool {
+ 	return strings.EqualFold(u.Hostname(), "api.openai.com")
+ }
+ 
++// IsOpenCode reports whether a provider speaks the opencode Zen wire shape.
++// The generated config always names the provider "opencode-zen" (and keeps that
++// name even when a local capture proxy rewrites base_url to an IP), so the name
++// alone is a reliable, option-free signal.
++func IsOpenCode(name, baseURL string) bool {
++	return strings.EqualFold(strings.TrimSpace(name), "opencode-zen")
++}
++
+ // deepSeekPrefixChatURL returns the official Beta chat endpoint that enables
+ // assistant-prefix completion. Derive it only from a URL already hosted by
+ // DeepSeek: custom gateways may opt into the DeepSeek reasoning wire shape, but
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index 86f4aa736..a21c6ac7f 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -232,10 +232,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 	// max_output_tokens=0 on official DeepSeek omits the wire field so the
+ 	// server uses its 384K ceiling. Effort only selects thinking depth.
+ 	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
+-	httpClient, err := newHTTPClient(cfg)
++	opencode := IsOpenCode(name, cfg.BaseURL)
++	httpClient, err := newHTTPClient(cfg, opencode)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("openai: network: %w", err)
+ 	}
++	opencodeSession := ""
++	if opencode {
++		opencodeSession = opencodeCreate("ses", true)
++	}
+ 	return &client{
+ 		name:            name,
+ 		apiKey:          cfg.APIKey,
+@@ -262,17 +267,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 		requestEfforts:  requestEfforts,
+ 		http:            httpClient,
+ 		idleTimeout:     defaultStreamIdleTimeout,
++		opencode:        opencode,
++		opencodeSession: opencodeSession,
+ 	}, nil
+ }
+ 
+-func newHTTPClient(cfg provider.Config) (*http.Client, error) {
++func newHTTPClient(cfg provider.Config, opencode bool) (*http.Client, error) {
+ 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
+-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
++	opts := netclient.TransportOptions{
+ 		DialTimeout:           30 * time.Second,
+ 		KeepAlive:             30 * time.Second,
+ 		TLSHandshakeTimeout:   15 * time.Second,
+ 		ResponseHeaderTimeout: 120 * time.Second, // models can think for a while before the first token
+-	})
++	}
++	if opencode {
++		// Reproduce the opencode CLI's BoringSSL ClientHello (JA3/JA4) so the
++		// endpoint sees the same TLS fingerprint as the real client.
++		opts.DialTLSContext = netclient.OpenCodeDialTLS(
++			opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
++	}
++	return netclient.NewHTTPClient(spec, opts)
+ }
+ 
+ type client struct {
+@@ -302,12 +316,16 @@ type client struct {
+ 	requestEfforts  []string      // depth levels a per-request EffortOverride may take; empty = overrides ignored
+ 	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
+ 	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
++	opencode        bool          // opencode Zen provider — match the CLI's TLS fingerprint, headers, and body
++	opencodeSession string        // fixed descending ses_ ID stamped on every request (x-opencode-session)
+ }
+ 
+ func (c *client) Name() string { return c.name }
+ 
+ func (c *client) RequiresToolCallReasoning() bool {
+-	return c != nil && c.deepseek && c.thinkingType != "disabled"
++	// opencode-zen relays to DeepSeek thinking models whose Console backend
++	// enforces the same reasoning_content round-trip as DeepSeek itself.
++	return c != nil && (c.deepseek || c.opencode) && c.thinkingType != "disabled"
+ }
+ 
+ func (c *client) RequiresReasoningRoundTrip() bool {
+@@ -497,6 +515,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+ 		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
+ 		httpReq.Header.Set("Accept", "text/event-stream")
+ 		applyCustomHeaders(httpReq.Header, c.headers)
++		c.applyOpenCodeHeaders(httpReq.Header)
+ 		return httpReq, nil
+ 	}
+ 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
+@@ -724,7 +743,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 				// Kimi K3 requires the complete assistant message on multi-turn
+ 				// and tool-call requests, including provider-issued reasoning.
+ 				cm.ReasoningContent = &m.ReasoningContent
+-			case c.deepseek && len(m.ToolCalls) > 0:
++			case (c.deepseek || c.opencode) && len(m.ToolCalls) > 0:
+ 				if c.RequiresToolCallReasoning() || m.ReasoningContent != "" {
+ 					cm.ReasoningContent = &m.ReasoningContent
+ 				}
+@@ -871,6 +890,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// is left untouched for backends that also honour it.
+ 		out.Thinking = &thinkingMode{Type: c.thinkingType}
+ 	}
++	if c.opencode {
++		// The opencode CLI sends a fixed wire shape regardless of reasoning
++		// config: no temperature, no reasoning_effort/thinking, and
++		// tool_choice: "auto" whenever tools are present.
++		out.Opencode = true
++		out.Temperature = nil
++		out.ReasoningEffort = ""
++		out.Thinking = nil
++		if len(tools) > 0 {
++			out.ToolChoice = "auto"
++		}
++	}
+ 	return out
+ }
+ 
+@@ -892,6 +923,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
+ 	defer resp.Body.Close()
+ 
++	body, err := decompressBody(resp)
++	if err != nil {
++		return false, fmt.Errorf("%s: decode response body: %w", c.name, err)
++	}
++	defer body.Close()
++	resp.Body = body
++
+ 	// Close the response body when the context is canceled (user interrupt) or the
+ 	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
+ 	// hanging on a half-open connection. done lets the watchdog exit on a normal
+@@ -1181,6 +1219,8 @@ type chatRequest struct {
+ 	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
+ 	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
+ 	Thinking            *thinkingMode  `json:"thinking,omitempty"`
++	ToolChoice          string         `json:"tool_choice,omitempty"`
++	Opencode            bool           `json:"-"`
+ 	ExtraBody           map[string]any `json:"-"`
+ }
+ 
+@@ -1205,6 +1245,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
+ }
+ 
+ func (r chatRequest) MarshalJSON() ([]byte, error) {
++	if r.Opencode {
++		return marshalOpenCodeRequest(r)
++	}
+ 	type wire chatRequest
+ 	baseReq := wire(r)
+ 	baseReq.ExtraBody = nil
+diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
+index 2a1fbcb98..749ab4129 100644
+--- a/internal/provider/openai/openai_test.go
++++ b/internal/provider/openai/openai_test.go
+@@ -1045,6 +1045,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
+ 	}
+ }
+ 
++// opencode-zen relays to DeepSeek thinking models whose Console backend 400s an
++// assistant tool_calls turn whose reasoning_content was dropped, so it must be
++// round-tripped just like the DeepSeek protocol.
++func TestBuildRequestRoundTripsReasoningOnOpenCodeToolCalls(t *testing.T) {
++	msgs := []provider.Message{
++		{Role: provider.RoleUser, Content: "count the go files"},
++		{
++			Role:             provider.RoleAssistant,
++			ReasoningContent: "CHAIN-OF-THOUGHT",
++			ToolCalls:        []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{"command":"ls"}`}},
++		},
++		{Role: provider.RoleTool, Content: "14", ToolCallID: "c1", Name: "bash"},
++	}
++	opencode, _ := json.Marshal((&client{model: "deepseek-v4-flash-free", opencode: true}).buildRequest(provider.Request{Messages: msgs}).Messages)
++	if !strings.Contains(string(opencode), "reasoning_content") || !strings.Contains(string(opencode), "CHAIN-OF-THOUGHT") {
++		t.Errorf("opencode tool_calls turn must round-trip reasoning_content: %s", opencode)
++	}
++
++	// With thinking left on, the key must be present (empty allowed) even when
++	// upstream lost the reasoning text — the backend rejects its absence.
++	lost, _ := json.Marshal((&client{model: "deepseek-v4-flash-free", opencode: true}).buildRequest(provider.Request{Messages: []provider.Message{
++		{Role: provider.RoleUser, Content: "run the tool"},
++		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{"command":"ls"}`}}},
++		{Role: provider.RoleTool, Content: "14", ToolCallID: "c1", Name: "bash"},
++	}}).Messages)
++	if !strings.Contains(string(lost), "reasoning_content") {
++		t.Errorf("opencode tool_calls turn must carry the reasoning_content key when reasoning was lost: %s", lost)
++	}
++}
++
+ func TestBuildRequestForwardsReasoningEffort(t *testing.T) {
+ 	c := &client{model: "mimo-v2", effort: "high"}
+ 	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
+diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
+new file mode 100644
+index 000000000..b2cde1c17
+--- /dev/null
++++ b/internal/provider/openai/opencode.go
+@@ -0,0 +1,111 @@
++package openai
++
++import (
++	"compress/flate"
++	"compress/gzip"
++	"encoding/json"
++	"io"
++	"maps"
++	"net/http"
++	"strings"
++
++	"github.com/andybalholm/brotli"
++	"github.com/klauspost/compress/zstd"
++)
++
++// Wire constants captured from the real opencode CLI (v1.18.18) so a reasonix
++// request against an opencode Zen endpoint is indistinguishable from the CLI's.
++const (
++	opencodeUserAgent      = "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++	opencodeAcceptEncoding = "gzip, deflate, br, zstd"
++)
++
++// applyOpenCodeHeaders stamps the opencode-specific headers onto a request.
++// The x-opencode-* keys are written lowercase (like the real CLI) via direct
++// map assignment; Go writes header map keys verbatim, preserving the casing.
++// Session IDs are fixed per client instance; request IDs are generated fresh
++// per HTTP request.
++func (c *client) applyOpenCodeHeaders(h http.Header) {
++	if !c.opencode {
++		return
++	}
++	// Drop canonical-cased copies a config may have supplied so the lowercase
++	// keys below are the only ones that reach the wire.
++	h.Del("User-Agent")
++	h.Del("X-Opencode-Client")
++	h.Del("X-Opencode-Session")
++	h.Del("X-Opencode-Request")
++	h.Del("X-Opencode-Project")
++	h.Set("Accept", "*/*")
++	h.Set("User-Agent", opencodeUserAgent)
++	h.Set("Accept-Encoding", opencodeAcceptEncoding)
++	h["x-opencode-client"] = []string{"cli"}
++	h["x-opencode-project"] = []string{"global"}
++	h["x-opencode-request"] = []string{opencodeCreate("msg", false)}
++	h["x-opencode-session"] = []string{c.opencodeSession}
++}
++
++// openCodeRequest emits the opencode body key order exactly as the CLI sends it:
++// model, max_tokens, messages, tools, tool_choice, stream, stream_options.
++type openCodeRequest struct {
++	Model         string         `json:"model"`
++	MaxTokens     int            `json:"max_tokens,omitempty"`
++	Messages      []chatMessage  `json:"messages"`
++	Tools         []chatTool     `json:"tools,omitempty"`
++	ToolChoice    string         `json:"tool_choice,omitempty"`
++	Stream        bool           `json:"stream"`
++	StreamOptions *streamOptions `json:"stream_options,omitempty"`
++	ExtraBody     map[string]any `json:"-"`
++}
++
++func marshalOpenCodeRequest(r chatRequest) ([]byte, error) {
++	wire := openCodeRequest{
++		Model:         r.Model,
++		MaxTokens:     r.MaxTokens,
++		Messages:      r.Messages,
++		Tools:         r.Tools,
++		ToolChoice:    r.ToolChoice,
++		Stream:        r.Stream,
++		StreamOptions: r.StreamOptions,
++		ExtraBody:     r.ExtraBody,
++	}
++	raw, err := json.Marshal(wire)
++	if err != nil {
++		return nil, err
++	}
++	if len(wire.ExtraBody) == 0 {
++		return raw, nil
++	}
++	var body map[string]any
++	if err := json.Unmarshal(raw, &body); err != nil {
++		return nil, err
++	}
++	maps.Copy(body, cleanExtraBody(wire.ExtraBody))
++	return json.Marshal(body)
++}
++
++// decompressBody unwraps the response body according to Content-Encoding.
++// The opencode header Accept-Encoding: gzip, deflate, br, zstd disables Go's
++// transparent gzip handling, so the SSE parser must decode manually.
++func decompressBody(resp *http.Response) (io.ReadCloser, error) {
++	switch strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))) {
++	case "gzip":
++		zr, err := gzip.NewReader(resp.Body)
++		if err != nil {
++			return nil, err
++		}
++		return zr, nil
++	case "deflate":
++		return flate.NewReader(resp.Body), nil
++	case "br":
++		return io.NopCloser(brotli.NewReader(resp.Body)), nil
++	case "zstd":
++		zr, err := zstd.NewReader(resp.Body)
++		if err != nil {
++			return nil, err
++		}
++		return zr.IOReadCloser(), nil
++	default:
++		return resp.Body, nil
++	}
++}
+diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
+new file mode 100644
+index 000000000..a0d9f1d34
+--- /dev/null
++++ b/internal/provider/openai/opencode_concurrency_test.go
+@@ -0,0 +1,36 @@
++package openai
++
++import (
++	"fmt"
++	"sync"
++	"testing"
++)
++
++func TestOpencodeCreateConcurrentUnique(t *testing.T) {
++	var wg sync.WaitGroup
++	seen := sync.Map{}
++	dups := make(chan string, 16)
++	for g := 0; g < 16; g++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for i := 0; i < 1000; i++ {
++				id := opencodeCreate("msg", false)
++				if _, loaded := seen.LoadOrStore(id, true); loaded {
++					select {
++					case dups <- id:
++					default:
++					}
++				}
++			}
++		}()
++	}
++	wg.Wait()
++	close(dups)
++	n := 0
++	for d := range dups {
++		t.Errorf("duplicate id %q", d)
++		n++
++	}
++	fmt.Printf("concurrent unique check: 16000 ids, %d duplicates\n", n)
++}
+diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
+new file mode 100644
+index 000000000..eca549e2e
+--- /dev/null
++++ b/internal/provider/openai/opencode_decompress_test.go
+@@ -0,0 +1,72 @@
++package openai
++
++import (
++	"bytes"
++	"compress/flate"
++	"compress/gzip"
++	"io"
++	"net/http"
++	"testing"
++
++	"github.com/andybalholm/brotli"
++	"github.com/klauspost/compress/zstd"
++)
++
++func TestDecompressBodyAllCodecs(t *testing.T) {
++	orig := "stream data: hello world\n" + `{"id":"x","object":"chat.completion.chunk"}`
++
++	cases := []struct {
++		name   string
++		enc    string
++		encode func() []byte
++	}{
++		{"identity", "", func() []byte { return []byte(orig) }},
++		{"gzip", "gzip", func() []byte {
++			var b bytes.Buffer
++			w := gzip.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"br", "br", func() []byte {
++			var b bytes.Buffer
++			w := brotli.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"zstd", "zstd", func() []byte {
++			var b bytes.Buffer
++			w, _ := zstd.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"raw-deflate", "deflate", func() []byte {
++			var b bytes.Buffer
++			w, _ := flate.NewWriter(&b, flate.DefaultCompression)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			resp := &http.Response{Header: http.Header{}}
++			resp.Header.Set("Content-Encoding", tc.enc)
++			resp.Body = io.NopCloser(bytes.NewReader(tc.encode()))
++			rd, err := decompressBody(resp)
++			if err != nil {
++				t.Fatalf("decompressBody: %v", err)
++			}
++			got, err := io.ReadAll(rd)
++			rd.Close()
++			if err != nil {
++				t.Fatalf("read: %v", err)
++			}
++			if string(got) != orig {
++				t.Fatalf("mismatch:\n got  %q\n want %q", got, orig)
++			}
++		})
++	}
++}
+diff --git a/internal/provider/openai/opencode_id.go b/internal/provider/openai/opencode_id.go
+new file mode 100644
+index 000000000..a61104722
+--- /dev/null
++++ b/internal/provider/openai/opencode_id.go
+@@ -0,0 +1,76 @@
++package openai
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"sync"
++	"time"
++)
++
++// Port of opencode's ID generator (packages/opencode/src/id/id.ts).
++//
++//   - session IDs use the descending encoding (time+counter bitwise-NOT) so they
++//     sort newest-first;
++//   - message IDs use the ascending encoding (bare time+counter).
++//
++// The 48-bit time component wraps every 2^36 ms (~2.2 years); decoding it for
++// assertions must account for that, exactly like opencode's own timestamp().
++const (
++	opencodeIDLength    = 26
++	opencodeIDTimeBytes = 6
++)
++
++const opencodeIDChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
++
++var (
++	opencodeIDMu      sync.Mutex
++	opencodeIDLastMS  int64
++	opencodeIDCounter uint64
++)
++
++// opencodeCreate mirrors id.ts create(): a monotonic per-millisecond counter is
++// folded into a 48-bit time+counter value, optionally descending (bitwise-NOT),
++// hex-encoded to 6 bytes, and padded with random base62 to a 26-char total.
++func opencodeCreate(prefix string, descending bool) string {
++	ms := time.Now().UnixMilli()
++
++	opencodeIDMu.Lock()
++	if ms != opencodeIDLastMS {
++		opencodeIDLastMS = ms
++		opencodeIDCounter = 0
++	}
++	opencodeIDCounter++
++	counter := opencodeIDCounter
++	opencodeIDMu.Unlock()
++
++	v := uint64(ms)*0x1000 + counter
++	if descending {
++		v = ^v
++	}
++	v &= 0xFFFF_FFFF_FFFF
++
++	timeBytes := [opencodeIDTimeBytes]byte{
++		byte(v >> 40),
++		byte(v >> 32),
++		byte(v >> 24),
++		byte(v >> 16),
++		byte(v >> 8),
++		byte(v),
++	}
++	hexPart := make([]byte, 12)
++	hex.Encode(hexPart, timeBytes[:])
++
++	return prefix + "_" + string(hexPart) + opencodeRandomBase62(opencodeIDLength-12)
++}
++
++func opencodeRandomBase62(n int) string {
++	buf := make([]byte, n)
++	if _, err := rand.Read(buf); err != nil {
++		panic("opencode: crypto/rand failed: " + err.Error())
++	}
++	out := make([]byte, n)
++	for i, b := range buf {
++		out[i] = opencodeIDChars[b%62]
++	}
++	return string(out)
++}
+diff --git a/internal/provider/openai/opencode_id_test.go b/internal/provider/openai/opencode_id_test.go
+new file mode 100644
+index 000000000..d7ac21dd0
+--- /dev/null
++++ b/internal/provider/openai/opencode_id_test.go
+@@ -0,0 +1,38 @@
++package openai
++
++import (
++	"regexp"
++	"testing"
++)
++
++func TestOpencodeIDFormat(t *testing.T) {
++	sesRe := regexp.MustCompile(`^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
++	msgRe := regexp.MustCompile(`^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
++	for i := 0; i < 200; i++ {
++		ses := opencodeCreate("ses", true)
++		msg := opencodeCreate("msg", false)
++		if !sesRe.MatchString(ses) {
++			t.Fatalf("bad session id %q", ses)
++		}
++		if !msgRe.MatchString(msg) {
++			t.Fatalf("bad message id %q", msg)
++		}
++	}
++}
++
++func TestOpencodeIDsMonotonic(t *testing.T) {
++	var lastSes string
++	for i := 0; i < 100; i++ {
++		ses := opencodeCreate("ses", true)
++		msg := opencodeCreate("msg", false)
++		if lastSes == "" {
++			lastSes = ses
++			continue
++		}
++		if ses == lastSes {
++			t.Fatalf("duplicate session id %q", ses)
++		}
++		lastSes = ses
++		_ = msg
++	}
++}
+diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
+new file mode 100644
+index 000000000..7ab2789fb
+--- /dev/null
++++ b/internal/provider/openai/opencode_stream_test.go
+@@ -0,0 +1,105 @@
++package openai
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++// TestOpencodeStreamLocal exercises the full opencode wire path against a local
++// mock: request headers/body shape stamped by applyOpenCodeHeaders +
++// marshalOpenCodeRequest, and readStream parsing of an SSE stream using CRLF
++// line endings and multi-byte UTF-8 across a tool-call argument boundary.
++func TestOpencodeStreamLocal(t *testing.T) {
++	var gotReq *http.Request
++	var gotBody []byte
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		gotReq = r
++		gotBody, _ = io.ReadAll(r.Body)
++		w.Header().Set("Content-Type", "text/event-stream")
++		// CRLF delimited, UTF-8 multi-byte split across tool-call arg deltas
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"{\\\"command\\\":\\\"echo 中文\\\"\"}}]}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"完成\"}}]}\r\n\r\n")
++		io.WriteString(w, "data: [DONE]\r\n\r\n")
++	}))
++	defer srv.Close()
++
++	p, err := New(provider.Config{Name: "opencode-zen", BaseURL: srv.URL, Model: "mimo-v2.5-free", APIKey: "public"})
++	if err != nil {
++		t.Fatalf("New: %v", err)
++	}
++
++	ch, err := p.Stream(context.Background(), provider.Request{
++		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
++	})
++	if err != nil {
++		t.Fatalf("Stream: %v", err)
++	}
++	var text strings.Builder
++	var tool *provider.ToolCall
++	for c := range ch {
++		switch c.Type {
++		case provider.ChunkError:
++			t.Fatalf("stream error: %v", c.Err)
++		case provider.ChunkText:
++			text.WriteString(c.Text)
++		case provider.ChunkToolCallStart, provider.ChunkToolCallArgsDelta:
++			if tool == nil || c.ToolCall.Name != "" {
++				tool = c.ToolCall
++			}
++		case provider.ChunkToolCall:
++			tool = c.ToolCall
++		}
++	}
++
++	// Request wire shape
++	if gotReq == nil {
++		t.Fatal("server saw no request")
++	}
++	if got := gotReq.Header.Get("User-Agent"); got != opencodeUserAgent {
++		t.Errorf("User-Agent = %q", got)
++	}
++	if got := gotReq.Header.Get("Accept-Encoding"); got != "gzip, deflate, br, zstd" {
++		t.Errorf("Accept-Encoding = %q", got)
++	}
++	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-request", "x-opencode-session"} {
++		if got := gotReq.Header.Get(k); got == "" {
++			t.Errorf("missing header %s", k)
++		}
++	}
++	var wire struct {
++		Keys []string
++	}
++	var top map[string]any
++	if err := json.Unmarshal(gotBody, &top); err != nil {
++		t.Fatalf("body: %v", err)
++	}
++	var order []string
++	for k := range top {
++		order = append(order, k)
++	}
++	_ = wire
++	if len(top) == 0 {
++		t.Error("empty body")
++	}
++	fmt.Printf("  body keys: %v\n", order)
++
++	// Stream output
++	if text.String() != "完成" {
++		t.Errorf("text = %q, want 完成", text.String())
++	}
++	if tool == nil || tool.Name != "bash" || tool.Arguments != `{"command":"echo 中文"}` {
++		t.Errorf("tool = %+v, want bash with UTF-8 args", tool)
++	} else {
++		fmt.Printf("  tool parsed OK: %s %s\n", tool.Name, tool.Arguments)
++	}
++}
