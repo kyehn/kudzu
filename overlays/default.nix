@@ -9,6 +9,7 @@ final: prev: {
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
+  dsh = prev.callPackage ./dsh { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
