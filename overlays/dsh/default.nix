@@ -26,7 +26,7 @@ in
   # 保持同步，`npm ci` 才能通过。jq 用绝对路径：该 hook 也会在
   # fetchNpmDeps derivation 内运行，那里没有 nativeBuildInputs。
   postPatch = ''
-    ${jq}/bin/jq 'del(.devDependencies)' package.json > package.json.new
+    ${jq}/bin/jq 'del(.devDependencies) | .dependencies.undici = "^7.29.0"' package.json > package.json.new
     mv package.json.new package.json
     cp ${./package-lock.json} package-lock.json
   '';
@@ -35,9 +35,14 @@ in
 
   # web profile 的 HMR loader (@deepseek-ai/cordis-plugin-hmr) 需要
   # --expose-internals，否则 `dsh web` 报 "…is required for HMR service"。
+  # 随后注入 opencode 客户端模拟（pi-ai openai-completions api）：
+  # 对齐 overlays/reasonix/alignment.patch 的基准（UA/x-opencode-*/动态 id/TLS 参数）。
   postInstall = ''
     substituteInPlace $out/bin/dsh \
       --replace-fail '"${lib.getExe nodejs_24}"' '"${lib.getExe nodejs_24}" --expose-internals'
+    ${lib.getExe nodejs_24} ${./opencode-sim/inject.mjs} \
+      $out/lib/node_modules/@deepseek-ai/dsh/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js \
+      ${./opencode-sim/opencode-sim.mjs}
   '';
 
   meta = {

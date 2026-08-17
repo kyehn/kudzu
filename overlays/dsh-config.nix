@@ -47,6 +47,15 @@ let
       providers.openai = {
         apiKeyEnv = "OPENCODE_API_KEY";
         baseURL = "https://api.opencode.ai/zen/v1";
+        # opencode 模拟触发器（见 overlays/dsh/opencode-sim/opencode-sim.mjs）：
+        # 出现 x-opencode-client/x-opencode-project 即对该 provider 装配与
+        # overlays/reasonix/alignment.patch 同源的 opencode 客户端特征
+        # （权威 UA/Accept/Accept-Encoding/动态 session-request id 由注入层生成，
+        # 配置只声明意图）。
+        headers = {
+          "x-opencode-client" = "cli";
+          "x-opencode-project" = "global";
+        };
         models = [
           {
             id = "deepseek-v4-flash-free";
