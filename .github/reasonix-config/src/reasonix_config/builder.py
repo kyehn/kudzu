@@ -170,14 +170,21 @@ def get_opencode_zen_free_providers() -> list[ProviderConfig]:
         prices=model_prices or None,
         model_overrides=model_overrides or None,
         # 与 opencode 客户端 (packages/opencode/src/session/llm/request.ts) 高度一致:
-        #   - reasonix 源码在检测到 provider 名 opencode-zen 时自动打上 opencode 头部
-        #     (User-Agent=opencode/1.18.18 ..., Accept: */*,
-        #     Accept-Encoding: gzip, deflate, br, zstd, x-opencode-*), 并用 utls
-        #     复刻 CLI 的 BoringSSL TLS 指纹 (JA3/JA4), 因此这里不再写静态 headers.
+        #   - 打包补丁 overlays/reasonix/alignment.patch 在检测到 provider 名
+        #     "opencode-zen" (internal/provider/openai/host.go IsOpenCode) 时自动
+        #     打上 opencode 头部 (User-Agent=opencode/1.18.18 ai-sdk/provider-utils/
+        #     4.0.23 runtime/bun/1.3.14, Accept: */*, Accept-Encoding: gzip, deflate,
+        #     br, zstd, 小写 x-opencode-*), 并用 utls 复刻 CLI 的 BoringSSL TLS
+        #     指纹 (JA3=7a2901f41c5282e5fbacb8cb667f626f / JA4=i11ss_08687474702f_...,
+        #     internal/netclient/opencode_tls.go), 因此这里不再写静态 headers.
         #   - X-Opencode-Session (ses_<descending 编码>) 由 reasonix 每个客户端
         #     实例动态生成, X-Opencode-Request (msg_<ascending 编码>) 每请求生成 —
-        #     与 opencode src/id/id.ts 的 create() 逐字节一致, 静态配置无法表达.
-        # 注意: 不要在此设置 opencode 头部, 会与源码生成的小写 x-opencode-* 重复.
+        #     与 opencode src/id/id.ts 的 create() 逐字节一致 (opencode_id.go),
+        #     静态配置无法表达.
+        #   - 基准与抓包数据在 overlays/reasonix/opencode/ (_tls-fingerprint.json
+        #     为真实 Bun ClientHello, POST_zen_v1_*.json 为真实请求/响应记录);
+        #     版本漂移由 .github/reasonix-config/tests 的一致性测试拦截.
+        # 注意: 不要在此设置 opencode 头部, 会与补丁生成的小写 x-opencode-* 重复.
         headers=None,
     )
     return [cfg]

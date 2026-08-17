@@ -24,7 +24,7 @@ def _no_cache(monkeypatch: pytest.MonkeyPatch, cache_attr: str) -> None:
 class TestFetchZenModels:
     def test_uses_opencode_user_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """请求应携带与 opencode 一致的 UA (opencode/prod/<version>/cli)."""
-        assert MODELS_DEV_USER_AGENT == "opencode/prod/1.18.14/cli"
+        assert MODELS_DEV_USER_AGENT == "opencode/prod/1.18.18/cli"
         _no_cache(monkeypatch, "ZEN_CACHE")
         with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(
