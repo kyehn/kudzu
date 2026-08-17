@@ -120,16 +120,15 @@ export function buildOpencodeAgent(overrides = {}) {
     connect: {
       // 抓包基准 alpn=["http/1.1"]（opencode CLI 走 HTTP/1.1）
       allowH2: false,
-      tls: {
-        minVersion: "TLSv1.2",
-        maxVersion: "TLSv1.3",
-        ciphers: TLS_CIPHERS,
-        // 基准 groups=[29,23,24]（X25519, prime256v1, x25519-mlkem768）；
-        // Node 不支持 mlkem768，取前两组并保持顺序
-        ecdhCurve: "X25519:prime256v1",
-        honorCipherOrder: true,
-        ...overrides,
-      },
+      // undici 的 connect 选项直接透传给 node:tls.connect，故 TLS 选项在顶层
+      minVersion: "TLSv1.2",
+      maxVersion: "TLSv1.3",
+      ciphers: TLS_CIPHERS,
+      // 基准 groups=[29,23,24]（X25519, prime256v1, x25519-mlkem768）；
+      // Node 不支持 mlkem768，取前两组并保持顺序
+      ecdhCurve: "X25519:prime256v1",
+      honorCipherOrder: true,
+      ...overrides,
     },
   });
 }

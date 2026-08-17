@@ -19,7 +19,7 @@ in
     hash = "sha256-YffiyssFlYxdLbjRmAFDkJRL07bTTI/0xbbOBqHw8sQ=";
   };
 
-  npmDepsHash = "sha256-9TIeZaxqrbrRQsQp+dB2vcM1GZmCO9dOI2gx4gaiP0w=";
+  npmDepsHash = "sha256-f0SHDXoqOlFgtvvpJUos0j6/7AEg774LZzfHmhiXb3Q=";
 
   # npm tarball 只含运行时依赖；devDependencies 属于 monorepo 构建产物。
   # 删掉它们使 vendored lockfile（本目录 package-lock.json）与 package.json
