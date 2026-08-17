@@ -1,3 +1,5 @@
 repositories/
 result
 result-*
+.reasonix/
+__pycache__/

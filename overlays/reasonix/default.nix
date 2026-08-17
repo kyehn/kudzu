@@ -24,6 +24,7 @@ buildGoModule (finalAttrs: {
 
   patches = [
     ./alignment.patch
+    ./413-context-limit-retry.patch
   ];
 
   postPatch = ''
