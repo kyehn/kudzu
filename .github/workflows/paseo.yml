@@ -78,8 +78,8 @@ jobs:
           pip install -e .
           reasonix-config
           popd
-          # paseo onboard --voice disable
-          timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
+          paseo onboard --voice disable
+          # timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |

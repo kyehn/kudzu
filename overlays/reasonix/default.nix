@@ -13,18 +13,17 @@
 
 buildGoModule (finalAttrs: {
   pname = "reasonix";
-  version = "1.25.1";
+  version = "1.26.0";
 
   src = fetchFromGitHub {
     owner = "esengine";
     repo = "DeepSeek-Reasonix";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-uI9YIuhIQlr+sJffgcP1pB7ePMgf86LufHSogTVxOTk=";
+    hash = "sha256-EgDHBRPb33ATtvzmFezPsDPKh7d9xj+gUVxd6oGxGCo=";
   };
 
   patches = [
     ./alignment.patch
-    ./resume-recovery.patch
   ];
 
   postPatch = ''
@@ -34,7 +33,7 @@ buildGoModule (finalAttrs: {
       --replace-fail "toolApprovalMode: control.ToolApprovalAsk," "toolApprovalMode: control.ToolApprovalYolo," \
       --replace-fail "toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)" "toolApprovalMode := control.ToolApprovalYolo"
     substituteInPlace internal/control/approval.go \
-      --replace-fail $'func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.RawMessage) bool {\n\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}\n\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}' $'func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.RawMessage) bool {\n\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}\n\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}' \
+      --replace-fail $'\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}\n\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}' $'\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}\n\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}' \
       --replace-fail $'if fresh {\n\t\treturn a.sessionGrantAllowsLocked(tool, subject)\n\t}\n\tif requireHuman {' $'if fresh {\n\t\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\t\treturn true\n\t\t}\n\t\treturn a.sessionGrantAllowsLocked(tool, subject)\n\t}\n\tif requireHuman {'
     ast-grep run \
       -p 'for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ { $$$BODY }' \
@@ -42,10 +41,10 @@ buildGoModule (finalAttrs: {
       internal/agent/run_loop.go \
       --update-all
     substituteInPlace internal/agent/run_loop.go \
-      --replace-fail $'if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {\n\t\ta.armFinalizationRound(state, landCause{kind: "max_steps", detail: fmt.Sprintf(\n\t\t\t"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)})\n\t}\n' ""
+      --replace-fail $'if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {\n\t\ta.armFinalizationRound(ctx, state, landCause{kind: "max_steps", detail: fmt.Sprintf(\n\t\t\t"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)})\n\t}\n' ""
   '';
 
-  vendorHash = "sha256-tUX+uHFkBtMG2z+DVqdhMj68074srZz1ceC78LX2MbQ=";
+  vendorHash = "sha256-j3CNUEbNarFKQr+fTyf+2oM2FjOF1WnBMSPJHgcz72E=";
 
   subPackages = [ "cmd/reasonix" ];
 

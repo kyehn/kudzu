@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index e5f729ec3..413ed05bf 100644
+index 5361f913..d4f225a8 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -23,7 +23,7 @@ index e5f729ec3..413ed05bf 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 diff --git a/go.sum b/go.sum
-index 1afec27f7..a897f51e3 100644
+index c929316b..569b0bcf 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -54,7 +54,7 @@ index 1afec27f7..a897f51e3 100644
  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
  github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
-index a466fa960..5fbc4bf98 100644
+index a466fa96..5fbc4bf9 100644
 --- a/internal/netclient/netclient.go
 +++ b/internal/netclient/netclient.go
 @@ -44,12 +44,15 @@ type ProxySpec struct {
@@ -88,7 +88,7 @@ index a466fa960..5fbc4bf98 100644
  
 diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
 new file mode 100644
-index 000000000..535728e9b
+index 00000000..535728e9
 --- /dev/null
 +++ b/internal/netclient/opencode_spec_test.go
 @@ -0,0 +1,53 @@
@@ -147,7 +147,7 @@ index 000000000..535728e9b
 +}
 diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
 new file mode 100644
-index 000000000..7d91d969b
+index 00000000..7d91d969
 --- /dev/null
 +++ b/internal/netclient/opencode_tls.go
 @@ -0,0 +1,133 @@
@@ -285,7 +285,7 @@ index 000000000..7d91d969b
 +	}
 +}
 diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
-index ec7eb1e6e..bb677c397 100644
+index ec7eb1e6..bb677c39 100644
 --- a/internal/provider/openai/host.go
 +++ b/internal/provider/openai/host.go
 @@ -48,6 +48,14 @@ func IsOpenAI(baseURL string) bool {
@@ -304,10 +304,10 @@ index ec7eb1e6e..bb677c397 100644
  // assistant-prefix completion. Derive it only from a URL already hosted by
  // DeepSeek: custom gateways may opt into the DeepSeek reasoning wire shape, but
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index 86f4aa736..a21c6ac7f 100644
+index a3847ea7..4896e087 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
-@@ -232,10 +232,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -221,10 +221,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
  	// max_output_tokens=0 on official DeepSeek omits the wire field so the
  	// server uses its 384K ceiling. Effort only selects thinking depth.
  	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
@@ -324,7 +324,7 @@ index 86f4aa736..a21c6ac7f 100644
  	return &client{
  		name:            name,
  		apiKey:          cfg.APIKey,
-@@ -262,17 +267,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -250,17 +255,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		requestEfforts:  requestEfforts,
  		http:            httpClient,
  		idleTimeout:     defaultStreamIdleTimeout,
@@ -341,7 +341,7 @@ index 86f4aa736..a21c6ac7f 100644
  		DialTimeout:           30 * time.Second,
  		KeepAlive:             30 * time.Second,
  		TLSHandshakeTimeout:   15 * time.Second,
- 		ResponseHeaderTimeout: 120 * time.Second, // models can think for a while before the first token
+ 		ResponseHeaderTimeout: 300 * time.Second, // unified provider response-header idle guard
 -	})
 +	}
 +	if opencode {
@@ -354,7 +354,7 @@ index 86f4aa736..a21c6ac7f 100644
  }
  
  type client struct {
-@@ -302,12 +316,16 @@ type client struct {
+@@ -289,6 +303,8 @@ type client struct {
  	requestEfforts  []string      // depth levels a per-request EffortOverride may take; empty = overrides ignored
  	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -363,16 +363,16 @@ index 86f4aa736..a21c6ac7f 100644
  }
  
  func (c *client) Name() string { return c.name }
- 
- func (c *client) RequiresToolCallReasoning() bool {
--	return c != nil && c.deepseek && c.thinkingType != "disabled"
-+	// opencode-zen relays to DeepSeek thinking models whose Console backend
-+	// enforces the same reasoning_content round-trip as DeepSeek itself.
-+	return c != nil && (c.deepseek || c.opencode) && c.thinkingType != "disabled"
- }
- 
- func (c *client) RequiresReasoningRoundTrip() bool {
-@@ -497,6 +515,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+@@ -297,7 +313,7 @@ func (c *client) RequiresToolCallReasoning() bool {
+ 	if c == nil || c.thinkingType == "disabled" {
+ 		return false
+ 	}
+-	if c.deepseek {
++	if c.deepseek || c.opencode {
+ 		return true
+ 	}
+ 	// Generic OpenAI-compatible gateways can explicitly opt into the
+@@ -490,6 +506,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
  		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
  		httpReq.Header.Set("Accept", "text/event-stream")
  		applyCustomHeaders(httpReq.Header, c.headers)
@@ -380,16 +380,7 @@ index 86f4aa736..a21c6ac7f 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -724,7 +743,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
- 				// Kimi K3 requires the complete assistant message on multi-turn
- 				// and tool-call requests, including provider-issued reasoning.
- 				cm.ReasoningContent = &m.ReasoningContent
--			case c.deepseek && len(m.ToolCalls) > 0:
-+			case (c.deepseek || c.opencode) && len(m.ToolCalls) > 0:
- 				if c.RequiresToolCallReasoning() || m.ReasoningContent != "" {
- 					cm.ReasoningContent = &m.ReasoningContent
- 				}
-@@ -871,6 +890,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+@@ -855,6 +872,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
  		// is left untouched for backends that also honour it.
  		out.Thinking = &thinkingMode{Type: c.thinkingType}
  	}
@@ -408,7 +399,7 @@ index 86f4aa736..a21c6ac7f 100644
  	return out
  }
  
-@@ -892,6 +923,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -876,6 +905,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -422,7 +413,7 @@ index 86f4aa736..a21c6ac7f 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1181,6 +1219,8 @@ type chatRequest struct {
+@@ -1165,6 +1201,8 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -431,7 +422,7 @@ index 86f4aa736..a21c6ac7f 100644
  	ExtraBody           map[string]any `json:"-"`
  }
  
-@@ -1205,6 +1245,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
+@@ -1189,6 +1227,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
  }
  
  func (r chatRequest) MarshalJSON() ([]byte, error) {
@@ -442,7 +433,7 @@ index 86f4aa736..a21c6ac7f 100644
  	baseReq := wire(r)
  	baseReq.ExtraBody = nil
 diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
-index 2a1fbcb98..749ab4129 100644
+index 0a3d27c7..ff5c3280 100644
 --- a/internal/provider/openai/openai_test.go
 +++ b/internal/provider/openai/openai_test.go
 @@ -1045,6 +1045,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
@@ -484,7 +475,7 @@ index 2a1fbcb98..749ab4129 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 000000000..b2cde1c17
+index 00000000..b2cde1c1
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
 @@ -0,0 +1,111 @@
@@ -601,7 +592,7 @@ index 000000000..b2cde1c17
 +}
 diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
 new file mode 100644
-index 000000000..a0d9f1d34
+index 00000000..a0d9f1d3
 --- /dev/null
 +++ b/internal/provider/openai/opencode_concurrency_test.go
 @@ -0,0 +1,36 @@
@@ -643,7 +634,7 @@ index 000000000..a0d9f1d34
 +}
 diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
 new file mode 100644
-index 000000000..eca549e2e
+index 00000000..eca549e2
 --- /dev/null
 +++ b/internal/provider/openai/opencode_decompress_test.go
 @@ -0,0 +1,72 @@
@@ -721,7 +712,7 @@ index 000000000..eca549e2e
 +}
 diff --git a/internal/provider/openai/opencode_id.go b/internal/provider/openai/opencode_id.go
 new file mode 100644
-index 000000000..a61104722
+index 00000000..a6110472
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id.go
 @@ -0,0 +1,76 @@
@@ -803,7 +794,7 @@ index 000000000..a61104722
 +}
 diff --git a/internal/provider/openai/opencode_id_test.go b/internal/provider/openai/opencode_id_test.go
 new file mode 100644
-index 000000000..d7ac21dd0
+index 00000000..d7ac21dd
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id_test.go
 @@ -0,0 +1,38 @@
@@ -847,7 +838,7 @@ index 000000000..d7ac21dd0
 +}
 diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
 new file mode 100644
-index 000000000..7ab2789fb
+index 00000000..7ab2789f
 --- /dev/null
 +++ b/internal/provider/openai/opencode_stream_test.go
 @@ -0,0 +1,105 @@
