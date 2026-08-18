@@ -158,47 +158,17 @@ class TestTomlSchemaValidity:
     """
 
     PROVIDER_KEYS: ClassVar[set[str]] = {
-        "name",
-        "kind",
-        "base_url",
-        "chat_url",
-        "model",
-        "models",
-        "models_url",
-        "default",
-        "api_key_env",
-        "preset_id",
-        "preset_version",
-        "headers",
-        "extra_body",
-        "auth_header",
-        "responses_mode",
-        "responses_stateful",
-        "balance_url",
-        "context_window",
-        "max_output_tokens",
-        "price",
-        "prices",
-        "thinking",
-        "effort",
-        "vision",
-        "vision_models",
-        "vision_detail",
-        "web_search",
-        "reasoning_protocol",
-        "supported_efforts",
-        "default_effort",
-        "model_overrides",
-        "no_proxy",
-        "cache_ttl_minutes",
+        "name", "kind", "base_url", "chat_url", "model", "models", "models_url",
+        "default", "api_key_env", "preset_id", "preset_version", "headers",
+        "extra_body", "auth_header", "responses_mode", "responses_stateful",
+        "balance_url", "context_window", "max_output_tokens", "price", "prices",
+        "thinking", "effort", "vision", "vision_models", "vision_detail",
+        "web_search", "reasoning_protocol", "supported_efforts", "default_effort",
+        "model_overrides", "no_proxy", "cache_ttl_minutes",
     }
     OVERRIDE_KEYS: ClassVar[set[str]] = {
-        "reasoning_protocol",
-        "supported_efforts",
-        "default_effort",
-        "vision",
-        "context_window",
-        "max_output_tokens",
+        "reasoning_protocol", "supported_efforts", "default_effort", "vision",
+        "context_window", "max_output_tokens",
     }
 
     def test_provider_keys_valid(self) -> None:
@@ -361,8 +331,10 @@ class TestEnsureOpencodePublicKey:
 
     def test_creates_env_with_0600(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
+        cfg_file.write_text('config_version = 5\n\n')
+        monkeypatch.setattr(
+            "reasonix_config.builder.REASONIX_CONFIG", cfg_file
+        )
         assert not (tmp_path / ".env").exists()
         write_config(
             [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
@@ -376,8 +348,10 @@ class TestEnsureOpencodePublicKey:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
+        cfg_file.write_text('config_version = 5\n\n')
+        monkeypatch.setattr(
+            "reasonix_config.builder.REASONIX_CONFIG", cfg_file
+        )
         env = tmp_path / ".env"
         env.write_text("OTHER_KEY=secret\n")
         env.chmod(0o644)  # 模拟宽松权限的既有文件
