@@ -21,8 +21,13 @@
 // 与基准抓包的差异如实记录：输入价格（models.dev cost）在 llm-pi-ai profile
 // 无对应字段（pi-ai 不消费价格），与 reasonix 的 prices 同源但无法表达，
 // 仅保留 model id/能力字段，不作伪价格。
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { existsSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -41,16 +46,44 @@ const MODELS_DEV_CACHE_FILE = "models_dev_api.json";
 
 // 与 builder.py _is_chat_model 的 skip_patterns 逐项一致
 const SKIP_PATTERNS = [
-  "embed", "guard", "safety", "tts", "voice", "audio", "cosmos-predict",
-  "cosmos-transfer", "flux", "image", "edit", "rerank", "esm", "detection",
-  "synthetic", "validate", "whisper", "bevformer", "streampetr", "studiovoice",
-  "sparsedrive", "usd", "riva", "magpie", "active-speaker", "gliner",
+  "embed",
+  "guard",
+  "safety",
+  "tts",
+  "voice",
+  "audio",
+  "cosmos-predict",
+  "cosmos-transfer",
+  "flux",
+  "image",
+  "edit",
+  "rerank",
+  "esm",
+  "detection",
+  "synthetic",
+  "validate",
+  "whisper",
+  "bevformer",
+  "streampetr",
+  "studiovoice",
+  "sparsedrive",
+  "usd",
+  "riva",
+  "magpie",
+  "active-speaker",
+  "gliner",
 ];
 
 // 基准（读 protected overlays/reasonix/opencode 之外的运行时事实）：
 // llm-pi-ai THINKING_LEVELS = off/minimal/low/medium/high/xhigh/max
 const THINKING_LEVELS = new Set([
-  "off", "minimal", "low", "medium", "high", "xhigh", "max",
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
 ]);
 // 崩溃兜底默认模型名（唯一允许出现在插件源码里的模型名，非 provider 数据）
 const FALLBACK_MODEL = "deepseek-v4-flash-free";
@@ -85,7 +118,10 @@ async function fetchCachedJson(
 ): Promise<Record<string, unknown>> {
   const cachePath = join(cacheDir(), cacheFile);
   if (existsSync(cachePath)) {
-    return JSON.parse(readFileSync(cachePath, "utf8")) as Record<string, unknown>;
+    return JSON.parse(readFileSync(cachePath, "utf8")) as Record<
+      string,
+      unknown
+    >;
   }
   const res = await fetch(url, {
     headers: { "User-Agent": MODELS_DEV_USER_AGENT },
@@ -147,7 +183,10 @@ export function isChatModel(mid: string, m: ModelsDevModel): boolean {
 }
 
 /** _build_override 的 llm-pi-ai profile 形态（能力字段映射）。 */
-export function buildModelProfile(mid: string, m: ModelsDevModel): ModelProfile {
+export function buildModelProfile(
+  mid: string,
+  m: ModelsDevModel,
+): ModelProfile {
   const profile: ModelProfile = { id: mid };
   const ctx = m.limit?.context ?? 0;
   if (ctx) profile.contextWindow = ctx;
@@ -199,7 +238,10 @@ export function getFreeZenModelIds(zenData: Record<string, unknown>): string[] {
   for (const entry of data) {
     if (typeof entry !== "object" || entry === null) continue;
     const mid = (entry as ZenModel).id;
-    if (typeof mid === "string" && (mid.includes("-free") || mid === "big-pickle")) {
+    if (
+      typeof mid === "string" &&
+      (mid.includes("-free") || mid === "big-pickle")
+    ) {
       ids.add(mid);
     }
   }
@@ -265,7 +307,9 @@ export function buildNvidia(mdData: Record<string, unknown>): ProviderPatch {
   const models: ModelProfile[] = [];
   let maxContext = 0;
 
-  for (const [mid, m] of Object.entries(nvModels).sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [mid, m] of Object.entries(nvModels).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
     if (m.status === "deprecated") continue;
     if (!isChatModel(mid, m)) continue;
     maxContext = Math.max(maxContext, m.limit?.context ?? 0);
@@ -287,7 +331,9 @@ export function buildNvidia(mdData: Record<string, unknown>): ProviderPatch {
   };
 }
 
-export function toSettingsProvider(patch: ProviderPatch): Record<string, unknown> {
+export function toSettingsProvider(
+  patch: ProviderPatch,
+): Record<string, unknown> {
   return {
     apiKeyEnv: patch.apiKeyEnv,
     api: patch.api,
@@ -321,15 +367,18 @@ async function assemble(ctx: AppContext): Promise<void> {
   } catch (error) {
     // 诚实降级：抓取失败且无缓存 → 记录错误并保留崩溃兜底默认模型，
     // 不静默假装成功（nix 内无任何 provider/model 数据）
-    ctx.logger?.error("opencode-sim: model fetch failed (%s); falling back to default model", String(error));
+    ctx.logger?.error(
+      "opencode-sim: model fetch failed (%s); falling back to default model",
+      String(error),
+    );
   }
 
   const providers: Record<string, unknown> = {};
-  if (opencodePatch) providers["opencode-zen"] = toSettingsProvider(opencodePatch);
+  if (opencodePatch)
+    providers["opencode-zen"] = toSettingsProvider(opencodePatch);
   if (nvidiaPatch) providers["nvidia-nim"] = toSettingsProvider(nvidiaPatch);
 
-  const defaultModel =
-    opencodePatch?.models[0]?.id ?? FALLBACK_MODEL;
+  const defaultModel = opencodePatch?.models[0]?.id ?? FALLBACK_MODEL;
 
   if (Object.keys(providers).length > 0) {
     await ctx.settings.update("llm-pi-ai", { providers });
@@ -337,12 +386,15 @@ async function assemble(ctx: AppContext): Promise<void> {
 
   const defaultModelService = await ctx.get("agentDefaultModel");
   if (defaultModelService && typeof defaultModelService === "object") {
-    const save = (defaultModelService as { saveSelection?: unknown }).saveSelection;
+    const save = (defaultModelService as { saveSelection?: unknown })
+      .saveSelection;
     if (typeof save === "function") {
-      await (save as (sel: { provider: string; model: string }) => Promise<unknown>).call(
-        defaultModelService,
-        { provider: "opencode-zen", model: defaultModel },
-      );
+      await (
+        save as (sel: { provider: string; model: string }) => Promise<unknown>
+      ).call(defaultModelService, {
+        provider: "opencode-zen",
+        model: defaultModel,
+      });
     }
   }
 }
@@ -354,13 +406,16 @@ async function assemble(ctx: AppContext): Promise<void> {
 function waitForNamespaces(
   settings: SettingsService,
   namespaces: string[],
-): Promise<void[]> {
+): Promise<undefined[]> {
   return Promise.all(
     namespaces.map(
       (ns) =>
         new Promise<void>((resolve) => {
           const poll = (): void => {
-            if (settings.registrations.has(ns)) return resolve(void 0);
+            if (settings.registrations.has(ns)) {
+              resolve();
+              return;
+            }
             setTimeout(poll, 25);
           };
           poll();

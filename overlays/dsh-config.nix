@@ -2,6 +2,7 @@
   lib,
   formats,
   runCommand,
+  esbuild,
 }:
 # 声明式 dsh 配置（DSH_HOME 种子目录），模式对齐 overlays/reasonix-config.nix：
 # 以 nix 数据生成配置文件，可经 overlay 引用。
@@ -13,14 +14,19 @@
 #   dsh --profile main        # 或 dsh --profile main web（经 profile bundle 起 web）
 #
 # 内容（模型/provider 数据零硬编码，同 reasonix 约束——插件运行时装配）：
-#   - plugins/opencode-sim/      opencode 模拟装配插件（cordis）：启动时向
-#                                llm-pi-ai settings namespace 写入 openai 路由
-#                                （opencode zen 网关 + trigger headers），并把
-#                                默认模型设为 opencode 模型（默认模型名称是
-#                                nix 之外的运行时代码，nix 内无任何 provider/
-#                                model 数据）；配合 overlays/dsh/opencode-sim.mjs
-#                                （postInstall 注入）在请求层装配与 reasonix
-#                                同源的完整 opencode 客户端特征
+#   - plugins/opencode-sim/      模型配置 + opencode 模拟装配插件（cordis）：
+#                                启动时动态抓取 opencode Zen free 模型与
+#                                models.dev 元数据（UA 同 reasonix fetcher），
+#                                向 llm-pi-ai settings namespace 写入
+#                                opencode-zen（opencode.ai/zen/v1 + trigger
+#                                headers）与 nvidia-nim（integrate.api.nvidia.
+#                                com/v1）两个 provider 路由，并把默认模型设为
+#                                opencode 模型（默认模型名称是 nix 之外的
+#                                运行时代码，nix 内无任何 provider/model
+#                                数据）；配合 overlays/dsh/opencode-sim.mjs
+#                                （postInstall 注入 dsh 包）在请求层装配与
+#                                reasonix 同源的完整 opencode 客户端特征
+#                                （UA/headers/动态 id/TLS 指纹）
 #   - cordis.patch.yml（最后一层，按行 id 整体替换 config）：
 #     · insert opencode-sim   在 include 树根追加插件条目
 #     · sandbox-policy        部署默认 read-only → danger-full-access
@@ -99,14 +105,25 @@ let
     nodeLinker = "hoisted";
     autoInstallPeers = false;
   };
+
+  # 插件 TypeScript 源码目录（Determinate Nix 只支持目录 path 引用）
+  pluginSrc = ./dsh/opencode-sim-plugin/src;
 in
-runCommand "dsh-config" { } ''
-  mkdir -p $out/profiles/${profile}/plugins/opencode-sim
-  cp ${settingsYaml} $out/settings.yaml
-  cp ${packageJson} $out/profiles/${profile}/package.json
-  cp ${cordisPatch} $out/profiles/${profile}/cordis.patch.yml
-  cp ${cordisRoot} $out/profiles/${profile}/cordis.yml
-  cp ${pnpmWorkspace} $out/profiles/${profile}/pnpm-workspace.yaml
-  cp ${./dsh/opencode-sim-plugin/package.json} $out/profiles/${profile}/plugins/opencode-sim/package.json
-  cp ${./dsh/opencode-sim-plugin/index.js} $out/profiles/${profile}/plugins/opencode-sim/index.js
-''
+runCommand "dsh-config"
+  {
+    nativeBuildInputs = [ esbuild ];
+  }
+  ''
+    mkdir -p $out/profiles/${profile}/plugins/opencode-sim
+    cp ${settingsYaml} $out/settings.yaml
+    cp ${packageJson} $out/profiles/${profile}/package.json
+    cp ${cordisPatch} $out/profiles/${profile}/cordis.patch.yml
+    cp ${cordisRoot} $out/profiles/${profile}/cordis.yml
+    cp ${pnpmWorkspace} $out/profiles/${profile}/pnpm-workspace.yaml
+    cp ${./dsh/opencode-sim-plugin/package.json} $out/profiles/${profile}/plugins/opencode-sim/package.json
+    # v2 插件：构建期 esbuild 编译 TypeScript 源码为 ESM 产物（仅依赖
+    # node:fs/os/path 内建模块，零外部依赖），保证可复现装配。
+    esbuild ${pluginSrc}/index.ts --bundle --format=esm --platform=node \
+      --target=node24 --packages=external \
+      --outfile=$out/profiles/${profile}/plugins/opencode-sim/index.js
+  ''

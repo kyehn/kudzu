@@ -89,7 +89,12 @@
               name = "default";
               paths = with pkgs; [ nix ];
             };
-            inherit (pkgs) reasonix fast-nix-gc dsh dsh-config;
+            inherit (pkgs)
+              reasonix
+              fast-nix-gc
+              dsh
+              dsh-config
+              ;
           };
         };
 
