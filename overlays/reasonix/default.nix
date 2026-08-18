@@ -13,13 +13,13 @@
 
 buildGoModule (finalAttrs: {
   pname = "reasonix";
-  version = "1.26.0";
+  version = "1.28.0";
 
   src = fetchFromGitHub {
     owner = "esengine";
     repo = "DeepSeek-Reasonix";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-EgDHBRPb33ATtvzmFezPsDPKh7d9xj+gUVxd6oGxGCo=";
+    hash = "sha256-VycoYesj/WD790lYh/oxUgjC+lrQthdWRXRSC2yerDQ=";
   };
 
   patches = [
