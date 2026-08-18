@@ -1,0 +1,17 @@
+{
+  "name": "opencode-fetch",
+  "version": "0.1.0",
+  "description": "dsh HTTP-layer patch: reproduce the opencode CLI wire fingerprint (JA3 TLS, User-Agent, x-opencode-* headers) for opencode Zen requests only",
+  "type": "module",
+  "private": true,
+  "main": "index.mjs",
+  "license": "MIT",
+  "dependencies": {
+    "node-tls-client": "2.1.0"
+  },
+  "overrides": {
+    "node-tls-client": {
+      "koffi": "3.1.5"
+    }
+  }
+}
