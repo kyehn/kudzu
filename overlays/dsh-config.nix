@@ -12,18 +12,22 @@
 #   cp -rL "$CFG" ~/.dsh && chmod -R u+w ~/.dsh
 #   dsh --profile main        # 或 dsh --profile main web（经 profile bundle 起 web）
 #
-# 覆盖内容：
-#   - settings.yaml              llm-pi-ai namespace：openai 路由指向
-#                                opencode zen 网关（deepseek-v4-flash-free）；
-#                                adapter 配置的官方配置位（dsh-base 注释所述，
-#                                热加载）
+# 内容（模型/provider 数据零硬编码，同 reasonix 约束——插件运行时装配）：
+#   - plugins/opencode-sim/      opencode 模拟装配插件（cordis）：启动时向
+#                                llm-pi-ai settings namespace 写入 openai 路由
+#                                （opencode zen 网关 + trigger headers），并把
+#                                默认模型设为 opencode 模型（默认模型名称是
+#                                nix 之外的运行时代码，nix 内无任何 provider/
+#                                model 数据）；配合 overlays/dsh/opencode-sim.mjs
+#                                （postInstall 注入）在请求层装配与 reasonix
+#                                同源的完整 opencode 客户端特征
 #   - cordis.patch.yml（最后一层，按行 id 整体替换 config）：
-#     · agent-default-model     默认模型 = openai / deepseek-v4-flash-free
-#     · sandbox-policy          部署默认 read-only → danger-full-access
-#     · permission              defaultPreset = danger-full-access（sandbox 与
-#                               approval 组合默认值无匹配 preset 时插件强制要求
-#                               显式指定；含完整 presets 表，因 patch 替换整行
-#                               config 而非合并）
+#     · insert opencode-sim   在 include 树根追加插件条目
+#     · sandbox-policy        部署默认 read-only → danger-full-access
+#     · permission            defaultPreset = danger-full-access（sandbox 与
+#                             approval 组合默认值无匹配 preset 时插件强制要求
+#                             显式指定；含完整 presets 表，因 patch 替换整行
+#                             config 而非合并）
 let
   yaml = formats.yaml { };
   json = formats.json { };
@@ -40,43 +44,22 @@ let
     ];
   };
 
-  # $DSH_HOME/settings.yaml：namespace 分节由 dsh-settings-file 热加载，
-  # adapter（llm-pi-ai）与权限插件据此覆盖部署默认。
-  settingsYaml = yaml.generate "settings.yaml" {
-    llm-pi-ai = {
-      providers.openai = {
-        apiKeyEnv = "OPENCODE_API_KEY";
-        baseURL = "https://api.opencode.ai/zen/v1";
-        # opencode 模拟触发器（见 overlays/dsh/opencode-sim/opencode-sim.mjs）：
-        # 出现 x-opencode-client/x-opencode-project 即对该 provider 装配与
-        # overlays/reasonix/alignment.patch 同源的 opencode 客户端特征
-        # （权威 UA/Accept/Accept-Encoding/动态 session-request id 由注入层生成，
-        # 配置只声明意图）。
-        headers = {
-          "x-opencode-client" = "cli";
-          "x-opencode-project" = "global";
-        };
-        models = [
-          {
-            id = "deepseek-v4-flash-free";
-            name = "DeepSeek V4 Flash (free)";
-            contextWindow = 200000;
-            maxTokens = 65536;
-          }
-        ];
-      };
-    };
-  };
+  # $DSH_HOME/settings.yaml：空文档。llm-pi-ai provider 路由与默认模型由
+  # opencode-sim 插件在启动时经 settings 服务写入（官方配置位，热加载），
+  # 不在 nix 内出现任何 provider/model 数据。
+  settingsYaml = yaml.generate "settings.yaml" { };
 
-  # 用户 patch 层：覆盖各 bundle 层的行（最后写入者胜，每行整体替换 config）
+  # 用户 patch 层：覆盖各 bundle 层的行（最后写入者胜，每行整体替换 config）；
+  # insert 无 id 时向根追加新条目（name 相对 Include baseUrl=profiles/main 解析）。
   cordisPatch = yaml.generate "cordis.patch.yml" [
     {
-      id = "agent-default-model";
-      name = "@deepseek-ai/dsh-agent-default-model";
-      config = {
-        provider = "openai";
-        model = "deepseek-v4-flash-free";
-      };
+      insert = [
+        {
+          id = "opencode-sim";
+          name = "./plugins/opencode-sim/index.js";
+          config = { };
+        }
+      ];
     }
     {
       id = "sandbox-policy";
@@ -118,10 +101,12 @@ let
   };
 in
 runCommand "dsh-config" { } ''
-  mkdir -p $out/profiles/${profile}
+  mkdir -p $out/profiles/${profile}/plugins/opencode-sim
   cp ${settingsYaml} $out/settings.yaml
   cp ${packageJson} $out/profiles/${profile}/package.json
   cp ${cordisPatch} $out/profiles/${profile}/cordis.patch.yml
   cp ${cordisRoot} $out/profiles/${profile}/cordis.yml
   cp ${pnpmWorkspace} $out/profiles/${profile}/pnpm-workspace.yaml
+  cp ${./dsh/opencode-sim-plugin/package.json} $out/profiles/${profile}/plugins/opencode-sim/package.json
+  cp ${./dsh/opencode-sim-plugin/index.js} $out/profiles/${profile}/plugins/opencode-sim/index.js
 ''

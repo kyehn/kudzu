@@ -9,7 +9,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const target = process.argv[2];
 const simPath = process.argv[3] ?? join(HERE, "opencode-sim.mjs");
 if (!target) {
-  console.error("usage: node inject.mjs <pi-ai>/dist/api/openai-completions.js [opencode-sim.mjs]");
+  console.error(
+    "usage: node inject.mjs <pi-ai>/dist/api/openai-completions.js [opencode-sim.mjs]",
+  );
   process.exit(2);
 }
 
@@ -73,7 +75,11 @@ const patched = src
     });`,
   );
 
-for (const marker of ["opencode-sim.mjs", "opencodeFactoryFetch()", 'opencodeSimHeaders(headers)']) {
+for (const marker of [
+  "opencode-sim.mjs",
+  "opencodeFactoryFetch()",
+  "opencodeSimHeaders(headers)",
+]) {
   if (!patched.includes(marker)) {
     console.error(`opencode-sim: marker "${marker}" missing after patch`);
     process.exit(1);

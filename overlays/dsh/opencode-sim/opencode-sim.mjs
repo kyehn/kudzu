@@ -16,7 +16,8 @@ export const OPENCODE_ACCEPT_ENCODING = "gzip, deflate, br, zstd";
 import { randomBytes } from "node:crypto";
 
 const ID_LENGTH = 26;
-const ID_BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const ID_BASE62 =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 let lastIdTimestamp = 0;
 let idCounter = 0;
@@ -46,29 +47,35 @@ export function opencodeCreate(prefix, direction, timestamp) {
   for (let i = 0; i < 6; i++) {
     timeBytes[i] = Number((now >> BigInt(40 - 8 * i)) & BigInt(0xff));
   }
-  return prefix + "_" + timeBytes.toString("hex") + randomBase62(ID_LENGTH - 12);
+  return (
+    prefix + "_" + timeBytes.toString("hex") + randomBase62(ID_LENGTH - 12)
+  );
 }
 
 // x-opencode-session 每客户端实例固定（每次模块加载一个），与 opencode CLI 相同
 export const opencodeSessionId = opencodeCreate("ses", "descending");
 
 // -- headers：与 reasonix opencode.go applyOpenCodeHeaders 同语义 ——
-//    删除 canonical 冲突后写小写 x-opencode-*；UA/Accept/Accept-Encoding 权威值 --
+//    删除 canonical 冲突后写小写 x-opencode-*；UA/Accept/Accept-Encoding 权威值。
+//    另清理 undici/OpenAI SDK 附加而 opencode CLI wire 不存在的头：
+//    accept-language / sec-fetch-mode（undici fetch 默认）与 x-stainless-*（SDK）。
+const DELETE_HEADERS = new Set([
+  "user-agent",
+  "accept",
+  "accept-encoding",
+  "accept-language",
+  "sec-fetch-mode",
+  "x-opencode-client",
+  "x-opencode-session",
+  "x-opencode-request",
+  "x-opencode-project",
+]);
 export function opencodeSimHeaders(headers) {
   headers = { ...headers };
-  for (const key of [
-    "User-Agent",
-    "user-agent",
-    "X-Opencode-Client",
-    "x-opencode-client",
-    "X-Opencode-Session",
-    "x-opencode-session",
-    "X-Opencode-Request",
-    "x-opencode-request",
-    "X-Opencode-Project",
-    "x-opencode-project",
-  ]) {
-    delete headers[key];
+  for (const key of Object.keys(headers)) {
+    const lower = key.toLowerCase();
+    if (DELETE_HEADERS.has(lower) || lower.startsWith("x-stainless-"))
+      delete headers[key];
   }
   headers["User-Agent"] = OPENCODE_USER_AGENT;
   headers["Accept"] = OPENCODE_ACCEPT;
@@ -80,12 +87,13 @@ export function opencodeSimHeaders(headers) {
   return headers;
 }
 
+import { Readable } from "node:stream";
 // -- 传输层（undici Agent）。TLS 参数对齐 _tls-fingerprint.json 的 ClientHello：
 //   cipher 套件顺序、TLS1.2–1.3 版本、X25519 曲线优先、ALPN 只有 http/1.1。
 //   已知限制（Node/OpenSSL 栈，非 BoringSSL）：ClientHello 的扩展排列顺序与
 //   signature algorithms 顺序无法由 Node 控制，故 JA3/JA4 与基准存在扩展段差异；
 //   cipher 段与版本段一致。若要逐字节一致需 Bun 运行时或 utls 代理层。
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent, request } from "undici";
 
 const TLS_CIPHERS = [
   // TLS 1.3（0x1301 0x1302 0x1303）
@@ -137,6 +145,77 @@ export function opencodeFactoryFetch({ tls } = {}) {
   if (!opencodeAgent) {
     opencodeAgent = buildOpencodeAgent(tls);
   }
-  return (url, init) =>
-    undiciFetch(url, { ...init, dispatcher: opencodeAgent });
+  // 用 undici 低层 request() 而非 fetch()：undici fetch 会按 fetch 规范附加
+  // accept-language: * 与 sec-fetch-mode: cors（基准 wire 无此二头，见
+  // overlays/reasonix/opencode/POST_zen_v1_chat_completions.json），且该附加
+  // 发生在 dispatcher 层，无法用 headers 对象清除；request() 无此语义，
+  // 再包一层最小 Response 兼容面供 OpenAI SDK 消费（json/text/body/headers）。
+  // OpenAI SDK 还会在每次请求动态附加 x-stainless-*（createClient 层删除
+  // 无效），故在请求发出前按 trigger 条件做最终清理（同注入点语义）。
+  return (url, init) => {
+    const raw = normalizeHeaders(init.headers);
+    const headers =
+      raw["x-opencode-client"] || raw["x-opencode-project"]
+        ? opencodeSimHeaders(raw)
+        : raw;
+    return request(url, { ...init, headers, dispatcher: opencodeAgent }).then(
+      opencodeResponse,
+    );
+  };
+}
+
+/** 把 Headers 实例或 record 统一成小写键 record（SDK 动态头也在此可见）。 */
+function normalizeHeaders(headers) {
+  const out = {};
+  if (!headers) return out;
+  if (typeof headers.get === "function") {
+    for (const [key, value] of headers.entries()) out[key] = value;
+  } else {
+    Object.assign(out, headers);
+  }
+  return out;
+}
+
+// -- undici request() 响应 → SDK 期望的 Response 兼容对象 --
+function opencodeResponse(resp) {
+  const status = resp.statusCode;
+  const headers = new Headers();
+  if (Array.isArray(resp.headers)) {
+    for (let i = 0; i + 1 < resp.headers.length; i += 2) {
+      headers.append(resp.headers[i], resp.headers[i + 1]);
+    }
+  } else {
+    for (const [key, value] of Object.entries(resp.headers ?? {})) {
+      headers.append(key, value);
+    }
+  }
+  const body = Readable.toWeb(resp.body);
+  const readAll = async () => {
+    const reader = body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return merged;
+  };
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: "",
+    headers,
+    body,
+    json: async () => JSON.parse(new TextDecoder().decode(await readAll())),
+    text: async () => new TextDecoder().decode(await readAll()),
+    arrayBuffer: async () => readAll(),
+  };
 }
