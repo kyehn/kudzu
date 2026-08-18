@@ -4,6 +4,7 @@
   fetchzip,
   nodejs_24,
   jq,
+  esbuild,
 }:
 
 let
@@ -33,16 +34,33 @@ in
 
   dontNpmBuild = true;
 
+  # opencode-sim 为 TypeScript 源码（opencode-sim/opencode-sim.ts）：Node 24
+  # 默认 type stripping 禁止 node_modules 内 .ts（ERR_UNSUPPORTED_NODE_MODULES_
+  # TYPE_STRIPPING），故构建期用 esbuild 编译为纯 ESM 注入（--packages=external
+  # 保留 undici/node:* 外部导入，运行时从 pi-ai 向上解析）。
+  buildInputs = [ esbuild ];
+
   # web profile 的 HMR loader (@deepseek-ai/cordis-plugin-hmr) 需要
   # --expose-internals，否则 `dsh web` 报 "…is required for HMR service"。
+  # --openssl-config 提供 TLS ClientHello 的 signature_algorithms 对齐
+  # （Node 唯一无法经 API 控制的维度，见 opencode-sim/openssl.cnf）。
   # 随后注入 opencode 客户端模拟（pi-ai openai-completions api）：
   # 对齐 overlays/reasonix/alignment.patch 的基准（UA/x-opencode-*/动态 id/TLS 参数）。
   postInstall = ''
     substituteInPlace $out/bin/dsh \
-      --replace-fail '"${lib.getExe nodejs_24}"' '"${lib.getExe nodejs_24}" --expose-internals'
+      --replace-fail '"${lib.getExe nodejs_24}"' "\"${lib.getExe nodejs_24}\" --expose-internals --openssl-config=$out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/openssl.cnf"
+    mkdir -p $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim
+    cp ${./opencode-sim/openssl.cnf} $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/openssl.cnf
+    # esbuild 需要 entry 与相对导入（opencode-wire.ts）同目录：整体复制源码目录
+    cp ${./opencode-sim}/opencode-sim.ts $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-sim.ts
+    cp ${./opencode-sim}/opencode-wire.ts $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-wire.ts
+    ${lib.getExe esbuild} $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-sim.ts \
+      --bundle --format=esm --platform=node --target=node24 --packages=external \
+      --outfile=$out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-sim.mjs
+    rm $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-sim.ts $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-wire.ts
     ${lib.getExe nodejs_24} ${./opencode-sim/inject.mjs} \
       $out/lib/node_modules/@deepseek-ai/dsh/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js \
-      ${./opencode-sim/opencode-sim.mjs}
+      $out/lib/node_modules/@deepseek-ai/dsh/opencode-sim/opencode-sim.mjs
   '';
 
   meta = {

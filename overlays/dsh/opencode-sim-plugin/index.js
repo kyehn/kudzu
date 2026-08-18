@@ -18,8 +18,10 @@
 // 相同装配，不依赖手工编辑。
 
 const OPENCODE_PROVIDER_ID = "openai";
+// 基准与 reasonix 一致（fetcher.py/builder.py/抓包均用裸域名）：
+//   https://opencode.ai/zen/v1 —— 勿加 api. 子域前缀
 const OPENCODE_API_BASE_URL =
-  process.env.OPENCODE_BASE_URL ?? "https://api.opencode.ai/zen/v1";
+  process.env.OPENCODE_BASE_URL ?? "https://opencode.ai/zen/v1";
 export const OPENCODE_DEFAULT_MODEL =
   process.env.OPENCODE_DEFAULT_MODEL ?? "deepseek-v4-flash-free";
 
