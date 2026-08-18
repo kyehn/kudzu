@@ -26,19 +26,21 @@ index e3bf8bf..91adb8f 100644
  	adm.ObservedPrompt = limit.PromptTokens
 diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
 new file mode 100644
-index 0000000..f4a64e3
+index 0000000..e7511ac
 --- /dev/null
 +++ b/internal/agent/context_summary_admission_test.go
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,176 @@
 +package agent
 +
 +import (
++	"context"
 +	"errors"
 +	"strings"
 +	"testing"
 +
 +	"reasonix/internal/event"
 +	"reasonix/internal/provider"
++	"reasonix/internal/tool"
 +)
 +
 +// The compaction summarizer must be able to emit its full digest. A small
@@ -82,7 +84,9 @@ index 0000000..f4a64e3
 +}
 +
 +// A gateway-reported window larger than the conservative configured one must
-+// drive the physical budget; the reported window stays for display only.
++// drive every window: the physical output budget and the compaction ceilings
++// (hard ceiling, fold trigger, projection acceptance). The configured value is
++// only a fallback before the gateway proves its real capacity.
 +func TestAdmitOutputBudgetUsesObservedWindowWhenLarger(t *testing.T) {
 +	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
 +	a := &Agent{
@@ -105,8 +109,16 @@ index 0000000..f4a64e3
 +	if adm.PhysicalRemaining != wantPhysical {
 +		t.Fatalf("physical = %d, want %d (observed window, not configured 200k)", adm.PhysicalRemaining, wantPhysical)
 +	}
-+	if adm.WindowTokens != 200_000 {
-+		t.Fatalf("reported window = %d, want configured 200000", adm.WindowTokens)
++	// The observed window is authoritative once learned: compaction ceilings
++	// and the reported admission window must both follow it.
++	if adm.WindowTokens != 1_048_576 {
++		t.Fatalf("reported window = %d, want observed 1048576", adm.WindowTokens)
++	}
++	if got := a.effectiveContextWindow(); got != 1_048_576 {
++		t.Fatalf("effective window = %d, want observed 1048576", got)
++	}
++	if got := a.hardInputCeiling(); got != 1_048_576-protocolReserveTokens {
++		t.Fatalf("hard ceiling = %d, want observed-based %d", got, 1_048_576-protocolReserveTokens)
 +	}
 +	// The provider's own 131072 output cap must fit inside the observed 1M
 +	// window untouched. Under the configured 200k window it would be clipped
@@ -126,8 +138,11 @@ index 0000000..f4a64e3
 +	a := &Agent{agentConfig: agentConfig{contextWindow: 200_000}}
 +	limit := &provider.ContextLimitError{WindowTokens: 1_048_576, CompletionTokens: 354_469}
 +	a.learnConfiguredWindowFromContextLimit(limit, true)
-+	if got := a.effectiveContextWindow(); got != 200_000 {
-+		t.Fatalf("effective window = %d, want configured 200000 (conservative display)", got)
++	// The learned window is authoritative for every window consumer once the
++	// gateway proves it: a conservative config must not keep starving
++	// compaction and output after a real overflow.
++	if got := a.effectiveContextWindow(); got != 1_048_576 {
++		t.Fatalf("effective window = %d, want observed 1048576", got)
 +	}
 +	if snap := a.sess.output.learned.Load(); snap == nil || snap.windowTokens != 1_048_576 || snap.completionBudget != 354_469 {
 +		t.Fatalf("learned = %+v, want window 1048576 completion 354469", snap)
@@ -136,6 +151,9 @@ index 0000000..f4a64e3
 +	a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{WindowTokens: 512_000, CompletionTokens: 99_000}, false)
 +	if snap := a.sess.output.learned.Load(); snap == nil || snap.windowTokens != 512_000 || snap.completionBudget != 354_469 {
 +		t.Fatalf("learned = %+v, want window 512000 completion still 354469", snap)
++	}
++	if got := a.effectiveContextWindow(); got != 512_000 {
++		t.Fatalf("effective window after shrink = %d, want 512000", got)
 +	}
 +}
 +
@@ -146,10 +164,73 @@ index 0000000..f4a64e3
 +		t.Fatalf("learned = %+v, want configured fallback 200000", snap)
 +	}
 +}
++
++// Regression: with a conservative configured window (200000) and a gateway
++// that proves a real 1M window, a session above the configured hard ceiling
++// must fold successfully once the window is learned. Before the learned window
++// became authoritative this deadlocked with ErrCompactionRequired: the fold
++// candidate (system + digest + the retained tail) was always still at or above
++// the configured physical ceiling, so no projection could ever be accepted.
++func TestLearnedWindowUnblocksCompactionAboveConfiguredHardCeiling(t *testing.T) {
++	prov := &sharedWindowTestProvider{budget: 1_048_576, shared: true}
++	sess := NewSession("")
++	msgs := []provider.Message{{Role: provider.RoleSystem, Content: "You are a coding agent."}}
++	for i := 0; i < 200; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: strings.Repeat("字", 600) + " question " + string(rune('a'+i%26))},
++			provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("answer content here ", 300)},
++		)
++	}
++	sess.Replace(msgs)
++	registry := tool.NewRegistry()
++	a := New(prov, registry, sess, Options{
++		ContextWindow:   200_000,
++		CompactRatio:    0.7,
++		MaxOutputTokens: 384_000,
++		Temperature:     0.25,
++	}, event.Discard)
++	est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
++	if est < a.hardInputCeiling() {
++		t.Fatalf("estimate %d below configured hard ceiling %d; session too small", est, a.hardInputCeiling())
++	}
++	// The gateway already rejected one oversized request, teaching its real
++	// 1M window; the configured 200k must no longer gate compaction.
++	a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{
++		WindowTokens: 1_048_576, PromptTokens: est, RequestedTokens: est,
++	}, false)
++	prepared, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
++	if err != nil {
++		t.Fatalf("Prepare after learning real window: %v", err)
++	}
++	if prepared.InputTokens >= a.hardInputCeiling() {
++		t.Fatalf("fold did not reclaim below hard ceiling: %d >= %d", prepared.InputTokens, a.hardInputCeiling())
++	}
++}
 diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
-index c87b401..87b1344 100644
+index c87b401..0ea1952 100644
 --- a/internal/agent/output_budget.go
 +++ b/internal/agent/output_budget.go
+@@ -282,14 +282,14 @@ func (a *Agent) effectiveContextWindow() int {
+ 	if snap := a.sess.output.learned.Load(); snap != nil {
+ 		learned = snap.windowTokens
+ 	}
+-	switch {
+-	case cfg > 0 && learned > 0:
+-		return min(cfg, learned)
+-	case learned > 0:
++	// The gateway-reported window is the authoritative capacity once observed:
++	// a provider can prove more headroom than a conservative configured window
++	// (e.g. 200000 configured vs 1048576 reported), and a smaller reported
++	// window must shrink compaction the same way it always did.
++	if learned > 0 {
+ 		return learned
+-	default:
+-		return cfg
+ 	}
++	return cfg
+ }
+ 
+ func (a *Agent) learnedCompletionBudget() int {
 @@ -322,6 +322,35 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
  	a.sess.output.learned.Store(&next)
  }
@@ -186,30 +267,22 @@ index c87b401..87b1344 100644
  func (a *Agent) storeAdmission(adm contextAdmission) {
  	if a == nil {
  		return
-@@ -413,6 +442,13 @@ func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error
- 	adm.AutoOutputTokens = policy.AutoOutputTokens
+@@ -414,7 +443,13 @@ func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error
  	adm.MaxOutputTokens = policy.MaxOutputTokens
  	window := a.effectiveContextWindow()
-+	physicalWindow := window
-+	// The gateway's reported window is the real capacity; a conservative
-+	// configured window must not starve the output budget when the provider
-+	// proves it has more headroom.
-+	if adm.ObservedWindow > physicalWindow {
-+		physicalWindow = adm.ObservedWindow
-+	}
  	adm.WindowTokens = window
- 	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
+-	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
++	// The effective window is the gateway-observed one once learned (it may
++	// raise above a conservative config), so no separate observed-window
++	// override is needed for the physical budget.
++	learnedWindow := false
++	if snap := a.sess.output.learned.Load(); snap != nil && snap.windowTokens > 0 {
++		learnedWindow = true
++	}
  	adm.Source = admissionSource(req.MaxTokens, policy, learnedWindow)
-@@ -422,7 +458,7 @@ func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error
- 	}
- 	est := a.estimatedRequestTokens(req)
- 	adm.PromptTokens = est
--	physical := window - est - outputBudgetReserve
-+	physical := physicalWindow - est - outputBudgetReserve
- 	adm.PhysicalRemaining = physical
- 	shared := policy.WindowMode == provider.ContextWindowShared
- 	if !shared {
-@@ -490,6 +526,22 @@ func (a *Agent) applyAdmissionToRequest(req *provider.Request) error {
+ 	if window <= 0 {
+ 		a.storeAdmission(adm)
+@@ -490,6 +525,22 @@ func (a *Agent) applyAdmissionToRequest(req *provider.Request) error {
  	return nil
  }
  
