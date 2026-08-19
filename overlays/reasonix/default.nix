@@ -25,6 +25,8 @@ buildGoModule (finalAttrs: {
   #   1. vendor: opencode wire alignment (UA, TLS, ids)
   #   2. agent: enforce the configured window; converge must-free folds below it
   #   3. control/acp: force yolo approval and run unbounded (overlay defaults)
+  #   4. control: keep plan approval and sandbox escape as hard gates under yolo
+  #   5. agent: drop the max-steps budget leftovers and migrate tests to the overlay semantics
   patches = [ ./reasonix-v1.29.0.patch ];
 
   vendorHash = "sha256-j3CNUEbNarFKQr+fTyf+2oM2FjOF1WnBMSPJHgcz72E=";

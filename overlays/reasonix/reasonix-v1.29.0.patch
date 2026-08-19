@@ -1,7 +1,7 @@
 From 71aca44ceeb742613f560dfaa0c244fde031b44b Mon Sep 17 00:00:00 2001
 From: kyehn <kyehn@users.noreply.github.com>
 Date: Wed, 19 Aug 2026 05:47:25 +0000
-Subject: [PATCH 1/3] vendor: opencode wire alignment (UA, TLS, ids)
+Subject: [PATCH 1/5] vendor: opencode wire alignment (UA, TLS, ids)
 
 Lock the opencode UA across the netclient and openai provider, pass TLS
 options through tls.connect via undici connect top-level, and align the
@@ -987,7 +987,7 @@ index 0000000..7ab2789
 From 3485cf0949f14e53f6a744098abf4ccc09cf3e5e Mon Sep 17 00:00:00 2001
 From: kyehn <kyehn@users.noreply.github.com>
 Date: Wed, 19 Aug 2026 05:56:40 +0000
-Subject: [PATCH 2/3] agent: enforce the configured window; converge must-free
+Subject: [PATCH 2/5] agent: enforce the configured window; converge must-free
  folds below it
 
 The gateway can prove more headroom than a conservative configured window
@@ -1563,7 +1563,7 @@ index 5f64002..93b6d74 100644
 From a072c05944ad283d0c388cdaa17279cc1b14063e Mon Sep 17 00:00:00 2001
 From: kyehn <kyehn@users.noreply.github.com>
 Date: Wed, 19 Aug 2026 06:10:35 +0000
-Subject: [PATCH 3/3] control/acp: force yolo approval and run unbounded
+Subject: [PATCH 3/5] control/acp: force yolo approval and run unbounded
  (overlay defaults)
 
 Make the approval mode default to yolo for new sessions and on session
@@ -1822,6 +1822,455 @@ index dc4fc3e..4d18d28 100644
  	if !a.planAutoApprove {
  		return false
  	}
+-- 
+2.54.0
+
+
+From 19e5fb59291d84bf7d1e8a48b4616b70712dd749 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 06:42:32 +0000
+Subject: [PATCH 4/5] control: keep plan approval and sandbox escape as hard
+ gates under yolo
+
+Revert the a072c05 approval relaxation: yolo answering fresh and
+require-human decisions silently bypassed the plan-approval collaboration
+gate and the sandbox-escape escape hatch, breaking the documented contract
+in requestApprovalDecisionWithOptions ('YOLO/auto approval must not answer
+or drain the prompt' for fresh; 'plan approval ... deliberately stays
+interactive'). The three yolo_test gates now pass again; the ACP yolo
+default stays reachable because the acp client approves the emitted
+requests itself.
+---
+ internal/control/approval.go | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/internal/control/approval.go b/internal/control/approval.go
+index 4d18d28..dc4fc3e 100644
+--- a/internal/control/approval.go
++++ b/internal/control/approval.go
+@@ -257,9 +257,6 @@ func (a *approvalManager) preApprovedForDecisionOptions(tool, subject string, ar
+ 	a.mu.Lock()
+ 	defer a.mu.Unlock()
+ 	if fresh {
+-		if a.toolApprovalMode == ToolApprovalYolo {
+-			return true
+-		}
+ 		return a.sessionGrantAllowsLocked(tool, subject)
+ 	}
+ 	if requireHuman {
+@@ -594,12 +591,12 @@ func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.Raw
+ 			return a.autoApprovalWouldAllowLocked(tool, subject, args)
+ 		}
+ 	}
+-	if a.toolApprovalMode == ToolApprovalYolo {
+-		return true
+-	}
+ 	if requiresFreshApprovalTool(tool) {
+ 		return false
+ 	}
++	if a.toolApprovalMode == ToolApprovalYolo {
++		return true
++	}
+ 	if !a.planAutoApprove {
+ 		return false
+ 	}
+-- 
+2.54.0
+
+
+From fc95536703d5c42cbf2adb1d4f0b16bd16dd7db0 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 06:42:32 +0000
+Subject: [PATCH 5/5] agent: drop the max-steps budget leftovers and migrate
+ tests to the overlay semantics
+
+The overlay removes the model-round cap from the run loop; an explicit
+MaxSteps is now ignored. Remove the unreachable gracePause tail in
+runToolLoop and rework the tests that asserted the old boundary:
+
+- planner/executor, goal, todo, and dispatch tests now assert the run
+  ends when the provider ends the turn
+- the emergency-bound planner test lands on a task token budget instead
+  and keeps the truncated-research coverage
+- the ordinary-chat and task-budget runaway tests exercise the token
+  budget axis that still bounds an unbudgeted runaway
+---
+ internal/agent/coordinator_test.go            | 63 +++++++++++--------
+ internal/agent/dispatch_test.go               | 27 +++++---
+ internal/agent/goal_boundaries_test.go        |  9 ++-
+ .../agent/planner_adaptive_research_test.go   | 22 ++++---
+ internal/agent/run_loop.go                    |  4 --
+ internal/agent/task_budget_gate_test.go       | 22 ++++---
+ internal/agent/todo_progress_guard_test.go    | 13 ++--
+ internal/control/chat_run_budget_test.go      | 11 ++--
+ 8 files changed, 100 insertions(+), 71 deletions(-)
+
+diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
+index ba1f814..1d18943 100644
+--- a/internal/agent/coordinator_test.go
++++ b/internal/agent/coordinator_test.go
+@@ -639,10 +639,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+-	planner := &mockProvider{name: "planner", chunks: []provider.Chunk{
+-		{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"REASONIX.md"}`}},
+-		{Type: provider.ChunkDone},
++// The overlay removes the max-steps budget from the run loop: an explicit
++// MaxSteps must not truncate the planner, which runs until the provider ends
++// the turn and then hands the plan to the executor.
++func TestCoordinatorPlannerMaxStepsIgnored(t *testing.T) {
++	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
++		{
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"REASONIX.md"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-2", Name: "read_file", Arguments: `{"path":"internal"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkText, Text: "1. read REASONIX.md"},
++			{Type: provider.ChunkDone},
++		},
+ 	}}
+ 	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{
+ 		{Type: provider.ChunkText, Text: "Done."},
+@@ -650,7 +663,7 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+ 	}}
+ 
+ 	parentReg := tool.NewRegistry()
+-	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "keep reading"})
++	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "ok"})
+ 	sink := &recordSink{}
+ 	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, sink)
+ 	plannerSess := NewSession("planner-sys")
+@@ -661,27 +674,16 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+ 
+ 	err := coord.Run(withNoClosedLoop(context.Background()), "plan a change")
+ 	if err != nil {
+-		t.Fatalf("Run should fall back to the executor when the planner cannot finalize: %v", err)
++		t.Fatalf("Run: %v", err)
+ 	}
+ 	if got := len(planner.requests); got != 3 {
+-		t.Fatalf("planner requests = %d, want 2 research rounds plus finalization", got)
+-	}
+-	if got := len(exec.requests); got != 1 {
+-		t.Fatalf("executor requests = %d, want one fallback run", got)
+-	}
+-	if got := lastUser(exec.requests[0]); !strings.Contains(got, "plan a change") || strings.Contains(got, executorHandoffMarker) {
+-		t.Fatalf("executor fallback input = %q, want the original task without a fabricated handoff", got)
++		t.Fatalf("planner requests = %d, want all 3 scripted planner turns (max-steps budget removed)", got)
+ 	}
+-	if got := len(plannerSess.Messages); got != 1 {
+-		t.Fatalf("planner session messages = %d, want the incomplete turn rolled back", got)
+-	}
+-	notices := sink.kinds(event.Notice)
+-	if len(notices) == 0 || notices[len(notices)-1].Text != plannerSafetyFallbackNotice {
+-		t.Fatalf("notices = %+v, want planner safety fallback notice", notices)
++	if got := len(exec.requests); got == 0 {
++		t.Fatalf("executor never ran: %d requests", got)
+ 	}
+-	if detail := notices[len(notices)-1].Detail; !strings.Contains(detail, "planner max_steps") ||
+-		strings.Contains(detail, "set planner max_steps") {
+-		t.Fatalf("fallback detail = %q, want the bounded diagnostic without configuration advice", detail)
++	if got := lastUser(exec.requests[0]); !strings.Contains(got, "read REASONIX.md") {
++		t.Fatalf("executor did not receive the planner output: %q", got)
+ 	}
+ }
+ 
+@@ -1397,9 +1399,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing.T) {
+ 	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
+ 		t.Run(string(route), func(t *testing.T) {
+-			planner := &mockProvider{name: "planner", chunks: []provider.Chunk{
+-				{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
+-				{Type: provider.ChunkDone},
++			planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
++				{
++					{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
++					{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10}},
++					{Type: provider.ChunkDone},
++				},
+ 			}}
+ 			exec := &mockProvider{name: "executor"}
+ 			plannerReg := tool.NewRegistry()
+@@ -1411,11 +1416,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
+ 			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
+ 			plannerSess := NewSession("planner-sys")
+ 			coord := NewCoordinatorWithPlannerPolicy(
+-				planner, plannerSess, nil, plannerReg, Options{MaxSteps: 1, MaxStepsKey: "planner emergency rounds"},
++				planner, plannerSess, nil, plannerReg, Options{},
+ 				executor, 0, event.Discard, policy,
+ 			)
+ 
+-			err := coord.Run(withNoClosedLoop(context.Background()), "plan the migration")
++			// The overlay removes the max-steps budget; a host-owned task
++			// token budget lands the same resumable loop pause the boundary
++			// must fail closed on.
++			ctx := withNoClosedLoop(WithTaskBudget(context.Background(), TaskBudget{Tokens: 1}))
++			err := coord.Run(ctx, "plan the migration")
+ 			if err == nil || err.Error() != plannerSafetyBoundaryError {
+ 				t.Fatalf("Run = %v, want the safe planner boundary error", err)
+ 			}
+diff --git a/internal/agent/dispatch_test.go b/internal/agent/dispatch_test.go
+index 1871dd5..88c72fa 100644
+--- a/internal/agent/dispatch_test.go
++++ b/internal/agent/dispatch_test.go
+@@ -13,20 +13,29 @@ import (
+ // immediately (Partial, name only) so the card shows while the arguments are
+ // still streaming, and that a second, full dispatch (with args) follows once the
+ // call completes — the fix for "the edit_file card only appears after everything
+-// is written".
++// is written". The overlay removes the max-steps cap, so the second provider
++// round ends the turn instead of a budget pause.
+ func TestEarlyToolDispatch(t *testing.T) {
+-	prov := &mockProvider{name: "p", chunks: []provider.Chunk{
+-		{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file"}},
+-		{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file", Arguments: `{"path":"/x"}`}},
+-		{Type: provider.ChunkDone},
++	prov := &mockProvider{name: "p", streams: [][]provider.Chunk{
++		{
++			{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file"}},
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file", Arguments: `{"path":"/x"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkText, Text: "done"},
++			{Type: provider.ChunkDone},
++		},
+ 	}}
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeTool{name: "read_file", readOnly: true})
+ 
+ 	var got []event.Event
+ 	sink := event.FuncSink(func(e event.Event) { got = append(got, e) })
+-	a := New(prov, reg, NewSession(""), Options{MaxSteps: 1}, sink)
+-	_ = a.Run(context.Background(), "go") // errors at the 1-step cap; we only want the events
++	a := New(prov, reg, NewSession(""), Options{}, sink)
++	if err := a.Run(context.Background(), "go"); err != nil {
++		t.Fatalf("Run: %v", err)
++	}
+ 
+ 	var partial, full int
+ 	for _, e := range got {
+@@ -45,8 +54,8 @@ func TestEarlyToolDispatch(t *testing.T) {
+ 			}
+ 		}
+ 	}
+-	if partial != 2 {
+-		t.Errorf("want 2 partial (early) dispatches (original + grace-round replay), got %d", partial)
++	if partial != 1 {
++		t.Errorf("want 1 partial (early) dispatch, got %d", partial)
+ 	}
+ 	if full != 1 {
+ 		t.Errorf("want 1 full dispatch, got %d", full)
+diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
+index 42ff84f..999052d 100644
+--- a/internal/agent/goal_boundaries_test.go
++++ b/internal/agent/goal_boundaries_test.go
+@@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
+ 	}
+ }
+ 
+-func TestExplicitMaxStepsStillAppliesToGoal(t *testing.T) {
++func TestGoalExplicitMaxStepsIgnored(t *testing.T) {
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeTool{name: "read_file", readOnly: true})
+ 	prov := testutil.NewMock("m",
+@@ -44,12 +44,11 @@ func TestExplicitMaxStepsStillAppliesToGoal(t *testing.T) {
+ 	a := New(prov, reg, NewSession(""), Options{MaxSteps: 3}, event.Discard)
+ 	ctx := WithDeliveryExecutionScope(context.Background(), DeliveryExecutionScope{ID: "goal-1", TaskText: "work"})
+ 	err := a.Run(ctx, "work")
+-	info, ok := InspectRunPause(err)
+-	if !ok || info.Kind != "max_steps" || info.HostOwned || info.Limit != 3 {
+-		t.Fatalf("explicit MaxSteps pause = %+v ok=%v err=%v", info, ok, err)
++	if err != nil {
++		t.Fatalf("explicit MaxSteps must not pause a goal run: %v", err)
+ 	}
+ 	if prov.CallCount() != 4 {
+-		t.Fatalf("provider calls = %d, want explicit three rounds plus summary", prov.CallCount())
++		t.Fatalf("provider calls = %d, want all scripted rounds (max-steps budget removed)", prov.CallCount())
+ 	}
+ }
+ 
+diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
+index 13f1e3d..d3c9691 100644
+--- a/internal/agent/planner_adaptive_research_test.go
++++ b/internal/agent/planner_adaptive_research_test.go
+@@ -43,10 +43,15 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *testing.T) {
++// A task budget that lands mid-research must still let the planner submit a
++// terminal plan, even when the research output was truncated by the tool
++// output guard — the budget nudge and the truncation work together instead of
++// stranding the turn.
++func TestCoordinatorTaskBudgetFinalizationSurvivesTruncatedResearch(t *testing.T) {
+ 	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
+-		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"a"}`}}, {Type: provider.ChunkDone}},
+-		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-2", Name: "read_file", Arguments: `{"path":"b"}`}}, {Type: provider.ChunkDone}},
++		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"a"}`}},
++			{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10}},
++			{Type: provider.ChunkDone}},
+ 		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "plan-1", Name: "submit_plan", Arguments: `{"objective":"fix the bounded planner","steps":[{"title":"apply the owner-level fix","verified_files":["a","b"]}]}`}}, {Type: provider.ChunkDone}},
+ 	}}
+ 	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{{Type: provider.ChunkText, Text: "Done."}, {Type: provider.ChunkDone}}}
+@@ -61,18 +66,19 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
+ 	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
+ 	plannerSess := NewSession("planner-sys")
+ 	coord := NewCoordinatorWithPlannerPolicy(planner, plannerSess, nil, PlannerToolRegistry(reg),
+-		Options{MaxSteps: 2, MaxStepsKey: "planner emergency rounds"}, executor, 0, sink,
++		Options{}, executor, 0, sink,
+ 		func(context.Context, string) PlannerDecision {
+ 			return PlannerDecision{Route: PlannerRoutePlanAndExecute, Reason: "emergency_bounded_work"}
+ 		})
+ 
+-	if err := coord.Run(withNoClosedLoop(context.Background()), "fix the planner bug"); err != nil {
++	ctx := withNoClosedLoop(WithTaskBudget(context.Background(), TaskBudget{Tokens: 1}))
++	if err := coord.Run(ctx, "fix the planner bug"); err != nil {
+ 		t.Fatalf("Run: %v", err)
+ 	}
+-	if got := len(planner.requests); got != 3 {
+-		t.Fatalf("planner requests = %d, want two research rounds plus terminal submission", got)
++	if got := len(planner.requests); got != 2 {
++		t.Fatalf("planner requests = %d, want research plus terminal submission", got)
+ 	}
+-	if got := lastUser(planner.requests[2]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
++	if got := lastUser(planner.requests[1]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
+ 		t.Fatalf("planner finalization nudge conflicts with submit_plan: %q", got)
+ 	}
+ 	sawTruncation := false
+diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
+index 055eab1..3668ab3 100644
+--- a/internal/agent/run_loop.go
++++ b/internal/agent/run_loop.go
+@@ -330,10 +330,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+ 			return terr
+ 		}
+ 	}
+-	// Only reached when a positive maxSteps guard is configured. The work so far
+-	// is already in the session, so the user can just send another message to pick
+-	// up where it left off.
+-	return a.gracePause(state)
+ }
+ 
+ // streamWithSamplingRecovery coordinates Codex-style original-request replay
+diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
+index 7a5042f..d0c5686 100644
+--- a/internal/agent/task_budget_gate_test.go
++++ b/internal/agent/task_budget_gate_test.go
+@@ -2,7 +2,6 @@ package agent
+ 
+ import (
+ 	"context"
+-	"errors"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -128,18 +127,25 @@ func TestUnconfiguredBudgetNeverCrosses(t *testing.T) {
+ 	}
+ }
+ 
+-// An explicit max_steps still bounds a run by rounds when the user asks for
+-// that specifically, with every spend axis disabled.
+-func TestExplicitMaxStepsStillLandsWhenNoBudgetApplies(t *testing.T) {
++// The overlay removes max_steps from the run loop; with it gone, an explicit
++// task token budget still stops an unbudgeted runaway that no spend axis or
++// wall clock constrains.
++func TestTaskBudgetTokensLandsWhenMaxStepsIsOff(t *testing.T) {
+ 	sink := event.FuncSink(func(event.Event) {})
+ 	reg := tool.NewRegistry()
+ 	reg.Add(readProbe{})
+ 	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
+-		Options{MaxSteps: 3, TaskBudget: TaskBudget{Cost: 0, Wall: -1}}, sink)
++		Options{TaskBudget: TaskBudget{Cost: 0, Wall: -1, Tokens: 2200}}, sink)
+ 
+ 	err := a.Run(context.Background(), "read everything")
+-	var pause *maxStepsPause
+-	if !errors.As(err, &pause) {
+-		t.Fatalf("err = %v, want an explicit max_steps to still stop an unbudgeted runaway", err)
++	if err == nil {
++		t.Fatal("Run returned nil; want a resumable task-budget pause")
++	}
++	info, ok := InspectRunPause(err)
++	if !ok || info.Kind != "task_budget" || info.Key != "token" {
++		t.Fatalf("pause = %+v (%v), want a host-owned task_budget pause on tokens", info, err)
++	}
++	if !info.HostOwned {
++		t.Fatal("a host-imposed budget must report HostOwned")
+ 	}
+ }
+diff --git a/internal/agent/todo_progress_guard_test.go b/internal/agent/todo_progress_guard_test.go
+index a301af5..94cfb00 100644
+--- a/internal/agent/todo_progress_guard_test.go
++++ b/internal/agent/todo_progress_guard_test.go
+@@ -2,7 +2,6 @@ package agent
+ 
+ import (
+ 	"context"
+-	"errors"
+ 	"fmt"
+ 	"testing"
+ 
+@@ -166,7 +165,10 @@ func TestCanonicalTodoProgressIgnoresTitleAndPendingListChurn(t *testing.T) {
+ 	}
+ }
+ 
+-func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
++// The overlay removes max_steps from the run loop: an explicit MaxSteps must
++// not truncate a turn whose todo is still unfinished — the provider decides
++// when the turn ends.
++func TestMaxStepsIgnoredLeavesIncompleteTodoToTheProvider(t *testing.T) {
+ 	reg := tool.NewRegistry()
+ 	reg.Add(mustBuiltinTool(t, "todo_write"))
+ 	reg.Add(fakeTool{name: "write_file", readOnly: false})
+@@ -180,12 +182,11 @@ func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
+ 	a := New(mp, reg, NewSession(""), Options{MaxSteps: 1}, event.Discard)
+ 
+ 	err := a.Run(context.Background(), "start a long task")
+-	var pause *maxStepsPause
+-	if !errors.As(err, &pause) {
+-		t.Fatalf("Run error = %v, want maxStepsPause instead of final-readiness retries", err)
++	if err != nil {
++		t.Fatalf("Run error = %v, want the run to end when the provider ends the turn", err)
+ 	}
+ 	if mp.CallCount() != 2 {
+-		t.Fatalf("provider calls = %d, want tool round plus one summary round", mp.CallCount())
++		t.Fatalf("provider calls = %d, want tool round plus one final round", mp.CallCount())
+ 	}
+ }
+ 
+diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
+index f565bbd..a64c855 100644
+--- a/internal/control/chat_run_budget_test.go
++++ b/internal/control/chat_run_budget_test.go
+@@ -100,8 +100,11 @@ func TestOrdinaryChatTurnStopsOnItsTimeBudget(t *testing.T) {
+ }
+ 
+ // The gate must not touch a turn the user bounded explicitly.
+-func TestExplicitMaxStepsOwnsTheOrdinaryTurn(t *testing.T) {
+-	prov := &wanderingChatProvider{}
++// The overlay removes the max-steps budget from the run loop: an explicit
++// MaxSteps must not truncate the ordinary turn, the agent keeps executing
++// until the provider ends the turn.
++func TestExplicitMaxStepsIsIgnoredByTheOrdinaryTurn(t *testing.T) {
++	prov := &wanderingChatProvider{max: 6}
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeControlTool{name: "read_file"})
+ 	exec := agent.New(prov, reg, agent.NewSession("sys"), agent.Options{MaxSteps: 3}, event.Discard)
+@@ -110,7 +113,7 @@ func TestExplicitMaxStepsOwnsTheOrdinaryTurn(t *testing.T) {
+ 	c.Submit("collect the real state")
+ 	waitForDone(t, done)
+ 
+-	if got := prov.calls.Load(); got != 4 {
+-		t.Fatalf("provider rounds = %d, want the explicit 3 plus one summary", got)
++	if got := prov.calls.Load(); got != 7 {
++		t.Fatalf("provider rounds = %d, want 7 (6 tool rounds + 1 final text; max-steps budget removed)", got)
+ 	}
+ }
 -- 
 2.54.0
 
