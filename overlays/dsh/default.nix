@@ -113,7 +113,7 @@ buildNpmPackage rec {
     home="''${DSH_HOME:-"$HOME/.dsh"}"
     node="@node@"
     bundle="@out@/lib/node_modules/dsh-bundle/node_modules"
-    mkdir -p "$home/profiles/dsh-acp-paseo" "$home/profiles/node_modules"
+    mkdir -p "$home/profiles/dsh-acp-paseo" "$home/profiles/node_modules/@deepseek-ai"
     # Profile manifest and patch are regenerated on every run from the store
     # copies, so a rebuilt/GC'd store path never leaves stale configuration.
     install -m 0644 "@out@/share/dsh/paseo-profile-package.json" "$home/profiles/dsh-acp-paseo/package.json"

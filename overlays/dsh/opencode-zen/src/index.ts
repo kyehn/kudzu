@@ -45,6 +45,7 @@ import {
 } from "@deepseek-ai/dsh-llm-deepseek";
 import { idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import z from "@deepseek-ai/schemastery";
+import { dropEmptyToolCalls, normalizeToolCallIds } from "./tool-call-guard.js";
 
 export const name = "llm-opencode-zen";
 export const inject = ["llm"];
@@ -356,9 +357,9 @@ export class OpenCodeZenAdapter extends LlmAdapter {
       connection.streamIdleTimeoutMs,
       STREAM_IDLE_TIMEOUT_CODE,
     );
-    const payload = JSON.stringify(
-      serializeRequest(options, connection.defaults),
-    );
+    const serialized = serializeRequest(options, connection.defaults);
+    normalizeToolCallIds(serialized.messages);
+    const payload = JSON.stringify(serialized);
     const sessionId = createId("ses", "descending");
     const requestId = createId("msg", "ascending");
     let response: Response;
@@ -403,9 +404,9 @@ export class OpenCodeZenAdapter extends LlmAdapter {
       throw new LlmError("Zen API returned no response body", "EMPTY_RESPONSE");
     }
 
-    const iterator = translate(parseSse(response.body, () => watchdog.pulse()))[
-      Symbol.asyncIterator
-    ]();
+    const iterator = dropEmptyToolCalls(
+      translate(parseSse(response.body, () => watchdog.pulse())),
+    )[Symbol.asyncIterator]();
     let exhausted = false;
     try {
       while (true) {

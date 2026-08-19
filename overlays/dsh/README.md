@@ -74,6 +74,28 @@ API` 的根因：zen 兼容层把 DeepSeek 思考流式输出为
 `/tmp` 内的本地复现脚本验证了 FAIL→PASS（解析出思考块，且下一轮 wire
 消息带 `reasoning_content`）。
 
+## 空工具调用修复（tool_call_id 重复 400）
+
+`Duplicate value for 'tool_call_id' of ''` 的根因：zen 兼容层**偶尔**
+把工具调用流式输出为**空 id / 空 name** 的块（实测约 1/3 会话出现）。
+内核按空 name 执行工具 → `UNKNOWN_TOOL` 失败轮次把
+`tool_call_id: ""` 写进历史；同一历史里出现第二条
+`tool_call_id: ""` 时 Console 报
+`Duplicate value for 'tool_call_id' of '' in message[N]`。
+
+两层修复（都在 `opencode-zen` 插件内，单测
+`opencode-zen/test/drop-empty-tool-calls.test.ts` 覆盖）：
+
+1. `src/tool-call-guard.ts` 的 `dropEmptyToolCalls`：流式解析后丢弃
+   空 id/name 的 tool-call 块，空块不进入内核、不产生失败轮次。
+2. `normalizeToolCallIds`（请求侧兜底）：会话缓存重放的流可以绕过
+   流式过滤，因此每个出网请求体发出前，空 `tool_calls[].id` 与空
+   `tool_call_id` 按历史顺序改写为确定性唯一值
+   `call_recovered_N`——出网请求**永不携带空/重复 tool_call_id**。
+
+端到端验证：ACP 桥真实触发多轮工具调用的 probe 反复运行（含空块触发
+轮次），出网请求体中 `tool_call_id: ""` 恒为 0。
+
 ## TLS 指纹的诚实说明
 
 目标（opencode）是 Bun 运行时 + BoringSSL。dsh 依赖
