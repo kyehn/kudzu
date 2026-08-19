@@ -1,13 +1,18 @@
 {
-	"$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
-	"version": 1,
-	"agents": {
-		"providers": {
-			"dsh": {
-				"extends": "acp",
-				"label": "DeepSeek Harness",
-				"command": ["deepseek-acp"]
-			}
-		}
-	}
+  "$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
+  "version": 1,
+  "agents": {
+    "providers": {
+      "dsh": {
+        "extends": "acp",
+        "label": "DeepSeek Harness",
+        "description": "dsh over ACP — model catalog, plan/execute modes, thinking levels and slash commands auto-discovered from dsh",
+        "command": ["dsh-acp-paseo-launch"],
+        "params": {
+          "supportsMcpServers": false
+        },
+        "enabled": true
+      }
+    }
+  }
 }

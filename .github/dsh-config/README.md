@@ -26,6 +26,17 @@
   `$DSH_HOME/.credentials.yaml`（`chmod 600`，保留已有 key）。
 - 运行 `dsh --profile headless --dump-config` 验证配置（doctor）。
 
+## 集成状态
+
+本工具是 [`.github/reasonix-config`](../reasonix-config/) 的**可选** dsh 移植：
+仓库的默认路径**不使用**它——dsh 插件（`dsh-llm-opencode-zen` /
+`dsh-llm-nvidia-nim`）运行时从 models.dev / zen 动态发现模型，ACP 桥
+（`dsh-acp-paseo`）也会自动向 Paseo 暴露模型目录，因此静态预生成配置
+与默认路径职责重叠。它保留用于需要**离线预写** `$DSH_HOME` 配置的场景
+（等价于原版 reasonix-config 的手工运行方式）。nix 侧静态配置由
+[`overlays/dsh-config.nix`](../../overlays/dsh-config.nix) 提供，并被
+`overlays/dsh` 的 wrapper 消费。
+
 ## 使用
 
 ```sh

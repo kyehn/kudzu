@@ -61,7 +61,7 @@ jobs:
           install -m 0644 .github/AGENTS.md ~/.dsh/AGENTS.md
           npm install --global --yes open-websearch
       - run: |
-          # deepseek-acp 默认走 opencode-zen 免费通道（内置 public 凭据），无需密钥文件；
+          # dsh-acp-paseo-launch 默认走 opencode-zen 免费通道（内置 public 凭据），无需密钥文件；
           # 保留 NVIDIA 凭据供显式切换 nvidia-nim 提供方时使用（dsh-credentials 读 ~/.dsh/.credentials.yaml）。
           umask 077
           printf 'NVIDIA_API_KEY: %s\n' "${{ secrets.NVIDIA_API_KEY }}" > ~/.dsh/.credentials.yaml

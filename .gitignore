@@ -4,3 +4,7 @@ result-*
 .reasonix/
 __pycache__/
 node_modules/
+
+# TypeScript build output of the bundled LLM plugins (built by the nix buildPhase).
+overlays/dsh/opencode-zen/lib/
+overlays/dsh/nvidia-nim/lib/

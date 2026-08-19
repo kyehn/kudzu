@@ -10,7 +10,7 @@ final: prev: {
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
   dsh-config = prev.callPackage ./dsh-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
-  dsh = prev.callPackage ./dsh { };
+  dsh = prev.callPackage ./dsh { dsh-config = final.dsh-config; };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
