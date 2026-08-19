@@ -1,0 +1,20 @@
+# User default layer: one patch file that `dsh` places at `$DSH_HOME/cordis.patch.yml`
+# on first run. It activates both provider plugins and reproduces the
+# reasonix-config execution stance: unrestricted sandbox (danger-full-access)
+# with never-asking approval, plus the zen default model selection.
+- insert:
+    - id: llm-opencode-zen
+      name: '@deepseek-ai/dsh-llm-opencode-zen'
+    - id: llm-nvidia-nim
+      name: '@deepseek-ai/dsh-llm-nvidia-nim'
+- id: agent-default-model
+  config:
+    provider: opencode-zen
+    model: deepseek-v4-flash-free
+- id: sandbox-policy
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.cwd()
+- id: approval
+  config:
+    policy: never

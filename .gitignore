@@ -3,3 +3,4 @@ result
 result-*
 .reasonix/
 __pycache__/
+node_modules/

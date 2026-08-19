@@ -47,48 +47,57 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.reasonix
+            ~/.dsh
           key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
             ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-
       - run: |
           set -euo pipefail
           rm -f "$HOME/.config/nix/nix.conf"
-          mkdir -p "$HOME/.paseo" "$HOME/.reasonix/skills" "$HOME/.reasonix/commands"
-          nix profile add .#openspec .#reasonix
-          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
+          mkdir -p "$HOME/.paseo" "$HOME/.dsh/skills"
+          nix profile add .#openspec .#dsh
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
-          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
+          install -m 0644 .github/AGENTS.md ~/.dsh/AGENTS.md
           npm install --global --yes open-websearch
       - run: |
-          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
-          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
+          # deepseek-acp 默认走 opencode-zen 免费通道（内置 public 凭据），无需密钥文件；
+          # 保留 NVIDIA 凭据供显式切换 nvidia-nim 提供方时使用（dsh-credentials 读 ~/.dsh/.credentials.yaml）。
+          umask 077
+          printf 'NVIDIA_API_KEY: %s\n' "${{ secrets.NVIDIA_API_KEY }}" > ~/.dsh/.credentials.yaml
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - run: |
           set -euo pipefail
-          npx skills@latest add mattpocock/skills --agent reasonix  --global --yes
-          npx skills@latest add addyosmani/agent-skills --agent reasonix --global --yes
-          npx skills@latest add Fission-AI/OpenSpec --agent reasonix --global --yes
-          npx skills@latest add blader/humanizer --agent reasonix --global --yes
-          git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp -r /tmp/compose-skill/skills/compose-expert ~/.reasonix/skills/ && rm -rf /tmp/compose-skill
-          npx skills@latest add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent reasonix --global --yes
-          export PATH="$ANDROID_HOME/platform-tools:$PATH"
-          pushd .github/reasonix-config
-          pip install -e .
-          reasonix-config
-          popd
+          # 技能安装：直接克隆各技能仓库并平铺到 $DSH_HOME/skills（dsh-skill-filesystem 读取目录），零依赖 skills CLI。
+          SKILLS="$HOME/.dsh/skills"
+          mkdir -p "$SKILLS"
+          fetch_and_flatten() { # $1=仓库 URL $2=克隆目录；把每个含 SKILL.md 的目录以目录名平铺复制
+            git clone --depth 1 --single-branch "$1" "/tmp/$2"
+            find "/tmp/$2" -type f -name SKILL.md -exec dirname {} \; | sort -u | while read -r d; do
+              cp -rf "$d" "$SKILLS/$(basename "$d")"
+            done
+          }
+          fetch_and_flatten https://github.com/mattpocock/skills sk-mattpocock
+          fetch_and_flatten https://github.com/addyosmani/agent-skills sk-agent-skills
+          fetch_and_flatten https://github.com/Fission-AI/OpenSpec sk-openspec
+          fetch_and_flatten https://github.com/aldefy/compose-skill sk-compose-skill
+          git clone --depth 1 --single-branch https://github.com/blader/humanizer /tmp/sk-humanizer
+          cp -rf /tmp/sk-humanizer "$SKILLS/humanizer" # 仓库根含 SKILL.md，整体作为 bundle 落位
+          git clone --depth 1 --single-branch https://github.com/Aas-ee/open-webSearch /tmp/sk-websearch
+          cp -rf /tmp/sk-websearch/skills/open-websearch "$SKILLS/open-websearch"
+          rm -rf /tmp/sk-mattpocock /tmp/sk-agent-skills /tmp/sk-openspec /tmp/sk-compose-skill /tmp/sk-humanizer /tmp/sk-websearch
+          # export PATH="$ANDROID_HOME/platform-tools:$PATH"
           paseo onboard --voice disable
           # timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |
           paseo daemon stop
-          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/commands ~/.paseo/paseo.pid ~/.paseo/daemon.log
+          rm -rf ~/.dsh/logs ~/.dsh/sessions ~/.dsh/.credentials.yaml ~/.dsh/AGENTS.md ~/.dsh/skills ~/.dsh/cordis.patch.yml ~/.dsh/profiles ~/.paseo/paseo.pid ~/.paseo/daemon.log
       - if: always()
         uses: actions/cache/save@main
         with:
           path: |
             ~/.paseo
-            ~/.reasonix
+            ~/.dsh
           key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}

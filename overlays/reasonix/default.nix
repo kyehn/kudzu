@@ -5,6 +5,7 @@
   makeBinaryWrapper,
   versionCheckHook,
   writableTmpDirAsHomeHook,
+  ast-grep,
   bash,
   codegraph,
   ripgrep,
@@ -12,22 +13,37 @@
 
 buildGoModule (finalAttrs: {
   pname = "reasonix";
-  version = "1.29.0";
+  version = "1.28.0";
 
   src = fetchFromGitHub {
     owner = "esengine";
     repo = "DeepSeek-Reasonix";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-yEBNU/JYZkG2oSRaN4trLnbnQF5Fl05LCltLBUuRlNA=";
+    hash = "sha256-VycoYesj/WD790lYh/oxUgjC+lrQthdWRXRSC2yerDQ=";
   };
 
-  # Single multi-commit patch (git format-patch from v1.29.0, applied in order):
-  #   1. vendor: opencode wire alignment (UA, TLS, ids)
-  #   2. agent: enforce the configured window; converge must-free folds below it
-  #   3. control/acp: force yolo approval and run unbounded (overlay defaults)
-  #   4. control: keep plan approval and sandbox escape as hard gates under yolo
-  #   5. agent: drop the max-steps budget leftovers and migrate tests to the overlay semantics
-  patches = [ ./reasonix-v1.29.0.patch ];
+  patches = [
+    ./alignment.patch
+    ./413-context-limit-retry.patch
+  ];
+
+  postPatch = ''
+    substituteInPlace internal/acp/service.go \
+      --replace-fail "ctrl.EnableInteractiveApproval()" $'ctrl.EnableInteractiveApproval()\n\tctrl.SetToolApprovalMode(control.ToolApprovalYolo)' \
+      --replace-fail "cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalAsk)" "cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalYolo)" \
+      --replace-fail "toolApprovalMode: control.ToolApprovalAsk," "toolApprovalMode: control.ToolApprovalYolo," \
+      --replace-fail "toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)" "toolApprovalMode := control.ToolApprovalYolo"
+    substituteInPlace internal/control/approval.go \
+      --replace-fail $'\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}\n\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}' $'\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\treturn true\n\t}\n\tif requiresFreshApprovalTool(tool) {\n\t\treturn false\n\t}' \
+      --replace-fail $'if fresh {\n\t\treturn a.sessionGrantAllowsLocked(tool, subject)\n\t}\n\tif requireHuman {' $'if fresh {\n\t\tif a.toolApprovalMode == ToolApprovalYolo {\n\t\t\treturn true\n\t\t}\n\t\treturn a.sessionGrantAllowsLocked(tool, subject)\n\t}\n\tif requireHuman {'
+    ast-grep run \
+      -p 'for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ { $$$BODY }' \
+      -r 'for step := 0; ; step++ { $$$BODY }' \
+      internal/agent/run_loop.go \
+      --update-all
+    substituteInPlace internal/agent/run_loop.go \
+      --replace-fail $'if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {\n\t\ta.armFinalizationRound(ctx, state, landCause{kind: "max_steps", detail: fmt.Sprintf(\n\t\t\t"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)})\n\t}\n' ""
+  '';
 
   vendorHash = "sha256-j3CNUEbNarFKQr+fTyf+2oM2FjOF1WnBMSPJHgcz72E=";
 
@@ -35,6 +51,7 @@ buildGoModule (finalAttrs: {
 
   nativeBuildInputs = [
     makeBinaryWrapper
+    ast-grep
   ];
 
   env.CGO_ENABLED = "0";

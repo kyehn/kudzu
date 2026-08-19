@@ -3,10 +3,10 @@
 	"version": 1,
 	"agents": {
 		"providers": {
-			"reasonix": {
+			"dsh": {
 				"extends": "acp",
-				"label": "Reasonix",
-				"command": ["reasonix", "acp"]
+				"label": "DeepSeek Harness",
+				"command": ["deepseek-acp"]
 			}
 		}
 	}
