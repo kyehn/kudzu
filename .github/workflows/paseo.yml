@@ -16,7 +16,7 @@ on:
           - macos-26
 jobs:
   paseo:
-    timeout-minutes: 329
+    timeout-minutes: 319
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
@@ -48,9 +48,9 @@ jobs:
           path: |
             ~/.paseo
             ~/.reasonix
-          key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+          key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
-            ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-
+            ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-
       - run: |
           set -euo pipefail
           rm -f "$HOME/.config/nix/nix.conf"
@@ -73,13 +73,13 @@ jobs:
           npx skills@latest add blader/humanizer --agent reasonix --global --yes
           git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp -r /tmp/compose-skill/skills/compose-expert ~/.reasonix/skills/ && rm -rf /tmp/compose-skill
           npx skills@latest add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent reasonix --global --yes
-          export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           pushd .github/reasonix-config
           pip install -e .
           reasonix-config
           popd
-          # paseo onboard --voice disable
-          timeout 15s python3 -c 'import os,pty,subprocess,time; m,s=pty.openpty(); p=subprocess.Popen(["paseo","onboard","--voice","disable"], stdin=s, stdout=s, stderr=s, start_new_session=True); os.close(s); time.sleep(2); os.close(m)' >/dev/null 2>&1 </dev/null
+          paseo onboard --voice disable
+          # paseo onboard --voice disable > /dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |
@@ -91,4 +91,4 @@ jobs:
           path: |
             ~/.paseo
             ~/.reasonix
-          key: ${{ github.workflow }}-state-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+          key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}

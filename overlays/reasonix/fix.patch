@@ -1,0 +1,2920 @@
+From 71aca44ceeb742613f560dfaa0c244fde031b44b Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 05:47:25 +0000
+Subject: [PATCH 1/5] vendor: opencode wire alignment (UA, TLS, ids)
+
+Lock the opencode UA across the netclient and openai provider, pass TLS
+options through tls.connect via undici connect top-level, and align the
+opencode simulation contracts with the wire spec (tests included).
+---
+ go.mod                                        |   3 +
+ go.sum                                        |   6 +
+ internal/netclient/netclient.go               |   9 ++
+ internal/netclient/opencode_spec_test.go      |  53 +++++++
+ internal/netclient/opencode_tls.go            | 133 ++++++++++++++++++
+ internal/provider/openai/host.go              |   8 ++
+ internal/provider/openai/openai.go            |  51 ++++++-
+ internal/provider/openai/openai_test.go       |  30 ++++
+ internal/provider/openai/opencode.go          | 111 +++++++++++++++
+ .../openai/opencode_concurrency_test.go       |  36 +++++
+ .../openai/opencode_decompress_test.go        |  72 ++++++++++
+ internal/provider/openai/opencode_id.go       |  76 ++++++++++
+ internal/provider/openai/opencode_id_test.go  |  38 +++++
+ .../provider/openai/opencode_stream_test.go   | 105 ++++++++++++++
+ 14 files changed, 726 insertions(+), 5 deletions(-)
+ create mode 100644 internal/netclient/opencode_spec_test.go
+ create mode 100644 internal/netclient/opencode_tls.go
+ create mode 100644 internal/provider/openai/opencode.go
+ create mode 100644 internal/provider/openai/opencode_concurrency_test.go
+ create mode 100644 internal/provider/openai/opencode_decompress_test.go
+ create mode 100644 internal/provider/openai/opencode_id.go
+ create mode 100644 internal/provider/openai/opencode_id_test.go
+ create mode 100644 internal/provider/openai/opencode_stream_test.go
+
+diff --git a/go.mod b/go.mod
+index 5361f91..d4f225a 100644
+--- a/go.mod
++++ b/go.mod
+@@ -11,6 +11,7 @@ require (
+ 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
+ 	github.com/BurntSushi/toml v1.6.0
+ 	github.com/alecthomas/chroma/v2 v2.27.0
++	github.com/andybalholm/brotli v1.0.6
+ 	github.com/atotto/clipboard v0.1.4
+ 	github.com/aymanbagabas/go-udiff v0.4.1
+ 	github.com/bmatcuk/doublestar/v4 v4.10.0
+@@ -19,9 +20,11 @@ require (
+ 	github.com/godbus/dbus/v5 v5.2.2
+ 	github.com/joho/godotenv v1.5.1
+ 	github.com/kevinburke/ssh_config v1.6.0
++	github.com/klauspost/compress v1.17.4
+ 	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
+ 	github.com/mattn/go-runewidth v0.0.27
+ 	github.com/pkg/sftp v1.13.11
++	github.com/refraction-networking/utls v1.8.2
+ 	github.com/rivo/uniseg v0.4.7
+ 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
+ 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+diff --git a/go.sum b/go.sum
+index c929316..569b0bc 100644
+--- a/go.sum
++++ b/go.sum
+@@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
+ github.com/alecthomas/chroma/v2 v2.27.0/go.mod h1:NjJ3ciIgrqBNeIkWZ4e46nseoLDslxU1LmfCoL+wcY8=
+ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs=
+ github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
++github.com/andybalholm/brotli v1.0.6 h1:Yf9fFpf49Zrxb9NlQaluyE92/+X7UVHlhMNJN2sxfOI=
++github.com/andybalholm/brotli v1.0.6/go.mod h1:fO7iG3H7G2nSZ7m0zPUDn85XEX2GTukHGRSepvi9Eig=
+ github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
+ github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
+ github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=
+@@ -77,6 +79,8 @@ github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRg
+ github.com/kevinburke/ssh_config v1.6.0/go.mod h1:q2RIzfka+BXARoNexmF9gkxEX7DmvbW9P4hIVx2Kg4M=
+ github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
+ github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
++github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
++github.com/klauspost/compress v1.17.4/go.mod h1:/dCuZOvVtNoHsyb+cuJD3itjs3NbnF6KH9zAO4BDxPM=
+ github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
+ github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
+ github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
+@@ -101,6 +105,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
+ github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/refraction-networking/utls v1.8.2 h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEvV+S9iJ2IdQo=
++github.com/refraction-networking/utls v1.8.2/go.mod h1:jkSOEkLqn+S/jtpEHPOsVv/4V4EVnelwbMQl4vCWXAM=
+ github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
+ github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
+ github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
+diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
+index a466fa9..5fbc4bf 100644
+--- a/internal/netclient/netclient.go
++++ b/internal/netclient/netclient.go
+@@ -44,12 +44,15 @@ type ProxySpec struct {
+ // TransportOptions lets callers keep their existing network timeouts while
+ // sharing proxy behavior. ForceIPv4 pins the dialer to tcp4 — the desktop updater
+ // uses it to retry over IPv4 when an IPv6 route (CN → Cloudflare) resets mid-transfer.
++// DialTLSContext overrides the TLS dial (e.g. for a custom ClientHello fingerprint);
++// when set, HTTP/2 is disabled because the connection is no longer a *tls.Conn.
+ type TransportOptions struct {
+ 	DialTimeout           time.Duration
+ 	KeepAlive             time.Duration
+ 	TLSHandshakeTimeout   time.Duration
+ 	ResponseHeaderTimeout time.Duration
+ 	ForceIPv4             bool
++	DialTLSContext        func(ctx context.Context, network, addr string) (net.Conn, error)
+ }
+ 
+ // NormalizeMode maps empty and unknown modes to auto, preserving a fail-open
+@@ -122,6 +125,12 @@ func NewTransport(spec ProxySpec, opts TransportOptions) (*http.Transport, error
+ 	if opts.ResponseHeaderTimeout != 0 {
+ 		tr.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
+ 	}
++	if opts.DialTLSContext != nil {
++		tr.DialTLSContext = opts.DialTLSContext
++		// A custom TLS dialer may return a non-*tls.Conn (utls.UConn), for which
++		// net/http cannot negotiate HTTP/2; pin HTTP/1.1.
++		tr.ForceAttemptHTTP2 = false
++	}
+ 	return tr, nil
+ }
+ 
+diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
+new file mode 100644
+index 0000000..535728e
+--- /dev/null
++++ b/internal/netclient/opencode_spec_test.go
+@@ -0,0 +1,53 @@
++package netclient
++
++import (
++	"testing"
++
++	utls "github.com/refraction-networking/utls"
++)
++
++// TestOpenCodeClientHelloSpecFresh: ApplyPreset writes the generated X25519 key
++// share into the KeyShareExtension it is given. Sharing one spec across
++// connections corrupted every handshake after the first (second ClientHello
++// carried the first connection's stale key material). openCodeClientHelloSpec
++// must therefore return independent copies every call.
++func TestOpenCodeClientHelloSpecFresh(t *testing.T) {
++	a := openCodeClientHelloSpec()
++	b := openCodeClientHelloSpec()
++
++	var ksA, ksB *utls.KeyShareExtension
++	for _, e := range a.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok {
++			ksA = x
++		}
++	}
++	for _, e := range b.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok {
++			ksB = x
++		}
++	}
++	if ksA == nil || ksB == nil {
++		t.Fatal("missing KeyShareExtension in cloned spec")
++	}
++	if ksA == ksB {
++		t.Fatal("KeyShareExtension pointers must not be shared across clones")
++	}
++	if &ksA.KeyShares[0] == &ksB.KeyShares[0] {
++		t.Fatal("KeyShares slice backing arrays must not be shared across clones")
++	}
++
++	// Mutating one clone's key share must not leak into the other or the shared
++	// template (which, once corrupted, breaks the very next connection).
++	ksA.KeyShares[0].Data = []byte{1}
++	if len(ksB.KeyShares[0].Data) != 0 {
++		t.Fatal("key share mutation leaked across clones")
++	}
++	if len(OpenCodeClientHelloSpec.Extensions) == 0 {
++		t.Fatal("shared template must stay intact")
++	}
++	for _, e := range OpenCodeClientHelloSpec.Extensions {
++		if x, ok := e.(*utls.KeyShareExtension); ok && len(x.KeyShares[0].Data) != 0 {
++			t.Fatal("key share mutation leaked into shared OpenCodeClientHelloSpec template")
++		}
++	}
++}
+diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
+new file mode 100644
+index 0000000..7d91d96
+--- /dev/null
++++ b/internal/netclient/opencode_tls.go
+@@ -0,0 +1,133 @@
++package netclient
++
++import (
++	"context"
++	"net"
++	"time"
++
++	utls "github.com/refraction-networking/utls"
++)
++
++// OpenCodeClientHelloSpec reproduces the TLS ClientHello emitted by the opencode
++// CLI (Bun/BoringSSL) captured against opencode.ai/zen/v1:
++//
++//	JA3  : 7a2901f41c5282e5fbacb8cb667f626f
++//	JA4  : i11ss_08687474702f_002f,0035,00_0c0005,000a,00
++//
++// The extension order matches BoringSSL's fixed layout (server_name first —
++// omitted for IP literals, exactly like the capture against 127.0.0.1) with no
++// GREASE values, ALPN limited to http/1.1, and X25519-only key share.
++// OpenCodeClientHelloSpec is the template for the opencode ClientHello. It is
++// mutable: ApplyPreset fills in the generated X25519 key share, so a fresh copy
++// (openCodeClientHelloSpec) must be used for every connection instead of this
++// shared value, or the second handshake reuses stale key material.
++var OpenCodeClientHelloSpec = utls.ClientHelloSpec{
++	CipherSuites: []uint16{
++		utls.TLS_AES_128_GCM_SHA256,                        // 0x1301
++		utls.TLS_AES_256_GCM_SHA384,                        // 0x1302
++		utls.TLS_CHACHA20_POLY1305_SHA256,                  // 0x1303
++		utls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,       // 0xc02b
++		utls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,         // 0xc02f
++		utls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,       // 0xc02c
++		utls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,         // 0xc030
++		utls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, // 0xcca9
++		utls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,   // 0xcca8
++		utls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,          // 0xc009
++		utls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,            // 0xc013
++		utls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,          // 0xc00a
++		utls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,            // 0xc014
++		utls.TLS_RSA_WITH_AES_128_GCM_SHA256,               // 0x009c
++		utls.TLS_RSA_WITH_AES_256_GCM_SHA384,               // 0x009d
++		utls.TLS_RSA_WITH_AES_128_CBC_SHA,                  // 0x002f
++		utls.TLS_RSA_WITH_AES_256_CBC_SHA,                  // 0x0035
++	},
++	CompressionMethods: []uint8{0},
++	Extensions: []utls.TLSExtension{
++		&utls.SNIExtension{}, // ServerName filled from config; empty for IP literals
++		&utls.ExtendedMasterSecretExtension{},
++		&utls.RenegotiationInfoExtension{Renegotiation: utls.RenegotiateOnceAsClient},
++		&utls.SupportedCurvesExtension{Curves: []utls.CurveID{utls.CurveX25519, utls.CurveP256, utls.CurveP384}},
++		&utls.SupportedPointsExtension{SupportedPoints: []uint8{0}},
++		&utls.SessionTicketExtension{},
++		&utls.ALPNExtension{AlpnProtocols: []string{"http/1.1"}},
++		&utls.StatusRequestExtension{},
++		&utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []utls.SignatureScheme{
++			utls.ECDSAWithP256AndSHA256, // 0x0403
++			utls.PSSWithSHA256,          // 0x0804
++			utls.PKCS1WithSHA256,        // 0x0401
++			utls.ECDSAWithP384AndSHA384, // 0x0503
++			utls.PSSWithSHA384,          // 0x0805
++			utls.PKCS1WithSHA384,        // 0x0501
++			utls.PSSWithSHA512,          // 0x0806
++			utls.PKCS1WithSHA512,        // 0x0601
++			utls.PKCS1WithSHA1,          // 0x0201
++		}},
++		&utls.SCTExtension{},
++		&utls.KeyShareExtension{KeyShares: []utls.KeyShare{{Group: utls.CurveX25519}}},
++		&utls.PSKKeyExchangeModesExtension{Modes: []uint8{1}}, // pskModeDHE
++		&utls.SupportedVersionsExtension{Versions: []uint16{utls.VersionTLS13, utls.VersionTLS12}},
++	},
++	TLSVersMin: utls.VersionTLS12,
++	TLSVersMax: utls.VersionTLS13,
++}
++
++// openCodeClientHelloSpec returns a fresh copy of OpenCodeClientHelloSpec.
++// ApplyPreset stores the generated X25519 key share into the spec's
++// KeyShareExtension, so every dial needs its own copy; reusing the shared
++// template corrupts the key material of every subsequent handshake.
++func openCodeClientHelloSpec() *utls.ClientHelloSpec {
++	spec := OpenCodeClientHelloSpec
++	spec.CipherSuites = append([]uint16(nil), OpenCodeClientHelloSpec.CipherSuites...)
++	spec.CompressionMethods = append([]uint8(nil), OpenCodeClientHelloSpec.CompressionMethods...)
++	spec.Extensions = make([]utls.TLSExtension, len(OpenCodeClientHelloSpec.Extensions))
++	for i, ext := range OpenCodeClientHelloSpec.Extensions {
++		switch e := ext.(type) {
++		case *utls.KeyShareExtension:
++			ks := *e
++			ks.KeyShares = append([]utls.KeyShare(nil), e.KeyShares...)
++			spec.Extensions[i] = &ks
++		default:
++			spec.Extensions[i] = ext
++		}
++	}
++	return &spec
++}
++
++// OpenCodeDialTLS returns a DialTLSContext hook that handshakes with the
++// opencode ClientHello spec. It is used by the openai provider when it detects
++// an opencode endpoint, so the transport speaks the exact BoringSSL shape the
++// real CLI presents instead of Go's default ClientHello.
++func OpenCodeDialTLS(dialTimeout, keepAlive, handshakeTimeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
++	d := &net.Dialer{Timeout: dialTimeout, KeepAlive: keepAlive}
++	return func(ctx context.Context, network, addr string) (net.Conn, error) {
++		raw, err := d.DialContext(ctx, network, addr)
++		if err != nil {
++			return nil, err
++		}
++		host, _, err := net.SplitHostPort(addr)
++		if err != nil {
++			host = addr
++		}
++		tlsCfg := &utls.Config{
++			ServerName: host,
++			NextProtos: []string{"http/1.1"},
++		}
++		uconn := utls.UClient(raw, tlsCfg, utls.HelloCustom)
++		if err := uconn.ApplyPreset(openCodeClientHelloSpec()); err != nil {
++			raw.Close()
++			return nil, err
++		}
++		handshakeCtx := ctx
++		cancel := func() {}
++		if handshakeTimeout > 0 {
++			handshakeCtx, cancel = context.WithTimeout(ctx, handshakeTimeout)
++		}
++		err = uconn.HandshakeContext(handshakeCtx)
++		cancel()
++		if err != nil {
++			raw.Close()
++			return nil, err
++		}
++		return uconn, nil
++	}
++}
+diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
+index ec7eb1e..bb677c3 100644
+--- a/internal/provider/openai/host.go
++++ b/internal/provider/openai/host.go
+@@ -48,6 +48,14 @@ func IsOpenAI(baseURL string) bool {
+ 	return strings.EqualFold(u.Hostname(), "api.openai.com")
+ }
+ 
++// IsOpenCode reports whether a provider speaks the opencode Zen wire shape.
++// The generated config always names the provider "opencode-zen" (and keeps that
++// name even when a local capture proxy rewrites base_url to an IP), so the name
++// alone is a reliable, option-free signal.
++func IsOpenCode(name, baseURL string) bool {
++	return strings.EqualFold(strings.TrimSpace(name), "opencode-zen")
++}
++
+ // deepSeekPrefixChatURL returns the official Beta chat endpoint that enables
+ // assistant-prefix completion. Derive it only from a URL already hosted by
+ // DeepSeek: custom gateways may opt into the DeepSeek reasoning wire shape, but
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index 938cff8..31ef2c3 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -225,10 +225,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 	// max_output_tokens=0 on official DeepSeek omits the wire field so the
+ 	// server uses its 384K ceiling. Effort only selects thinking depth.
+ 	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
+-	httpClient, err := newHTTPClient(cfg)
++	opencode := IsOpenCode(name, cfg.BaseURL)
++	httpClient, err := newHTTPClient(cfg, opencode)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("openai: network: %w", err)
+ 	}
++	opencodeSession := ""
++	if opencode {
++		opencodeSession = opencodeCreate("ses", true)
++	}
+ 	return &client{
+ 		name:            name,
+ 		apiKey:          cfg.APIKey,
+@@ -254,17 +259,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 		requestEfforts:  requestEfforts,
+ 		http:            httpClient,
+ 		idleTimeout:     defaultStreamIdleTimeout,
++		opencode:        opencode,
++		opencodeSession: opencodeSession,
+ 	}, nil
+ }
+ 
+-func newHTTPClient(cfg provider.Config) (*http.Client, error) {
++func newHTTPClient(cfg provider.Config, opencode bool) (*http.Client, error) {
+ 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
+-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
++	opts := netclient.TransportOptions{
+ 		DialTimeout:           30 * time.Second,
+ 		KeepAlive:             30 * time.Second,
+ 		TLSHandshakeTimeout:   15 * time.Second,
+ 		ResponseHeaderTimeout: 300 * time.Second, // unified provider response-header idle guard
+-	})
++	}
++	if opencode {
++		// Reproduce the opencode CLI's BoringSSL ClientHello (JA3/JA4) so the
++		// endpoint sees the same TLS fingerprint as the real client.
++		opts.DialTLSContext = netclient.OpenCodeDialTLS(
++			opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
++	}
++	return netclient.NewHTTPClient(spec, opts)
+ }
+ 
+ type client struct {
+@@ -293,6 +307,8 @@ type client struct {
+ 	requestEfforts  []string      // depth levels a per-request EffortOverride may take; empty = overrides ignored
+ 	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
+ 	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
++	opencode        bool          // opencode Zen provider — match the CLI's TLS fingerprint, headers, and body
++	opencodeSession string        // fixed descending ses_ ID stamped on every request (x-opencode-session)
+ }
+ 
+ func (c *client) Name() string { return c.name }
+@@ -301,7 +317,7 @@ func (c *client) RequiresToolCallReasoning() bool {
+ 	if c == nil || c.thinkingType == "disabled" {
+ 		return false
+ 	}
+-	if c.deepseek {
++	if c.deepseek || c.opencode {
+ 		return true
+ 	}
+ 	// Generic OpenAI-compatible gateways can explicitly opt into the
+@@ -494,6 +510,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+ 		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
+ 		httpReq.Header.Set("Accept", "text/event-stream")
+ 		applyCustomHeaders(httpReq.Header, c.headers)
++		c.applyOpenCodeHeaders(httpReq.Header)
+ 		return httpReq, nil
+ 	}
+ 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
+@@ -859,6 +876,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// is left untouched for backends that also honour it.
+ 		out.Thinking = &thinkingMode{Type: c.thinkingType}
+ 	}
++	if c.opencode {
++		// The opencode CLI sends a fixed wire shape regardless of reasoning
++		// config: no temperature, no reasoning_effort/thinking, and
++		// tool_choice: "auto" whenever tools are present.
++		out.Opencode = true
++		out.Temperature = nil
++		out.ReasoningEffort = ""
++		out.Thinking = nil
++		if len(tools) > 0 {
++			out.ToolChoice = "auto"
++		}
++	}
+ 	return out
+ }
+ 
+@@ -880,6 +909,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
+ 	defer resp.Body.Close()
+ 
++	body, err := decompressBody(resp)
++	if err != nil {
++		return false, fmt.Errorf("%s: decode response body: %w", c.name, err)
++	}
++	defer body.Close()
++	resp.Body = body
++
+ 	// Close the response body when the context is canceled (user interrupt) or the
+ 	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
+ 	// hanging on a half-open connection. done lets the watchdog exit on a normal
+@@ -1169,6 +1205,8 @@ type chatRequest struct {
+ 	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
+ 	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
+ 	Thinking            *thinkingMode  `json:"thinking,omitempty"`
++	ToolChoice          string         `json:"tool_choice,omitempty"`
++	Opencode            bool           `json:"-"`
+ 	ExtraBody           map[string]any `json:"-"`
+ }
+ 
+@@ -1193,6 +1231,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
+ }
+ 
+ func (r chatRequest) MarshalJSON() ([]byte, error) {
++	if r.Opencode {
++		return marshalOpenCodeRequest(r)
++	}
+ 	type wire chatRequest
+ 	baseReq := wire(r)
+ 	baseReq.ExtraBody = nil
+diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
+index 7d0732f..5446011 100644
+--- a/internal/provider/openai/openai_test.go
++++ b/internal/provider/openai/openai_test.go
+@@ -1045,6 +1045,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
+ 	}
+ }
+ 
++// opencode-zen relays to DeepSeek thinking models whose Console backend 400s an
++// assistant tool_calls turn whose reasoning_content was dropped, so it must be
++// round-tripped just like the DeepSeek protocol.
++func TestBuildRequestRoundTripsReasoningOnOpenCodeToolCalls(t *testing.T) {
++	msgs := []provider.Message{
++		{Role: provider.RoleUser, Content: "count the go files"},
++		{
++			Role:             provider.RoleAssistant,
++			ReasoningContent: "CHAIN-OF-THOUGHT",
++			ToolCalls:        []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{"command":"ls"}`}},
++		},
++		{Role: provider.RoleTool, Content: "14", ToolCallID: "c1", Name: "bash"},
++	}
++	opencode, _ := json.Marshal((&client{model: "deepseek-v4-flash-free", opencode: true}).buildRequest(provider.Request{Messages: msgs}).Messages)
++	if !strings.Contains(string(opencode), "reasoning_content") || !strings.Contains(string(opencode), "CHAIN-OF-THOUGHT") {
++		t.Errorf("opencode tool_calls turn must round-trip reasoning_content: %s", opencode)
++	}
++
++	// With thinking left on, the key must be present (empty allowed) even when
++	// upstream lost the reasoning text — the backend rejects its absence.
++	lost, _ := json.Marshal((&client{model: "deepseek-v4-flash-free", opencode: true}).buildRequest(provider.Request{Messages: []provider.Message{
++		{Role: provider.RoleUser, Content: "run the tool"},
++		{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: `{"command":"ls"}`}}},
++		{Role: provider.RoleTool, Content: "14", ToolCallID: "c1", Name: "bash"},
++	}}).Messages)
++	if !strings.Contains(string(lost), "reasoning_content") {
++		t.Errorf("opencode tool_calls turn must carry the reasoning_content key when reasoning was lost: %s", lost)
++	}
++}
++
+ func TestBuildRequestForwardsReasoningEffort(t *testing.T) {
+ 	c := &client{model: "mimo-v2", effort: "high"}
+ 	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
+diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
+new file mode 100644
+index 0000000..b2cde1c
+--- /dev/null
++++ b/internal/provider/openai/opencode.go
+@@ -0,0 +1,111 @@
++package openai
++
++import (
++	"compress/flate"
++	"compress/gzip"
++	"encoding/json"
++	"io"
++	"maps"
++	"net/http"
++	"strings"
++
++	"github.com/andybalholm/brotli"
++	"github.com/klauspost/compress/zstd"
++)
++
++// Wire constants captured from the real opencode CLI (v1.18.18) so a reasonix
++// request against an opencode Zen endpoint is indistinguishable from the CLI's.
++const (
++	opencodeUserAgent      = "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++	opencodeAcceptEncoding = "gzip, deflate, br, zstd"
++)
++
++// applyOpenCodeHeaders stamps the opencode-specific headers onto a request.
++// The x-opencode-* keys are written lowercase (like the real CLI) via direct
++// map assignment; Go writes header map keys verbatim, preserving the casing.
++// Session IDs are fixed per client instance; request IDs are generated fresh
++// per HTTP request.
++func (c *client) applyOpenCodeHeaders(h http.Header) {
++	if !c.opencode {
++		return
++	}
++	// Drop canonical-cased copies a config may have supplied so the lowercase
++	// keys below are the only ones that reach the wire.
++	h.Del("User-Agent")
++	h.Del("X-Opencode-Client")
++	h.Del("X-Opencode-Session")
++	h.Del("X-Opencode-Request")
++	h.Del("X-Opencode-Project")
++	h.Set("Accept", "*/*")
++	h.Set("User-Agent", opencodeUserAgent)
++	h.Set("Accept-Encoding", opencodeAcceptEncoding)
++	h["x-opencode-client"] = []string{"cli"}
++	h["x-opencode-project"] = []string{"global"}
++	h["x-opencode-request"] = []string{opencodeCreate("msg", false)}
++	h["x-opencode-session"] = []string{c.opencodeSession}
++}
++
++// openCodeRequest emits the opencode body key order exactly as the CLI sends it:
++// model, max_tokens, messages, tools, tool_choice, stream, stream_options.
++type openCodeRequest struct {
++	Model         string         `json:"model"`
++	MaxTokens     int            `json:"max_tokens,omitempty"`
++	Messages      []chatMessage  `json:"messages"`
++	Tools         []chatTool     `json:"tools,omitempty"`
++	ToolChoice    string         `json:"tool_choice,omitempty"`
++	Stream        bool           `json:"stream"`
++	StreamOptions *streamOptions `json:"stream_options,omitempty"`
++	ExtraBody     map[string]any `json:"-"`
++}
++
++func marshalOpenCodeRequest(r chatRequest) ([]byte, error) {
++	wire := openCodeRequest{
++		Model:         r.Model,
++		MaxTokens:     r.MaxTokens,
++		Messages:      r.Messages,
++		Tools:         r.Tools,
++		ToolChoice:    r.ToolChoice,
++		Stream:        r.Stream,
++		StreamOptions: r.StreamOptions,
++		ExtraBody:     r.ExtraBody,
++	}
++	raw, err := json.Marshal(wire)
++	if err != nil {
++		return nil, err
++	}
++	if len(wire.ExtraBody) == 0 {
++		return raw, nil
++	}
++	var body map[string]any
++	if err := json.Unmarshal(raw, &body); err != nil {
++		return nil, err
++	}
++	maps.Copy(body, cleanExtraBody(wire.ExtraBody))
++	return json.Marshal(body)
++}
++
++// decompressBody unwraps the response body according to Content-Encoding.
++// The opencode header Accept-Encoding: gzip, deflate, br, zstd disables Go's
++// transparent gzip handling, so the SSE parser must decode manually.
++func decompressBody(resp *http.Response) (io.ReadCloser, error) {
++	switch strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))) {
++	case "gzip":
++		zr, err := gzip.NewReader(resp.Body)
++		if err != nil {
++			return nil, err
++		}
++		return zr, nil
++	case "deflate":
++		return flate.NewReader(resp.Body), nil
++	case "br":
++		return io.NopCloser(brotli.NewReader(resp.Body)), nil
++	case "zstd":
++		zr, err := zstd.NewReader(resp.Body)
++		if err != nil {
++			return nil, err
++		}
++		return zr.IOReadCloser(), nil
++	default:
++		return resp.Body, nil
++	}
++}
+diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
+new file mode 100644
+index 0000000..a0d9f1d
+--- /dev/null
++++ b/internal/provider/openai/opencode_concurrency_test.go
+@@ -0,0 +1,36 @@
++package openai
++
++import (
++	"fmt"
++	"sync"
++	"testing"
++)
++
++func TestOpencodeCreateConcurrentUnique(t *testing.T) {
++	var wg sync.WaitGroup
++	seen := sync.Map{}
++	dups := make(chan string, 16)
++	for g := 0; g < 16; g++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for i := 0; i < 1000; i++ {
++				id := opencodeCreate("msg", false)
++				if _, loaded := seen.LoadOrStore(id, true); loaded {
++					select {
++					case dups <- id:
++					default:
++					}
++				}
++			}
++		}()
++	}
++	wg.Wait()
++	close(dups)
++	n := 0
++	for d := range dups {
++		t.Errorf("duplicate id %q", d)
++		n++
++	}
++	fmt.Printf("concurrent unique check: 16000 ids, %d duplicates\n", n)
++}
+diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
+new file mode 100644
+index 0000000..eca549e
+--- /dev/null
++++ b/internal/provider/openai/opencode_decompress_test.go
+@@ -0,0 +1,72 @@
++package openai
++
++import (
++	"bytes"
++	"compress/flate"
++	"compress/gzip"
++	"io"
++	"net/http"
++	"testing"
++
++	"github.com/andybalholm/brotli"
++	"github.com/klauspost/compress/zstd"
++)
++
++func TestDecompressBodyAllCodecs(t *testing.T) {
++	orig := "stream data: hello world\n" + `{"id":"x","object":"chat.completion.chunk"}`
++
++	cases := []struct {
++		name   string
++		enc    string
++		encode func() []byte
++	}{
++		{"identity", "", func() []byte { return []byte(orig) }},
++		{"gzip", "gzip", func() []byte {
++			var b bytes.Buffer
++			w := gzip.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"br", "br", func() []byte {
++			var b bytes.Buffer
++			w := brotli.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"zstd", "zstd", func() []byte {
++			var b bytes.Buffer
++			w, _ := zstd.NewWriter(&b)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++		{"raw-deflate", "deflate", func() []byte {
++			var b bytes.Buffer
++			w, _ := flate.NewWriter(&b, flate.DefaultCompression)
++			w.Write([]byte(orig))
++			w.Close()
++			return b.Bytes()
++		}},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			resp := &http.Response{Header: http.Header{}}
++			resp.Header.Set("Content-Encoding", tc.enc)
++			resp.Body = io.NopCloser(bytes.NewReader(tc.encode()))
++			rd, err := decompressBody(resp)
++			if err != nil {
++				t.Fatalf("decompressBody: %v", err)
++			}
++			got, err := io.ReadAll(rd)
++			rd.Close()
++			if err != nil {
++				t.Fatalf("read: %v", err)
++			}
++			if string(got) != orig {
++				t.Fatalf("mismatch:\n got  %q\n want %q", got, orig)
++			}
++		})
++	}
++}
+diff --git a/internal/provider/openai/opencode_id.go b/internal/provider/openai/opencode_id.go
+new file mode 100644
+index 0000000..a611047
+--- /dev/null
++++ b/internal/provider/openai/opencode_id.go
+@@ -0,0 +1,76 @@
++package openai
++
++import (
++	"crypto/rand"
++	"encoding/hex"
++	"sync"
++	"time"
++)
++
++// Port of opencode's ID generator (packages/opencode/src/id/id.ts).
++//
++//   - session IDs use the descending encoding (time+counter bitwise-NOT) so they
++//     sort newest-first;
++//   - message IDs use the ascending encoding (bare time+counter).
++//
++// The 48-bit time component wraps every 2^36 ms (~2.2 years); decoding it for
++// assertions must account for that, exactly like opencode's own timestamp().
++const (
++	opencodeIDLength    = 26
++	opencodeIDTimeBytes = 6
++)
++
++const opencodeIDChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
++
++var (
++	opencodeIDMu      sync.Mutex
++	opencodeIDLastMS  int64
++	opencodeIDCounter uint64
++)
++
++// opencodeCreate mirrors id.ts create(): a monotonic per-millisecond counter is
++// folded into a 48-bit time+counter value, optionally descending (bitwise-NOT),
++// hex-encoded to 6 bytes, and padded with random base62 to a 26-char total.
++func opencodeCreate(prefix string, descending bool) string {
++	ms := time.Now().UnixMilli()
++
++	opencodeIDMu.Lock()
++	if ms != opencodeIDLastMS {
++		opencodeIDLastMS = ms
++		opencodeIDCounter = 0
++	}
++	opencodeIDCounter++
++	counter := opencodeIDCounter
++	opencodeIDMu.Unlock()
++
++	v := uint64(ms)*0x1000 + counter
++	if descending {
++		v = ^v
++	}
++	v &= 0xFFFF_FFFF_FFFF
++
++	timeBytes := [opencodeIDTimeBytes]byte{
++		byte(v >> 40),
++		byte(v >> 32),
++		byte(v >> 24),
++		byte(v >> 16),
++		byte(v >> 8),
++		byte(v),
++	}
++	hexPart := make([]byte, 12)
++	hex.Encode(hexPart, timeBytes[:])
++
++	return prefix + "_" + string(hexPart) + opencodeRandomBase62(opencodeIDLength-12)
++}
++
++func opencodeRandomBase62(n int) string {
++	buf := make([]byte, n)
++	if _, err := rand.Read(buf); err != nil {
++		panic("opencode: crypto/rand failed: " + err.Error())
++	}
++	out := make([]byte, n)
++	for i, b := range buf {
++		out[i] = opencodeIDChars[b%62]
++	}
++	return string(out)
++}
+diff --git a/internal/provider/openai/opencode_id_test.go b/internal/provider/openai/opencode_id_test.go
+new file mode 100644
+index 0000000..d7ac21d
+--- /dev/null
++++ b/internal/provider/openai/opencode_id_test.go
+@@ -0,0 +1,38 @@
++package openai
++
++import (
++	"regexp"
++	"testing"
++)
++
++func TestOpencodeIDFormat(t *testing.T) {
++	sesRe := regexp.MustCompile(`^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
++	msgRe := regexp.MustCompile(`^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`)
++	for i := 0; i < 200; i++ {
++		ses := opencodeCreate("ses", true)
++		msg := opencodeCreate("msg", false)
++		if !sesRe.MatchString(ses) {
++			t.Fatalf("bad session id %q", ses)
++		}
++		if !msgRe.MatchString(msg) {
++			t.Fatalf("bad message id %q", msg)
++		}
++	}
++}
++
++func TestOpencodeIDsMonotonic(t *testing.T) {
++	var lastSes string
++	for i := 0; i < 100; i++ {
++		ses := opencodeCreate("ses", true)
++		msg := opencodeCreate("msg", false)
++		if lastSes == "" {
++			lastSes = ses
++			continue
++		}
++		if ses == lastSes {
++			t.Fatalf("duplicate session id %q", ses)
++		}
++		lastSes = ses
++		_ = msg
++	}
++}
+diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
+new file mode 100644
+index 0000000..7ab2789
+--- /dev/null
++++ b/internal/provider/openai/opencode_stream_test.go
+@@ -0,0 +1,105 @@
++package openai
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++// TestOpencodeStreamLocal exercises the full opencode wire path against a local
++// mock: request headers/body shape stamped by applyOpenCodeHeaders +
++// marshalOpenCodeRequest, and readStream parsing of an SSE stream using CRLF
++// line endings and multi-byte UTF-8 across a tool-call argument boundary.
++func TestOpencodeStreamLocal(t *testing.T) {
++	var gotReq *http.Request
++	var gotBody []byte
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		gotReq = r
++		gotBody, _ = io.ReadAll(r.Body)
++		w.Header().Set("Content-Type", "text/event-stream")
++		// CRLF delimited, UTF-8 multi-byte split across tool-call arg deltas
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"{\\\"command\\\":\\\"echo 中文\\\"\"}}]}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]}}]}\r\n\r\n")
++		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"完成\"}}]}\r\n\r\n")
++		io.WriteString(w, "data: [DONE]\r\n\r\n")
++	}))
++	defer srv.Close()
++
++	p, err := New(provider.Config{Name: "opencode-zen", BaseURL: srv.URL, Model: "mimo-v2.5-free", APIKey: "public"})
++	if err != nil {
++		t.Fatalf("New: %v", err)
++	}
++
++	ch, err := p.Stream(context.Background(), provider.Request{
++		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
++	})
++	if err != nil {
++		t.Fatalf("Stream: %v", err)
++	}
++	var text strings.Builder
++	var tool *provider.ToolCall
++	for c := range ch {
++		switch c.Type {
++		case provider.ChunkError:
++			t.Fatalf("stream error: %v", c.Err)
++		case provider.ChunkText:
++			text.WriteString(c.Text)
++		case provider.ChunkToolCallStart, provider.ChunkToolCallArgsDelta:
++			if tool == nil || c.ToolCall.Name != "" {
++				tool = c.ToolCall
++			}
++		case provider.ChunkToolCall:
++			tool = c.ToolCall
++		}
++	}
++
++	// Request wire shape
++	if gotReq == nil {
++		t.Fatal("server saw no request")
++	}
++	if got := gotReq.Header.Get("User-Agent"); got != opencodeUserAgent {
++		t.Errorf("User-Agent = %q", got)
++	}
++	if got := gotReq.Header.Get("Accept-Encoding"); got != "gzip, deflate, br, zstd" {
++		t.Errorf("Accept-Encoding = %q", got)
++	}
++	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-request", "x-opencode-session"} {
++		if got := gotReq.Header.Get(k); got == "" {
++			t.Errorf("missing header %s", k)
++		}
++	}
++	var wire struct {
++		Keys []string
++	}
++	var top map[string]any
++	if err := json.Unmarshal(gotBody, &top); err != nil {
++		t.Fatalf("body: %v", err)
++	}
++	var order []string
++	for k := range top {
++		order = append(order, k)
++	}
++	_ = wire
++	if len(top) == 0 {
++		t.Error("empty body")
++	}
++	fmt.Printf("  body keys: %v\n", order)
++
++	// Stream output
++	if text.String() != "完成" {
++		t.Errorf("text = %q, want 完成", text.String())
++	}
++	if tool == nil || tool.Name != "bash" || tool.Arguments != `{"command":"echo 中文"}` {
++		t.Errorf("tool = %+v, want bash with UTF-8 args", tool)
++	} else {
++		fmt.Printf("  tool parsed OK: %s %s\n", tool.Name, tool.Arguments)
++	}
++}
+-- 
+2.54.0
+
+
+From 3485cf0949f14e53f6a744098abf4ccc09cf3e5e Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 05:56:40 +0000
+Subject: [PATCH 2/5] agent: enforce the configured window; converge must-free
+ folds below it
+
+The gateway can prove more headroom than a conservative configured window
+(e.g. 1048576 reported vs 200000 configured), but the user's setting is the
+hard ceiling every request must obey. effectiveContextWindow therefore clamps
+the learned window to the config again: an observed window only ever shrinks
+consumers, never widens them, so the provider-visible context can never
+exceed the configured window.
+
+The previous patch made the learned window authoritative, which only worked
+after a real 413 overflow had taught it. Preflight already keeps requests
+inside the configured window, so the gateway never rejects one, the learned
+window never appears, and a session that dwarfs the config deadlocked with
+'context is above the maintenance threshold but no foldable region remains':
+the fold candidate (digest + retained tail) was always still at or above the
+configured physical ceiling, so acceptCheckpointCandidate rejected every
+projection.
+
+Fix the deadlock without widening the window:
+- foldContext iterates must-free folds (session at/above the hard ceiling)
+  until the projection converges below the ceiling; each accepted checkpoint
+  strictly shrinks the view, so the loop terminates.
+- acceptCheckpointCandidate takes mustFree: an intermediate projection may sit
+  above the ceiling as long as it shrinks (foldContext keeps folding it down);
+  non-forced maintenance still demands one-shot headroom below the ceiling.
+- A fold only counts as success when it lands below the hard ceiling for any
+  must-free session; pressure convergence below the fold trigger still counts
+  when the view is already safely inside the window.
+
+Also parse the OpenAI-compatible 'input (N tokens) is longer than the model's
+context length (M tokens)' overflow and keep the summary request admitted
+without clipping its fixed output budget.
+
+Regression tests cover the real-world deadlock with no learned window at all,
+the clamped window semantics, and reconciliation with the upstream no-fold
+region rule.
+---
+ internal/agent/compact.go                     |   2 +-
+ internal/agent/compact_projection.go          |  12 +-
+ internal/agent/compact_threshold_test.go      |  25 ++-
+ internal/agent/context_manager.go             |  29 ++-
+ internal/agent/context_recovery.go            |   2 +-
+ .../agent/context_summary_admission_test.go   | 186 ++++++++++++++++++
+ internal/agent/output_budget.go               |  64 +++++-
+ internal/provider/context_limit.go            |  12 ++
+ internal/provider/context_limit_test.go       |  19 ++
+ 9 files changed, 328 insertions(+), 23 deletions(-)
+ create mode 100644 internal/agent/context_summary_admission_test.go
+
+diff --git a/internal/agent/compact.go b/internal/agent/compact.go
+index 6a19406..f1cb7a5 100644
+--- a/internal/agent/compact.go
++++ b/internal/agent/compact.go
+@@ -400,7 +400,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
+ 	}()
+ 	defer trackPublishedHostStream(ctx, cancel)()
+ 	req := a.summaryRequest(region, instructions)
+-	if err := a.applyAdmissionToRequest(&req); err != nil {
++	if err := a.applyAdmissionToSummaryRequest(&req); err != nil {
+ 		return "", usage, err
+ 	}
+ 	if req.MaxTokens > summaryOutputMaxTokens {
+diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
+index 8117c0d..b4eaa40 100644
+--- a/internal/agent/compact_projection.go
++++ b/internal/agent/compact_projection.go
+@@ -498,7 +498,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+ 	tele.ProjectionTokens = projTokens
+ 	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
+ 	a.emitCompactionTelemetry(tele)
+-	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens); err != nil {
++	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens, mustFree); err != nil {
+ 		a.emitCompactionAborted(trigger)
+ 		return CompactionNoop, err
+ 	}
+@@ -556,13 +556,17 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
+ }
+ 
+ // acceptCheckpointCandidate requires real savings and, for automatic
+-// maintenance, a result below the physical input ceiling.
+-func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidateTokens int) error {
++// maintenance, a result below the physical input ceiling. A must-free fold
++// (physical overflow) is exempt from the one-shot ceiling: the session may
++// legitimately dwarf the configured window, and foldContext iterates the
++// accepted intermediate projection down below the ceiling, so the first
++// checkpoint only has to shrink the view.
++func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidateTokens int, mustFree bool) error {
+ 	if candidateTokens >= sourceTokens {
+ 		return fmt.Errorf("%w: candidate would not reduce tokens (%d >= %d)", errCheckpointRejected, candidateTokens, sourceTokens)
+ 	}
+ 	hard := a.hardInputCeiling()
+-	if trigger != CompactionTriggerManual && hard > 0 && candidateTokens >= hard {
++	if !mustFree && trigger != CompactionTriggerManual && hard > 0 && candidateTokens >= hard {
+ 		return fmt.Errorf("%w: candidate %d still at or above physical ceiling %d", errCheckpointRejected, candidateTokens, hard)
+ 	}
+ 	return nil
+diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
+index db96148..145210b 100644
+--- a/internal/agent/compact_threshold_test.go
++++ b/internal/agent/compact_threshold_test.go
+@@ -74,24 +74,39 @@ func TestExplicitLegacyCompactRatioStillApplies(t *testing.T) {
+ func TestAcceptCheckpointCandidateRules(t *testing.T) {
+ 	a := &Agent{agentConfig: agentConfig{contextWindow: 1_000_000, compactRatio: 0.85}}
+ 	// 20% candidate under normal path: accept.
+-	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 850_000, 180_000); err != nil {
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 850_000, 180_000, false); err != nil {
+ 		t.Fatalf("20%% candidate: %v", err)
+ 	}
+ 	// Any strictly smaller candidate below the physical ceiling is accepted;
+ 	// pressure convergence may summarize it once more.
+-	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 850_000, 510_000); err != nil {
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 850_000, 510_000, false); err != nil {
+ 		t.Fatalf("51%% reducing candidate: %v", err)
+ 	}
+ 	// Large candidates remain valid while they shrink and stay below hard.
+-	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 900_000, 600_000); err != nil {
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 900_000, 600_000, false); err != nil {
+ 		t.Fatalf("large reducing candidate: %v", err)
+ 	}
+ 	// Small but real savings are valid too.
+-	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 600_000, 550_000); err != nil {
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 600_000, 550_000, false); err != nil {
+ 		t.Fatalf("small reducing candidate: %v", err)
+ 	}
+ 	// Manual below trigger: accept any reduction.
+-	if err := a.acceptCheckpointCandidate(CompactionTriggerManual, 100_000, 80_000); err != nil {
++	if err := a.acceptCheckpointCandidate(CompactionTriggerManual, 100_000, 80_000, false); err != nil {
+ 		t.Fatalf("manual below trigger: %v", err)
+ 	}
++	// A candidate at or above the physical ceiling is rejected on the normal
++	// path: the request would still exceed the configured window.
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 1_000_000, 999_900, false); err == nil {
++		t.Fatal("candidate at physical ceiling: want error")
++	}
++	// A must-free fold (physical overflow) may land above the ceiling as long
++	// as it shrinks the view: foldContext iterates the intermediate projection
++	// down below the ceiling in subsequent folds.
++	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, 1_200_000, 999_900, true); err != nil {
++		t.Fatalf("must-free intermediate candidate above ceiling: %v", err)
++	}
++	// Even a must-free fold must keep shrinking: no progress is never accepted.
++	if err := a.acceptCheckpointCandidate(CompactionTriggerOverflow, 999_900, 1_000_000, true); err == nil {
++		t.Fatal("must-free non-reducing candidate: want error")
++	}
+ }
+diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
+index a49a226..b124eb9 100644
+--- a/internal/agent/context_manager.go
++++ b/internal/agent/context_manager.go
+@@ -155,13 +155,23 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
+ 
+ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContext, policy ContextPreparePolicy, inputHash string, est, fold, hard int, forceFold bool) (PreparedContext, error) {
+ 	a := m.agent
+-	maxSummaries := 1
++	maxAttempts := 1
+ 	if policy.Trigger == CompactionTriggerPressure {
+-		maxSummaries = 2
++		maxAttempts = 2
+ 	}
+ 	result := prepared
+-	for range maxSummaries {
++	attempts := 0
++	for {
++		attempts++
+ 		mustFree := policy.Trigger != CompactionTriggerManual && (policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard)
++		// Non-forced pressure maintenance caps its attempts. A must-free fold
++		// (session already at or above the hard ceiling) iterates until the
++		// projection converges below the ceiling: the session can dwarf a
++		// conservative configured window, and each accepted checkpoint
++		// strictly shrinks the view, so this terminates.
++		if !mustFree && attempts > maxAttempts {
++			break
++		}
+ 		outcome, err := a.compactToProjectionLocked(ctx, policy.Trigger, policy.Instructions, forceFold, mustFree)
+ 		if err != nil {
+ 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+@@ -201,8 +211,13 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
+ 		}
+ 
+ 		result = m.currentPrepared()
+-		if policy.Trigger == CompactionTriggerManual || result.InputTokens < fold ||
+-			(policy.Trigger == CompactionTriggerOverflow && result.InputTokens < hard) {
++		// Success requires the projection below the hard ceiling whenever the
++		// session is at/above it (est >= hard or an active overflow recovery);
++		// pressure convergence below the fold trigger only counts when the
++		// view is already safely inside the window. Otherwise the request
++		// would still exceed the configured window.
++		if policy.Trigger == CompactionTriggerManual ||
++			(result.InputTokens < hard && (policy.Trigger == CompactionTriggerOverflow || result.InputTokens < fold)) {
+ 			a.sess.compaction.stuck = false
+ 			a.sess.compaction.stuckInputHash = ""
+ 			a.sess.compaction.consecutive = 0
+@@ -213,12 +228,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
+ 		inputHash = a.contextMaintenanceInputHash(result.Messages)
+ 	}
+ 
+-	reason := fmt.Sprintf("summary result remains above fold trigger after %d attempts (%d >= %d)", maxSummaries, result.InputTokens, fold)
++	reason := fmt.Sprintf("summary result remains above fold trigger after %d attempts (%d >= %d)", attempts, result.InputTokens, fold)
+ 	blockedInputHash := a.contextMaintenanceInputHash(result.Messages)
+ 	a.recordContextMaintenanceBlocked(blockedInputHash, policy.Trigger, "summary", reason)
+ 	a.sess.compaction.stuck = true
+ 	a.sess.compaction.stuckInputHash = blockedInputHash
+-	a.sess.compaction.consecutive += maxSummaries
++	a.sess.compaction.consecutive += attempts
+ 	if policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard {
+ 		return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
+ 	}
+diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
+index e3bf8bf..91adb8f 100644
+--- a/internal/agent/context_recovery.go
++++ b/internal/agent/context_recovery.go
+@@ -21,7 +21,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
+ 	if limit.PromptTokens > 0 {
+ 		a.setPromptTokenCalibrationFromActive(limit.PromptTokens)
+ 	}
+-	a.learnContextBudget(limit.WindowTokens, limit.CompletionTokens, omitted)
++	a.learnConfiguredWindowFromContextLimit(limit, omitted)
+ 	adm := a.lastAdmission()
+ 	adm.ObservedWindow = limit.WindowTokens
+ 	adm.ObservedPrompt = limit.PromptTokens
+diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
+new file mode 100644
+index 0000000..1e99660
+--- /dev/null
++++ b/internal/agent/context_summary_admission_test.go
+@@ -0,0 +1,186 @@
++package agent
++
++import (
++	"context"
++	"errors"
++	"strings"
++	"testing"
++
++	"reasonix/internal/event"
++	"reasonix/internal/provider"
++	"reasonix/internal/tool"
++)
++
++// The compaction summarizer must be able to emit its full digest. Admission
++// never clips the summary's fixed output budget as long as the prompt fits
++// the configured window.
++func TestApplyAdmissionToSummaryRequestKeepsFixedOutputBudget(t *testing.T) {
++	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
++	a := &Agent{
++		agentConfig: agentConfig{contextWindow: 100_000},
++		svc:         agentServices{prov: prov, sink: event.Discard},
++		sess:        sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}},
++	}
++	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 50_000)}}
++	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 50_000})
++	a.setPromptTokenCalibration(50_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
++	req := provider.Request{Messages: msgs, MaxTokens: summaryOutputMaxTokens}
++	if err := a.applyAdmissionToSummaryRequest(&req); err != nil {
++		t.Fatalf("summary admission: %v", err)
++	}
++	if req.MaxTokens != summaryOutputMaxTokens {
++		t.Fatalf("summary MaxTokens = %d, want fixed %d (unclipped)", req.MaxTokens, summaryOutputMaxTokens)
++	}
++}
++
++// Physical impossibility (no shared-window room at all) still requires
++// compaction, exactly like the ordinary request path.
++func TestApplyAdmissionToSummaryRequestRequiresPhysicalRoom(t *testing.T) {
++	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
++	a := &Agent{
++		agentConfig: agentConfig{contextWindow: 100_000},
++		svc:         agentServices{prov: prov, sink: event.Discard},
++		sess:        sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}},
++	}
++	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 95_000)}}
++	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 95_000})
++	a.setPromptTokenCalibration(95_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
++	req := provider.Request{Messages: msgs, MaxTokens: summaryOutputMaxTokens}
++	if err := a.applyAdmissionToSummaryRequest(&req); !errors.Is(err, ErrCompactionRequired) {
++		t.Fatalf("summary admission err = %v, want ErrCompactionRequired", err)
++	}
++}
++
++// The configured window is the hard ceiling even when the gateway reports
++// more headroom: the physical budget, the reported window, and the
++// compaction ceilings all stay inside the configured 200k.
++func TestAdmitOutputBudgetClampsObservedWindowToConfigured(t *testing.T) {
++	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true}
++	a := &Agent{
++		agentConfig: agentConfig{contextWindow: 200_000},
++		svc:         agentServices{prov: prov},
++		sess:        sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}},
++	}
++	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("x", 600_000)}}
++	a.setPromptTokenCalibration(100_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
++	// The gateway proved a 1M window. The configured 200k must still gate
++	// every consumer: a larger observed window never widens the discipline.
++	a.sess.output.learned.Store(&learnedContextBudget{windowTokens: 1_048_576})
++	adm, err := a.admitOutputBudget(provider.Request{Messages: msgs, MaxTokens: 1_000_000})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if adm.PromptTokens < 99_000 || adm.PromptTokens > 101_000 {
++		t.Fatalf("calibrated prompt = %d, want ~100000", adm.PromptTokens)
++	}
++	wantPhysical := 200_000 - adm.PromptTokens - outputBudgetReserve
++	if adm.PhysicalRemaining != wantPhysical {
++		t.Fatalf("physical = %d, want %d (configured window, not observed 1M)", adm.PhysicalRemaining, wantPhysical)
++	}
++	if adm.WindowTokens != 200_000 {
++		t.Fatalf("reported window = %d, want configured 200000", adm.WindowTokens)
++	}
++	if got := a.effectiveContextWindow(); got != 200_000 {
++		t.Fatalf("effective window = %d, want configured 200000 (observed 1M clamped)", got)
++	}
++	if got := a.hardInputCeiling(); got != 200_000-protocolReserveTokens {
++		t.Fatalf("hard ceiling = %d, want configured-based %d", got, 200_000-protocolReserveTokens)
++	}
++	// The provider's 131072 output cap cannot fit the configured 200k window
++	// with a 100k prompt: it must clip to the physical remaining budget.
++	if !adm.Clipped || adm.EffectiveOutputTokens != wantPhysical {
++		t.Fatalf("effective = %d clipped=%v, want clipped %d", adm.EffectiveOutputTokens, adm.Clipped, wantPhysical)
++	}
++}
++
++// The learned window is recorded raw but never widens consumers: the
++// configured window stays the ceiling, and only a learned window *smaller*
++// than the config binds.
++func TestLearnConfiguredWindowFromContextLimitClampedToConfig(t *testing.T) {
++	a := &Agent{agentConfig: agentConfig{contextWindow: 200_000}}
++	limit := &provider.ContextLimitError{WindowTokens: 1_048_576, CompletionTokens: 354_469}
++	a.learnConfiguredWindowFromContextLimit(limit, true)
++	if snap := a.sess.output.learned.Load(); snap == nil || snap.windowTokens != 1_048_576 || snap.completionBudget != 354_469 {
++		t.Fatalf("learned = %+v, want raw window 1048576 completion 354469", snap)
++	}
++	if got := a.effectiveContextWindow(); got != 200_000 {
++		t.Fatalf("effective window = %d, want configured 200000 (observed 1M clamped)", got)
++	}
++	// The observed completion budget only counts when output was omitted.
++	a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{WindowTokens: 512_000, CompletionTokens: 99_000}, false)
++	if snap := a.sess.output.learned.Load(); snap == nil || snap.windowTokens != 512_000 || snap.completionBudget != 354_469 {
++		t.Fatalf("learned = %+v, want window 512000 completion still 354469", snap)
++	}
++	if got := a.effectiveContextWindow(); got != 200_000 {
++		t.Fatalf("effective window after shrink to 512k = %d, want configured 200000 (still clamped)", got)
++	}
++	// Only a real limit below the config binds.
++	a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{WindowTokens: 50_000, CompletionTokens: 12_000}, true)
++	if got := a.effectiveContextWindow(); got != 50_000 {
++		t.Fatalf("effective window = %d, want real limit 50000", got)
++	}
++}
++
++func TestLearnConfiguredWindowFromContextLimitFallsBackToConfig(t *testing.T) {
++	a := &Agent{agentConfig: agentConfig{contextWindow: 200_000}}
++	a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{}, false)
++	if snap := a.sess.output.learned.Load(); snap == nil || snap.windowTokens != 200_000 {
++		t.Fatalf("learned = %+v, want configured fallback 200000", snap)
++	}
++}
++
++// Regression for the real-world deadlock: with a conservative configured
++// window (200000) and a session that already dwarfs it, Prepare must converge
++// below the hard ceiling by folding iteratively. No gateway overflow ever
++// happened, so no learned window exists — the configured 200k is the ceiling,
++// and a single fold cannot reclaim enough in one step. Before the iterative
++// must-free loop this deadlocked with ErrCompactionRequired: the fold
++// candidate (system + digest + retained tail) was still at or above the
++// configured physical ceiling, so no projection could ever be accepted and
++// "no foldable region remains" was reported to the user.
++func TestFoldConvergesBelowConfiguredHardCeilingWithoutLearnedWindow(t *testing.T) {
++	for _, learned := range []bool{false, true} {
++		name := "no-learned-window"
++		if learned {
++			name = "learned-larger-window-clamped"
++		}
++		t.Run(name, func(t *testing.T) {
++			prov := &sharedWindowTestProvider{budget: 1_048_576, shared: true}
++			sess := NewSession("")
++			msgs := []provider.Message{{Role: provider.RoleSystem, Content: "You are a coding agent."}}
++			for i := 0; i < 350; i++ {
++				msgs = append(msgs,
++					provider.Message{Role: provider.RoleUser, Content: strings.Repeat("字", 600) + " question " + string(rune('a'+i%26))},
++					provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("answer content here ", 300)},
++				)
++			}
++			sess.Replace(msgs)
++			registry := tool.NewRegistry()
++			a := New(prov, registry, sess, Options{
++				ContextWindow:   200_000,
++				CompactRatio:    0.7,
++				MaxOutputTokens: 384_000,
++				Temperature:     0.25,
++			}, event.Discard)
++			est := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
++			if est < a.hardInputCeiling() {
++				t.Fatalf("estimate %d below configured hard ceiling %d; session too small", est, a.hardInputCeiling())
++			}
++			if learned {
++				a.learnConfiguredWindowFromContextLimit(&provider.ContextLimitError{
++					WindowTokens: 1_048_576, PromptTokens: est, RequestedTokens: est,
++				}, false)
++			}
++			prepared, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
++			if err != nil {
++				t.Fatalf("Prepare must converge below the configured ceiling, got: %v", err)
++			}
++			if prepared.InputTokens >= a.hardInputCeiling() {
++				t.Fatalf("fold did not reclaim below hard ceiling: %d >= %d", prepared.InputTokens, a.hardInputCeiling())
++			}
++			if prepared.InputTokens >= est {
++				t.Fatalf("fold did not reduce the view: %d >= %d", prepared.InputTokens, est)
++			}
++		})
++	}
++}
+diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
+index c87b401..bebb6d3 100644
+--- a/internal/agent/output_budget.go
++++ b/internal/agent/output_budget.go
+@@ -282,14 +282,20 @@ func (a *Agent) effectiveContextWindow() int {
+ 	if snap := a.sess.output.learned.Load(); snap != nil {
+ 		learned = snap.windowTokens
+ 	}
+-	switch {
+-	case cfg > 0 && learned > 0:
++	// The configured window is the hard ceiling for every request this agent
++	// sends: a gateway that proves more headroom than a conservative config
++	// (e.g. 1048576 reported vs 200000 configured) must never raise the
++	// window, so the provider-visible context can never exceed the user's
++	// setting. Only a gateway-reported window *smaller* than the configured
++	// one shrinks all consumers (a real physical limit the user cannot
++	// override).
++	if cfg > 0 && learned > 0 {
+ 		return min(cfg, learned)
+-	case learned > 0:
++	}
++	if learned > 0 {
+ 		return learned
+-	default:
+-		return cfg
+ 	}
++	return cfg
+ }
+ 
+ func (a *Agent) learnedCompletionBudget() int {
+@@ -322,6 +328,34 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
+ 	a.sess.output.learned.Store(&next)
+ }
+ 
++// learnConfiguredWindowFromContextLimit records the window of a trusted
++// shared-window overflow. The learned window may only shrink consumers:
++// effectiveContextWindow clamps it to the configured value, so a gateway that
++// reports more headroom than the config (e.g. 1048576 vs 200000) never widens
++// the window, while a smaller real limit does bind. Only when the body yields
++// no window at all do we fall back to the configured value.
++func (a *Agent) learnConfiguredWindowFromContextLimit(limit *provider.ContextLimitError, omitted bool) {
++	if a == nil || limit == nil {
++		return
++	}
++	window := limit.WindowTokens
++	if window <= 0 {
++		window = a.contextWindow
++	}
++	if window <= 0 {
++		return
++	}
++	cur := learnedContextBudget{}
++	if prev := a.sess.output.learned.Load(); prev != nil {
++		cur = *prev
++	}
++	cur.windowTokens = window
++	if omitted && limit.CompletionTokens > 0 {
++		cur.completionBudget = limit.CompletionTokens
++	}
++	a.sess.output.learned.Store(&cur)
++}
++
+ func (a *Agent) storeAdmission(adm contextAdmission) {
+ 	if a == nil {
+ 		return
+@@ -414,6 +448,10 @@ func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error
+ 	adm.MaxOutputTokens = policy.MaxOutputTokens
+ 	window := a.effectiveContextWindow()
+ 	adm.WindowTokens = window
++	// The learned window only counts as the budget source when it actually
++	// binds (smaller than the configured window); a larger observed window
++	// must not relabel the source, and the configured window stays the
++	// physical ceiling for every consumer.
+ 	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
+ 	adm.Source = admissionSource(req.MaxTokens, policy, learnedWindow)
+ 	if window <= 0 {
+@@ -490,6 +528,22 @@ func (a *Agent) applyAdmissionToRequest(req *provider.Request) error {
+ 	return nil
+ }
+ 
++// applyAdmissionToSummaryRequest admits a compaction summary request against
++// the shared-window budget without clipping its fixed output budget. A digest
++// must be able to emit its full output; the provider itself decides the real
++// capacity. Only a physically impossible shared window (admitOutputBudget
++// already reports ErrCompactionRequired) rejects the summary upfront.
++func (a *Agent) applyAdmissionToSummaryRequest(req *provider.Request) error {
++	if a == nil || req == nil {
++		return nil
++	}
++	_, err := a.admitOutputBudget(*req)
++	if err != nil {
++		return err
++	}
++	return nil
++}
++
+ func (a *Agent) applyLimitMode(adm *contextAdmission, userMax int, policy provider.ContextBudgetPolicy, physical int) {
+ 	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
+ 		adm.ApplyMaxTokens = false
+diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
+index 89b9f2d..619a3bc 100644
+--- a/internal/provider/context_limit.go
++++ b/internal/provider/context_limit.go
+@@ -41,6 +41,11 @@ var (
+ 	contextLimitEnglishRe = regexp.MustCompile(`(?i)maximum context length is (\d+) tokens?\.?\s*however,\s*you requested (\d+) tokens? \((\d+) in the (?:messages|prompt), (\d+) in the completion\)`)
+ 	contextLimitPromptRe  = regexp.MustCompile(`(?i)prompt is too long:\s*(\d+) tokens? > (\d+) maximum`)
+ 	contextLimitSumRe     = regexp.MustCompile("(?i)input length and [`']?max_tokens[`']? exceed context limit:\\s*(\\d+)\\s*\\+\\s*(\\d+)\\s*>\\s*(\\d+)")
++	// OpenAI-compatible gateways report the overflow as a bare input-vs-window
++	// comparison, e.g. "The input (1165351 tokens) is longer than the model's
++	// context length (1048576 tokens)". The window here is the gateway's real
++	// capacity, which may exceed the conservative configured value.
++	contextLimitLongerRe = regexp.MustCompile(`(?i)the input \((\d+) tokens?\) is longer than the model's context length \((\d+) tokens?\)`)
+ )
+ 
+ func contextLimitStatusOK(status int) bool {
+@@ -171,6 +176,13 @@ func parseContextLimitText(text string) (window, requested, prompt, completion i
+ 			return window, prompt, prompt, 0, true
+ 		}
+ 	}
++	if m := contextLimitLongerRe.FindStringSubmatch(text); len(m) == 3 {
++		prompt = atoiStrict(m[1])
++		window = atoiStrict(m[2])
++		if prompt > 0 && window > 0 && prompt > window {
++			return window, prompt, prompt, 0, true
++		}
++	}
+ 	return 0, 0, 0, 0, false
+ }
+ 
+diff --git a/internal/provider/context_limit_test.go b/internal/provider/context_limit_test.go
+index 5f64002..93b6d74 100644
+--- a/internal/provider/context_limit_test.go
++++ b/internal/provider/context_limit_test.go
+@@ -49,3 +49,22 @@ func TestParseContextLimitErrorAccepts413And422(t *testing.T) {
+ 		t.Fatal("422 should parse")
+ 	}
+ }
++
++func TestParseContextLimitErrorLongerFormat(t *testing.T) {
++	// OpenAI-compatible gateways report a bare input-vs-window comparison.
++	text := "The input (1165351 tokens) is longer than the model's context length (1048576 tokens)"
++	got := ParseContextLimitError(&APIError{Status: 400, Body: text})
++	if got == nil || got.WindowTokens != 1_048_576 || got.PromptTokens != 1_165_351 || got.RequestedTokens != 1_165_351 || got.CompletionTokens != 0 {
++		t.Fatalf("longer-format parse = %+v", got)
++	}
++	// The same text inside a JSON error message must also parse.
++	jsonBody := `{"error":{"message":"The input (1165351 tokens) is longer than the model's context length (1048576 tokens)"}}`
++	got = ParseContextLimitError(&APIError{Status: 400, Body: jsonBody})
++	if got == nil || got.WindowTokens != 1_048_576 || got.PromptTokens != 1_165_351 {
++		t.Fatalf("longer-format json parse = %+v", got)
++	}
++	// input <= window is not an overflow and must stay unparsed.
++	if ParseContextLimitError(&APIError{Status: 400, Body: "The input (1048576 tokens) is longer than the model's context length (2000000 tokens)"}) != nil {
++		t.Fatal("input <= window must be rejected")
++	}
++}
+-- 
+2.54.0
+
+
+From a072c05944ad283d0c388cdaa17279cc1b14063e Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 06:10:35 +0000
+Subject: [PATCH 3/5] control/acp: force yolo approval and run unbounded
+ (overlay defaults)
+
+Make the approval mode default to yolo for new sessions and on session
+load, let yolo answer fresh and require-human decisions, and remove the
+max-steps budget from the run loop so a session keeps executing until the
+provider ends the turn. The ask/auto modes remain reachable through
+session/set_config_option for the approval gate tests.
+
+Tests that asserted the old defaults are updated to the overlay behavior:
+the approval round-trip switches its session back to ask first, and the
+explicit max-steps e2e now asserts the run is not paused.
+---
+ internal/acp/e2e_test.go     | 55 ++++++++++++++++++++++++++++++++++--
+ internal/acp/server_test.go  | 19 +++++++------
+ internal/acp/service.go      |  8 ++++--
+ internal/agent/run_loop.go   |  6 +---
+ internal/control/approval.go |  9 ++++--
+ 5 files changed, 76 insertions(+), 21 deletions(-)
+
+diff --git a/internal/acp/e2e_test.go b/internal/acp/e2e_test.go
+index 8ff2d16..c0ded2a 100644
+--- a/internal/acp/e2e_test.go
++++ b/internal/acp/e2e_test.go
+@@ -102,7 +102,10 @@ func (f *e2eFactory) NewSession(_ context.Context, p SessionParams) (*control.Co
+ 	}), nil
+ }
+ 
+-func TestE2EExplicitMaxStepsReturnsSuccessfulPause(t *testing.T) {
++// The overlay removes the max-steps budget from the run loop: an explicit
++// MaxSteps must not pause the run, the agent keeps executing until the
++// provider ends the turn naturally.
++func TestE2EExplicitMaxStepsDoesNotPause(t *testing.T) {
+ 	responses := [][]provider.Chunk{
+ 		{toolCallChunk("c1", "peek", `{}`), {Type: provider.ChunkDone}},
+ 		{toolCallChunk("c2", "peek", `{}`), {Type: provider.ChunkDone}},
+@@ -111,7 +114,44 @@ func TestE2EExplicitMaxStepsReturnsSuccessfulPause(t *testing.T) {
+ 		{toolCallChunk("c5", "peek", `{}`), {Type: provider.ChunkDone}},
+ 		{{Type: provider.ChunkText, Text: "Saved progress summary."}, {Type: provider.ChunkDone}},
+ 	}
+-	assertE2ERunPause(t, responses, nil, StopMaxTurnRequests, "paused after 5 tool-call rounds")
++	factory := &e2eFactory{
++		prov:       &scriptedProvider{name: "fake", responses: responses},
++		tool:       fakeTool{name: "peek", ro: true, out: "ok"},
++		policy:     permission.New("ask", nil, nil, nil),
++		sessionDir: t.TempDir(),
++		options:    &agent.Options{MaxSteps: 5},
++	}
++	client, stop := startServer(t, factory)
++	defer stop()
++
++	sid := openSession(t, client)
++	promptCh := client.callAsync("session/prompt", SessionPromptParams{
++		SessionID: sid,
++		Prompt:    []ContentBlock{{Type: "text", Text: "keep working"}},
++	})
++	notifications, resp := drainPrompt(t, client, promptCh)
++	if resp.Error != nil {
++		t.Fatalf("max-steps budget must be ignored, prompt errored: %+v", resp.Error)
++	}
++	var result SessionPromptResult
++	if err := json.Unmarshal(resp.Result, &result); err != nil {
++		t.Fatalf("prompt result: %v", err)
++	}
++	if result.StopReason != StopEndTurn {
++		t.Fatalf("stopReason = %q, want end_turn (max-steps budget removed)", result.StopReason)
++	}
++	for _, notification := range notifications {
++		if notification.Method != sessionStatusUpdateMethod {
++			continue
++		}
++		var update ReasonixStatusUpdate
++		if err := json.Unmarshal(notification.Params, &update); err != nil {
++			continue
++		}
++		if update.Event == "pause" && update.Status.TurnOutcome.Kind == "paused" {
++			t.Fatal("unexpected pause: the max-steps budget must be ignored")
++		}
++	}
+ }
+ 
+ func TestE2ETaskBudgetReturnsSuccessfulPause(t *testing.T) {
+@@ -587,6 +627,17 @@ func TestE2EApprovalRoundTrip(t *testing.T) {
+ 	defer stop()
+ 
+ 	sid := openSession(t, client)
++	// The overlay defaults to yolo; switch this session back to ask so the
++	// approval gate can be exercised end-to-end.
++	setResp := client.call(t, "session/set_config_option", SetSessionConfigOptionParams{
++		SessionID: sid,
++		ConfigID:  "tool_approval",
++		Value:     control.ToolApprovalAsk,
++	})
++	if setResp.Error != nil {
++		t.Fatalf("set tool_approval=ask: %+v", setResp.Error)
++	}
++
+ 	promptCh := client.callAsync("session/prompt", SessionPromptParams{
+ 		SessionID: sid,
+ 		Prompt:    []ContentBlock{{Type: "text", Text: "write README.md"}},
+diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
+index 3af50cb..11cfdb2 100644
+--- a/internal/acp/server_test.go
++++ b/internal/acp/server_test.go
+@@ -978,8 +978,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+ 	}
+ 	requireNoExecutionModeOptions(t, nr.ConfigOptions)
+ 	approval, ok := findConfigOption(nr.ConfigOptions, "tool_approval")
+-	if !ok || approval.CurrentValue != control.ToolApprovalAsk {
+-		t.Fatalf("initial tool approval = %+v, want ask", approval)
++	// The overlay forces the default approval mode to yolo.
++	if !ok || approval.CurrentValue != control.ToolApprovalYolo {
++		t.Fatalf("initial tool approval = %+v, want yolo", approval)
+ 	}
+ 
+ 	buildsBefore := factory.buildCount()
+@@ -997,7 +998,7 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+ 		requireNoExecutionModeOptions(t, set.ConfigOptions)
+ 		modelOpt, _ := findConfigOption(set.ConfigOptions, "model")
+ 		approvalOpt, _ := findConfigOption(set.ConfigOptions, "tool_approval")
+-		if modelOpt.CurrentValue != "fast" || approvalOpt.CurrentValue != control.ToolApprovalAsk {
++		if modelOpt.CurrentValue != "fast" || approvalOpt.CurrentValue != control.ToolApprovalYolo {
+ 			t.Fatalf("deprecated %s mutated live axes: model=%q approval=%q", tc.id, modelOpt.CurrentValue, approvalOpt.CurrentValue)
+ 		}
+ 	}
+@@ -1156,7 +1157,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
+ 	}
+ 	requireNoExecutionModeOptions(t, lr.ConfigOptions)
+ 	approval, _ := findConfigOption(lr.ConfigOptions, "tool_approval")
+-	if approval.CurrentValue != control.ToolApprovalAuto || lr.Modes == nil || lr.Modes.CurrentModeID != sessionModePlan {
++	// The overlay forces yolo on load, ignoring the persisted approval axis.
++	if approval.CurrentValue != control.ToolApprovalYolo || lr.Modes == nil || lr.Modes.CurrentModeID != sessionModePlan {
+ 		t.Fatalf("reloaded axes = approval:%+v modes:%+v", approval, lr.Modes)
+ 	}
+ 	if got := reloadedFactory.buildAt(t, 0).RuntimeProfile; got != "delivery" {
+@@ -1171,8 +1173,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
+ 		t.Fatalf("reloaded prompt: %+v", promptResp.Error)
+ 	}
+ 	observed := <-seen
+-	if observed.approval != control.ToolApprovalAuto || !observed.plan {
+-		t.Fatalf("restored controller axes = %+v, want auto + plan", observed)
++	if observed.approval != control.ToolApprovalYolo || !observed.plan {
++		t.Fatalf("restored controller axes = %+v, want yolo + plan (overlay forces yolo)", observed)
+ 	}
+ }
+ 
+@@ -1696,8 +1698,9 @@ func TestServeSessionLoadFallsBackFromStaleSavedModel(t *testing.T) {
+ 		t.Fatalf("session/load result: %v", err)
+ 	}
+ 	approval, _ := findConfigOption(loaded.ConfigOptions, "tool_approval")
+-	if approval.CurrentValue != control.ToolApprovalAsk || loaded.Modes == nil || loaded.Modes.CurrentModeID != sessionModeNormal {
+-		t.Fatalf("old metadata axes = approval:%+v modes:%+v, want ask + normal", approval, loaded.Modes)
++	// The overlay forces yolo on load regardless of persisted metadata.
++	if approval.CurrentValue != control.ToolApprovalYolo || loaded.Modes == nil || loaded.Modes.CurrentModeID != sessionModeNormal {
++		t.Fatalf("old metadata axes = approval:%+v modes:%+v, want yolo + normal", approval, loaded.Modes)
+ 	}
+ 	meta, ok, err := loadACPMeta(path)
+ 	if err != nil || !ok {
+diff --git a/internal/acp/service.go b/internal/acp/service.go
+index 002802d..df8f13e 100644
+--- a/internal/acp/service.go
++++ b/internal/acp/service.go
+@@ -659,7 +659,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+ 	if err != nil {
+ 		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
+ 	}
+-	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalAsk)
++	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalYolo)
+ 	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
+ 		Cwd: cwd, Model: cfgState.Model, RuntimeProfile: cfgState.RuntimeProfile,
+ 	})
+@@ -690,6 +690,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+ 		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
+ 	}
+ 	ctrl.EnableInteractiveApproval()
++	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
+ 	sink.bindApprove(ctrl.Approve)
+ 	sink.bindAnswer(ctrl.AnswerQuestion)
+ 
+@@ -703,7 +704,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+ 		model:            cfgState.Model,
+ 		effortOverride:   cloneStringPtr(cfgState.EffortOverride),
+ 		runtimeProfile:   cfgState.RuntimeProfile,
+-		toolApprovalMode: control.ToolApprovalAsk,
++		toolApprovalMode: control.ToolApprovalYolo,
+ 		runtimeState:     runtimeState,
+ 		status:           newStatusTelemetry(),
+ 		modeID:           sessionModeNormal,
+@@ -993,6 +994,7 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
+ 		return SessionConfigState{}, &RPCError{Code: ErrInternal, Message: method + ": " + err.Error()}
+ 	}
+ 	ctrl.EnableInteractiveApproval()
++	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
+ 	sink.bindApprove(ctrl.Approve)
+ 	sink.bindAnswer(ctrl.AnswerQuestion)
+ 
+@@ -1023,7 +1025,7 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
+ 	if err := resumeACPControllerForWrite(ctrl, loaded, path, lease); err != nil {
+ 		return SessionConfigState{}, sessionLeaseBindError(method, err)
+ 	}
+-	toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)
++	toolApprovalMode := control.ToolApprovalYolo
+ 	ctrl.SetToolApprovalMode(toolApprovalMode)
+ 	modeID := normalizeACPCollaborationMode(saved.CollaborationMode)
+ 	goalDraftMode := false
+diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
+index 7552bdb..055eab1 100644
+--- a/internal/agent/run_loop.go
++++ b/internal/agent/run_loop.go
+@@ -243,7 +243,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
+ // assistant turn into final-response or tool-round handling.
+ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+ 	ctx = a.withAgentContext(ctx)
+-	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ {
++	for step := 0; ; step++ {
+ 		// Consume a queued steer and persist it to the session so it
+ 		// survives tab switches and history replay. The model sees it as
+ 		// guidance (with a prefix), not a new task. One cache miss per
+@@ -714,10 +714,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+ 		a.armFinalizationRound(ctx, state, landCause{kind: "task_budget", axis: axis, detail: detail})
+ 		return true, nil
+ 	}
+-	if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {
+-		a.armFinalizationRound(ctx, state, landCause{kind: "max_steps", detail: fmt.Sprintf(
+-			"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)})
+-	}
+ 	return true, nil
+ }
+ 
+diff --git a/internal/control/approval.go b/internal/control/approval.go
+index dc4fc3e..4d18d28 100644
+--- a/internal/control/approval.go
++++ b/internal/control/approval.go
+@@ -257,6 +257,9 @@ func (a *approvalManager) preApprovedForDecisionOptions(tool, subject string, ar
+ 	a.mu.Lock()
+ 	defer a.mu.Unlock()
+ 	if fresh {
++		if a.toolApprovalMode == ToolApprovalYolo {
++			return true
++		}
+ 		return a.sessionGrantAllowsLocked(tool, subject)
+ 	}
+ 	if requireHuman {
+@@ -591,12 +594,12 @@ func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.Raw
+ 			return a.autoApprovalWouldAllowLocked(tool, subject, args)
+ 		}
+ 	}
+-	if requiresFreshApprovalTool(tool) {
+-		return false
+-	}
+ 	if a.toolApprovalMode == ToolApprovalYolo {
+ 		return true
+ 	}
++	if requiresFreshApprovalTool(tool) {
++		return false
++	}
+ 	if !a.planAutoApprove {
+ 		return false
+ 	}
+-- 
+2.54.0
+
+
+From 19e5fb59291d84bf7d1e8a48b4616b70712dd749 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 06:42:32 +0000
+Subject: [PATCH 4/5] control: keep plan approval and sandbox escape as hard
+ gates under yolo
+
+Revert the a072c05 approval relaxation: yolo answering fresh and
+require-human decisions silently bypassed the plan-approval collaboration
+gate and the sandbox-escape escape hatch, breaking the documented contract
+in requestApprovalDecisionWithOptions ('YOLO/auto approval must not answer
+or drain the prompt' for fresh; 'plan approval ... deliberately stays
+interactive'). The three yolo_test gates now pass again; the ACP yolo
+default stays reachable because the acp client approves the emitted
+requests itself.
+---
+ internal/control/approval.go | 9 +++------
+ 1 file changed, 3 insertions(+), 6 deletions(-)
+
+diff --git a/internal/control/approval.go b/internal/control/approval.go
+index 4d18d28..dc4fc3e 100644
+--- a/internal/control/approval.go
++++ b/internal/control/approval.go
+@@ -257,9 +257,6 @@ func (a *approvalManager) preApprovedForDecisionOptions(tool, subject string, ar
+ 	a.mu.Lock()
+ 	defer a.mu.Unlock()
+ 	if fresh {
+-		if a.toolApprovalMode == ToolApprovalYolo {
+-			return true
+-		}
+ 		return a.sessionGrantAllowsLocked(tool, subject)
+ 	}
+ 	if requireHuman {
+@@ -594,12 +591,12 @@ func (a *approvalManager) bypassAllowsLocked(tool, subject string, args json.Raw
+ 			return a.autoApprovalWouldAllowLocked(tool, subject, args)
+ 		}
+ 	}
+-	if a.toolApprovalMode == ToolApprovalYolo {
+-		return true
+-	}
+ 	if requiresFreshApprovalTool(tool) {
+ 		return false
+ 	}
++	if a.toolApprovalMode == ToolApprovalYolo {
++		return true
++	}
+ 	if !a.planAutoApprove {
+ 		return false
+ 	}
+-- 
+2.54.0
+
+
+From fc95536703d5c42cbf2adb1d4f0b16bd16dd7db0 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 06:42:32 +0000
+Subject: [PATCH 5/5] agent: drop the max-steps budget leftovers and migrate
+ tests to the overlay semantics
+
+The overlay removes the model-round cap from the run loop; an explicit
+MaxSteps is now ignored. Remove the unreachable gracePause tail in
+runToolLoop and rework the tests that asserted the old boundary:
+
+- planner/executor, goal, todo, and dispatch tests now assert the run
+  ends when the provider ends the turn
+- the emergency-bound planner test lands on a task token budget instead
+  and keeps the truncated-research coverage
+- the ordinary-chat and task-budget runaway tests exercise the token
+  budget axis that still bounds an unbudgeted runaway
+---
+ internal/agent/coordinator_test.go            | 63 +++++++++++--------
+ internal/agent/dispatch_test.go               | 27 +++++---
+ internal/agent/goal_boundaries_test.go        |  9 ++-
+ .../agent/planner_adaptive_research_test.go   | 22 ++++---
+ internal/agent/run_loop.go                    |  4 --
+ internal/agent/task_budget_gate_test.go       | 22 ++++---
+ internal/agent/todo_progress_guard_test.go    | 13 ++--
+ internal/control/chat_run_budget_test.go      | 11 ++--
+ 8 files changed, 100 insertions(+), 71 deletions(-)
+
+diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
+index ba1f814..1d18943 100644
+--- a/internal/agent/coordinator_test.go
++++ b/internal/agent/coordinator_test.go
+@@ -639,10 +639,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+-	planner := &mockProvider{name: "planner", chunks: []provider.Chunk{
+-		{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"REASONIX.md"}`}},
+-		{Type: provider.ChunkDone},
++// The overlay removes the max-steps budget from the run loop: an explicit
++// MaxSteps must not truncate the planner, which runs until the provider ends
++// the turn and then hands the plan to the executor.
++func TestCoordinatorPlannerMaxStepsIgnored(t *testing.T) {
++	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
++		{
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"REASONIX.md"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-2", Name: "read_file", Arguments: `{"path":"internal"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkText, Text: "1. read REASONIX.md"},
++			{Type: provider.ChunkDone},
++		},
+ 	}}
+ 	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{
+ 		{Type: provider.ChunkText, Text: "Done."},
+@@ -650,7 +663,7 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+ 	}}
+ 
+ 	parentReg := tool.NewRegistry()
+-	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "keep reading"})
++	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "ok"})
+ 	sink := &recordSink{}
+ 	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, sink)
+ 	plannerSess := NewSession("planner-sys")
+@@ -661,27 +674,16 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+ 
+ 	err := coord.Run(withNoClosedLoop(context.Background()), "plan a change")
+ 	if err != nil {
+-		t.Fatalf("Run should fall back to the executor when the planner cannot finalize: %v", err)
++		t.Fatalf("Run: %v", err)
+ 	}
+ 	if got := len(planner.requests); got != 3 {
+-		t.Fatalf("planner requests = %d, want 2 research rounds plus finalization", got)
+-	}
+-	if got := len(exec.requests); got != 1 {
+-		t.Fatalf("executor requests = %d, want one fallback run", got)
+-	}
+-	if got := lastUser(exec.requests[0]); !strings.Contains(got, "plan a change") || strings.Contains(got, executorHandoffMarker) {
+-		t.Fatalf("executor fallback input = %q, want the original task without a fabricated handoff", got)
++		t.Fatalf("planner requests = %d, want all 3 scripted planner turns (max-steps budget removed)", got)
+ 	}
+-	if got := len(plannerSess.Messages); got != 1 {
+-		t.Fatalf("planner session messages = %d, want the incomplete turn rolled back", got)
+-	}
+-	notices := sink.kinds(event.Notice)
+-	if len(notices) == 0 || notices[len(notices)-1].Text != plannerSafetyFallbackNotice {
+-		t.Fatalf("notices = %+v, want planner safety fallback notice", notices)
++	if got := len(exec.requests); got == 0 {
++		t.Fatalf("executor never ran: %d requests", got)
+ 	}
+-	if detail := notices[len(notices)-1].Detail; !strings.Contains(detail, "planner max_steps") ||
+-		strings.Contains(detail, "set planner max_steps") {
+-		t.Fatalf("fallback detail = %q, want the bounded diagnostic without configuration advice", detail)
++	if got := lastUser(exec.requests[0]); !strings.Contains(got, "read REASONIX.md") {
++		t.Fatalf("executor did not receive the planner output: %q", got)
+ 	}
+ }
+ 
+@@ -1397,9 +1399,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing.T) {
+ 	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
+ 		t.Run(string(route), func(t *testing.T) {
+-			planner := &mockProvider{name: "planner", chunks: []provider.Chunk{
+-				{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
+-				{Type: provider.ChunkDone},
++			planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
++				{
++					{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
++					{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10}},
++					{Type: provider.ChunkDone},
++				},
+ 			}}
+ 			exec := &mockProvider{name: "executor"}
+ 			plannerReg := tool.NewRegistry()
+@@ -1411,11 +1416,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
+ 			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
+ 			plannerSess := NewSession("planner-sys")
+ 			coord := NewCoordinatorWithPlannerPolicy(
+-				planner, plannerSess, nil, plannerReg, Options{MaxSteps: 1, MaxStepsKey: "planner emergency rounds"},
++				planner, plannerSess, nil, plannerReg, Options{},
+ 				executor, 0, event.Discard, policy,
+ 			)
+ 
+-			err := coord.Run(withNoClosedLoop(context.Background()), "plan the migration")
++			// The overlay removes the max-steps budget; a host-owned task
++			// token budget lands the same resumable loop pause the boundary
++			// must fail closed on.
++			ctx := withNoClosedLoop(WithTaskBudget(context.Background(), TaskBudget{Tokens: 1}))
++			err := coord.Run(ctx, "plan the migration")
+ 			if err == nil || err.Error() != plannerSafetyBoundaryError {
+ 				t.Fatalf("Run = %v, want the safe planner boundary error", err)
+ 			}
+diff --git a/internal/agent/dispatch_test.go b/internal/agent/dispatch_test.go
+index 1871dd5..88c72fa 100644
+--- a/internal/agent/dispatch_test.go
++++ b/internal/agent/dispatch_test.go
+@@ -13,20 +13,29 @@ import (
+ // immediately (Partial, name only) so the card shows while the arguments are
+ // still streaming, and that a second, full dispatch (with args) follows once the
+ // call completes — the fix for "the edit_file card only appears after everything
+-// is written".
++// is written". The overlay removes the max-steps cap, so the second provider
++// round ends the turn instead of a budget pause.
+ func TestEarlyToolDispatch(t *testing.T) {
+-	prov := &mockProvider{name: "p", chunks: []provider.Chunk{
+-		{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file"}},
+-		{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file", Arguments: `{"path":"/x"}`}},
+-		{Type: provider.ChunkDone},
++	prov := &mockProvider{name: "p", streams: [][]provider.Chunk{
++		{
++			{Type: provider.ChunkToolCallStart, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file"}},
++			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "c1", Name: "read_file", Arguments: `{"path":"/x"}`}},
++			{Type: provider.ChunkDone},
++		},
++		{
++			{Type: provider.ChunkText, Text: "done"},
++			{Type: provider.ChunkDone},
++		},
+ 	}}
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeTool{name: "read_file", readOnly: true})
+ 
+ 	var got []event.Event
+ 	sink := event.FuncSink(func(e event.Event) { got = append(got, e) })
+-	a := New(prov, reg, NewSession(""), Options{MaxSteps: 1}, sink)
+-	_ = a.Run(context.Background(), "go") // errors at the 1-step cap; we only want the events
++	a := New(prov, reg, NewSession(""), Options{}, sink)
++	if err := a.Run(context.Background(), "go"); err != nil {
++		t.Fatalf("Run: %v", err)
++	}
+ 
+ 	var partial, full int
+ 	for _, e := range got {
+@@ -45,8 +54,8 @@ func TestEarlyToolDispatch(t *testing.T) {
+ 			}
+ 		}
+ 	}
+-	if partial != 2 {
+-		t.Errorf("want 2 partial (early) dispatches (original + grace-round replay), got %d", partial)
++	if partial != 1 {
++		t.Errorf("want 1 partial (early) dispatch, got %d", partial)
+ 	}
+ 	if full != 1 {
+ 		t.Errorf("want 1 full dispatch, got %d", full)
+diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
+index 42ff84f..999052d 100644
+--- a/internal/agent/goal_boundaries_test.go
++++ b/internal/agent/goal_boundaries_test.go
+@@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
+ 	}
+ }
+ 
+-func TestExplicitMaxStepsStillAppliesToGoal(t *testing.T) {
++func TestGoalExplicitMaxStepsIgnored(t *testing.T) {
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeTool{name: "read_file", readOnly: true})
+ 	prov := testutil.NewMock("m",
+@@ -44,12 +44,11 @@ func TestExplicitMaxStepsStillAppliesToGoal(t *testing.T) {
+ 	a := New(prov, reg, NewSession(""), Options{MaxSteps: 3}, event.Discard)
+ 	ctx := WithDeliveryExecutionScope(context.Background(), DeliveryExecutionScope{ID: "goal-1", TaskText: "work"})
+ 	err := a.Run(ctx, "work")
+-	info, ok := InspectRunPause(err)
+-	if !ok || info.Kind != "max_steps" || info.HostOwned || info.Limit != 3 {
+-		t.Fatalf("explicit MaxSteps pause = %+v ok=%v err=%v", info, ok, err)
++	if err != nil {
++		t.Fatalf("explicit MaxSteps must not pause a goal run: %v", err)
+ 	}
+ 	if prov.CallCount() != 4 {
+-		t.Fatalf("provider calls = %d, want explicit three rounds plus summary", prov.CallCount())
++		t.Fatalf("provider calls = %d, want all scripted rounds (max-steps budget removed)", prov.CallCount())
+ 	}
+ }
+ 
+diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
+index 13f1e3d..d3c9691 100644
+--- a/internal/agent/planner_adaptive_research_test.go
++++ b/internal/agent/planner_adaptive_research_test.go
+@@ -43,10 +43,15 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *testing.T) {
++// A task budget that lands mid-research must still let the planner submit a
++// terminal plan, even when the research output was truncated by the tool
++// output guard — the budget nudge and the truncation work together instead of
++// stranding the turn.
++func TestCoordinatorTaskBudgetFinalizationSurvivesTruncatedResearch(t *testing.T) {
+ 	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
+-		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"a"}`}}, {Type: provider.ChunkDone}},
+-		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-2", Name: "read_file", Arguments: `{"path":"b"}`}}, {Type: provider.ChunkDone}},
++		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"a"}`}},
++			{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10}},
++			{Type: provider.ChunkDone}},
+ 		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "plan-1", Name: "submit_plan", Arguments: `{"objective":"fix the bounded planner","steps":[{"title":"apply the owner-level fix","verified_files":["a","b"]}]}`}}, {Type: provider.ChunkDone}},
+ 	}}
+ 	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{{Type: provider.ChunkText, Text: "Done."}, {Type: provider.ChunkDone}}}
+@@ -61,18 +66,19 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
+ 	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
+ 	plannerSess := NewSession("planner-sys")
+ 	coord := NewCoordinatorWithPlannerPolicy(planner, plannerSess, nil, PlannerToolRegistry(reg),
+-		Options{MaxSteps: 2, MaxStepsKey: "planner emergency rounds"}, executor, 0, sink,
++		Options{}, executor, 0, sink,
+ 		func(context.Context, string) PlannerDecision {
+ 			return PlannerDecision{Route: PlannerRoutePlanAndExecute, Reason: "emergency_bounded_work"}
+ 		})
+ 
+-	if err := coord.Run(withNoClosedLoop(context.Background()), "fix the planner bug"); err != nil {
++	ctx := withNoClosedLoop(WithTaskBudget(context.Background(), TaskBudget{Tokens: 1}))
++	if err := coord.Run(ctx, "fix the planner bug"); err != nil {
+ 		t.Fatalf("Run: %v", err)
+ 	}
+-	if got := len(planner.requests); got != 3 {
+-		t.Fatalf("planner requests = %d, want two research rounds plus terminal submission", got)
++	if got := len(planner.requests); got != 2 {
++		t.Fatalf("planner requests = %d, want research plus terminal submission", got)
+ 	}
+-	if got := lastUser(planner.requests[2]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
++	if got := lastUser(planner.requests[1]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
+ 		t.Fatalf("planner finalization nudge conflicts with submit_plan: %q", got)
+ 	}
+ 	sawTruncation := false
+diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
+index 055eab1..3668ab3 100644
+--- a/internal/agent/run_loop.go
++++ b/internal/agent/run_loop.go
+@@ -330,10 +330,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+ 			return terr
+ 		}
+ 	}
+-	// Only reached when a positive maxSteps guard is configured. The work so far
+-	// is already in the session, so the user can just send another message to pick
+-	// up where it left off.
+-	return a.gracePause(state)
+ }
+ 
+ // streamWithSamplingRecovery coordinates Codex-style original-request replay
+diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
+index 7a5042f..d0c5686 100644
+--- a/internal/agent/task_budget_gate_test.go
++++ b/internal/agent/task_budget_gate_test.go
+@@ -2,7 +2,6 @@ package agent
+ 
+ import (
+ 	"context"
+-	"errors"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -128,18 +127,25 @@ func TestUnconfiguredBudgetNeverCrosses(t *testing.T) {
+ 	}
+ }
+ 
+-// An explicit max_steps still bounds a run by rounds when the user asks for
+-// that specifically, with every spend axis disabled.
+-func TestExplicitMaxStepsStillLandsWhenNoBudgetApplies(t *testing.T) {
++// The overlay removes max_steps from the run loop; with it gone, an explicit
++// task token budget still stops an unbudgeted runaway that no spend axis or
++// wall clock constrains.
++func TestTaskBudgetTokensLandsWhenMaxStepsIsOff(t *testing.T) {
+ 	sink := event.FuncSink(func(event.Event) {})
+ 	reg := tool.NewRegistry()
+ 	reg.Add(readProbe{})
+ 	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
+-		Options{MaxSteps: 3, TaskBudget: TaskBudget{Cost: 0, Wall: -1}}, sink)
++		Options{TaskBudget: TaskBudget{Cost: 0, Wall: -1, Tokens: 2200}}, sink)
+ 
+ 	err := a.Run(context.Background(), "read everything")
+-	var pause *maxStepsPause
+-	if !errors.As(err, &pause) {
+-		t.Fatalf("err = %v, want an explicit max_steps to still stop an unbudgeted runaway", err)
++	if err == nil {
++		t.Fatal("Run returned nil; want a resumable task-budget pause")
++	}
++	info, ok := InspectRunPause(err)
++	if !ok || info.Kind != "task_budget" || info.Key != "token" {
++		t.Fatalf("pause = %+v (%v), want a host-owned task_budget pause on tokens", info, err)
++	}
++	if !info.HostOwned {
++		t.Fatal("a host-imposed budget must report HostOwned")
+ 	}
+ }
+diff --git a/internal/agent/todo_progress_guard_test.go b/internal/agent/todo_progress_guard_test.go
+index a301af5..94cfb00 100644
+--- a/internal/agent/todo_progress_guard_test.go
++++ b/internal/agent/todo_progress_guard_test.go
+@@ -2,7 +2,6 @@ package agent
+ 
+ import (
+ 	"context"
+-	"errors"
+ 	"fmt"
+ 	"testing"
+ 
+@@ -166,7 +165,10 @@ func TestCanonicalTodoProgressIgnoresTitleAndPendingListChurn(t *testing.T) {
+ 	}
+ }
+ 
+-func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
++// The overlay removes max_steps from the run loop: an explicit MaxSteps must
++// not truncate a turn whose todo is still unfinished — the provider decides
++// when the turn ends.
++func TestMaxStepsIgnoredLeavesIncompleteTodoToTheProvider(t *testing.T) {
+ 	reg := tool.NewRegistry()
+ 	reg.Add(mustBuiltinTool(t, "todo_write"))
+ 	reg.Add(fakeTool{name: "write_file", readOnly: false})
+@@ -180,12 +182,11 @@ func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
+ 	a := New(mp, reg, NewSession(""), Options{MaxSteps: 1}, event.Discard)
+ 
+ 	err := a.Run(context.Background(), "start a long task")
+-	var pause *maxStepsPause
+-	if !errors.As(err, &pause) {
+-		t.Fatalf("Run error = %v, want maxStepsPause instead of final-readiness retries", err)
++	if err != nil {
++		t.Fatalf("Run error = %v, want the run to end when the provider ends the turn", err)
+ 	}
+ 	if mp.CallCount() != 2 {
+-		t.Fatalf("provider calls = %d, want tool round plus one summary round", mp.CallCount())
++		t.Fatalf("provider calls = %d, want tool round plus one final round", mp.CallCount())
+ 	}
+ }
+ 
+diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
+index f565bbd..a64c855 100644
+--- a/internal/control/chat_run_budget_test.go
++++ b/internal/control/chat_run_budget_test.go
+@@ -100,8 +100,11 @@ func TestOrdinaryChatTurnStopsOnItsTimeBudget(t *testing.T) {
+ }
+ 
+ // The gate must not touch a turn the user bounded explicitly.
+-func TestExplicitMaxStepsOwnsTheOrdinaryTurn(t *testing.T) {
+-	prov := &wanderingChatProvider{}
++// The overlay removes the max-steps budget from the run loop: an explicit
++// MaxSteps must not truncate the ordinary turn, the agent keeps executing
++// until the provider ends the turn.
++func TestExplicitMaxStepsIsIgnoredByTheOrdinaryTurn(t *testing.T) {
++	prov := &wanderingChatProvider{max: 6}
+ 	reg := tool.NewRegistry()
+ 	reg.Add(fakeControlTool{name: "read_file"})
+ 	exec := agent.New(prov, reg, agent.NewSession("sys"), agent.Options{MaxSteps: 3}, event.Discard)
+@@ -110,7 +113,7 @@ func TestExplicitMaxStepsOwnsTheOrdinaryTurn(t *testing.T) {
+ 	c.Submit("collect the real state")
+ 	waitForDone(t, done)
+ 
+-	if got := prov.calls.Load(); got != 4 {
+-		t.Fatalf("provider rounds = %d, want the explicit 3 plus one summary", got)
++	if got := prov.calls.Load(); got != 7 {
++		t.Fatalf("provider rounds = %d, want 7 (6 tool rounds + 1 final text; max-steps budget removed)", got)
+ 	}
+ }
+-- 
+2.54.0
+
+From ee581f8646a622c3879a3f69cd60ac3d403f4cc3 Mon Sep 17 00:00:00 2001
+From: dev <dev@local>
+Date: Wed, 19 Aug 2026 21:11:26 +0000
+Subject: [PATCH 6/6] agent, provider: compaction summaries run with reasoning
+ disabled
+
+Summary requests (compact.go summaryRequest) now set provider.Request.NoReasoning.
+Every adapter maps it to the endpoint's native off state or drops the
+reasoning/effort fields entirely:
+
+- openai: DeepSeek emits thinking.type=disabled with no reasoning_effort;
+  MiniMax/GLM/LongCat and generic thinking configs map to thinking.type=disabled;
+  Kimi K3 skips its empty-effort "max" ladder; the opencode Zen wire is
+  byte-identical (it never carries thinking/effort).
+- anthropic: DeepSeek-Anthropic and plain Anthropic emit thinking.type=disabled
+  with no output_config.
+- responses: DeepSeek maps to reasoning.effort=none; other vendors omit the
+  reasoning block.
+
+NoReasoning is host-internal (json:"-", absent from the Extension Protocol
+DTO), so extensions never observe it and the wire DTO stays byte-stable.
+
+Tests cover every adapter branch plus the agent->provider contract
+(TestSummaryRequest*), including the K3 effort-ladder and opencode identity
+regressions.
+---
+ internal/agent/compact.go                     |   5 +
+ internal/agent/compact_no_reasoning_test.go   |  46 ++++++
+ internal/provider/anthropic/anthropic.go      |   5 +-
+ .../provider/anthropic/no_reasoning_test.go   |  59 ++++++++
+ internal/provider/openai/no_reasoning_test.go | 133 ++++++++++++++++++
+ internal/provider/openai/openai.go            |  49 +++++--
+ internal/provider/provider.go                 |   6 +
+ .../provider/responses/no_reasoning_test.go   |  34 +++++
+ internal/provider/responses/responses.go      |  11 +-
+ 9 files changed, 335 insertions(+), 13 deletions(-)
+ create mode 100644 internal/agent/compact_no_reasoning_test.go
+ create mode 100644 internal/provider/anthropic/no_reasoning_test.go
+ create mode 100644 internal/provider/openai/no_reasoning_test.go
+ create mode 100644 internal/provider/responses/no_reasoning_test.go
+
+diff --git a/internal/agent/compact.go b/internal/agent/compact.go
+index f1cb7a5..bb92929 100644
+--- a/internal/agent/compact.go
++++ b/internal/agent/compact.go
+@@ -382,6 +382,11 @@ func (a *Agent) summaryRequest(region []provider.Message, instructions string) p
+ 		Tools:       schemas,
+ 		MaxTokens:   summaryOutputMaxTokens,
+ 		Temperature: provider.OptionalTemperature(a.temperature),
++		// Compaction asks for a durable resume briefing, not reasoning: force
++		// thinking off on every backend (thinking.type=disabled via adapters)
++		// so the summary call is fast, cheap, and never pays for chain-of-thought
++		// the transcript does not retain.
++		NoReasoning: true,
+ 	}
+ }
+ 
+diff --git a/internal/agent/compact_no_reasoning_test.go b/internal/agent/compact_no_reasoning_test.go
+new file mode 100644
+index 0000000..bf6b251
+--- /dev/null
++++ b/internal/agent/compact_no_reasoning_test.go
+@@ -0,0 +1,46 @@
++package agent
++
++import (
++	"strings"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++func TestSummaryRequestForcesNoReasoning(t *testing.T) {
++	a := &Agent{agentConfig: agentConfig{contextWindow: 100_000, maxOutputTokens: 20_000, compactRatio: 0.85}}
++	region := []provider.Message{
++		{Role: provider.RoleSystem, Content: "sys"},
++		{Role: provider.RoleUser, Content: strings.Repeat("work output ", 200)},
++	}
++
++	req := a.summaryRequest(region, "")
++	if !req.NoReasoning {
++		t.Fatalf("summaryRequest must force NoReasoning on the wire request: %+v", req)
++	}
++	if req.MaxTokens != summaryOutputMaxTokens {
++		t.Fatalf("summary output budget = %d, want %d", req.MaxTokens, summaryOutputMaxTokens)
++	}
++	last := req.Messages[len(req.Messages)-1]
++	if last.Role != provider.RoleUser || last.Content == "" {
++		t.Fatalf("summary request must end with the compaction instruction user turn, got %q/%q", last.Role, last.Content)
++	}
++	if !strings.Contains(last.Content, compactionInstruction[0:min(24, len(compactionInstruction))]) {
++		t.Fatalf("summary tail must carry the compaction instruction, got %q", last.Content)
++	}
++}
++
++func TestSummaryRequestNoReasoningIndependentOfConfiguredEffort(t *testing.T) {
++	// The flag is structural: even a client with thinking on by default gets
++	// the off wire once the agent builds the summary request. This test pins
++	// the agent→provider contract so a future effort-tunnel regression is
++	// caught at the agent boundary, not only in provider marshal tests.
++	a := &Agent{agentConfig: agentConfig{contextWindow: 100_000, maxOutputTokens: 20_000, compactRatio: 0.85}}
++	req := a.summaryRequest([]provider.Message{
++		{Role: provider.RoleSystem, Content: "sys"},
++		{Role: provider.RoleUser, Content: "task"},
++	}, "focus")
++	if !req.NoReasoning {
++		t.Fatalf("summaryRequest must set NoReasoning regardless of instructions: %+v", req)
++	}
++}
+diff --git a/internal/provider/anthropic/anthropic.go b/internal/provider/anthropic/anthropic.go
+index d86c2c0..e5f50c6 100644
+--- a/internal/provider/anthropic/anthropic.go
++++ b/internal/provider/anthropic/anthropic.go
+@@ -459,8 +459,11 @@ func (c *client) buildRequest(ctx context.Context, req provider.Request) anthReq
+ 	// accepts output_config.effort alongside its binary toggle. Anthropic proper
+ 	// uses type=adaptive plus display/output_config. LongCat-style compatible
+ 	// gateways use the simpler enabled|disabled knob and reject output_config.
++	// NoReasoning (compaction) forces the native off knob either way.
+ 	if c.deepseek {
+-		c.applyDeepSeekThinking(&r, req, recoveryWithoutThinking)
++		c.applyDeepSeekThinking(&r, req, recoveryWithoutThinking || req.NoReasoning)
++	} else if req.NoReasoning {
++		r.Thinking = &thinkingConfig{Type: "disabled"}
+ 	} else {
+ 		switch c.thinking {
+ 		case "adaptive":
+diff --git a/internal/provider/anthropic/no_reasoning_test.go b/internal/provider/anthropic/no_reasoning_test.go
+new file mode 100644
+index 0000000..92602e1
+--- /dev/null
++++ b/internal/provider/anthropic/no_reasoning_test.go
+@@ -0,0 +1,59 @@
++package anthropic
++
++import (
++	"context"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++func TestBuildRequestNoReasoningDeepSeekAnthropic(t *testing.T) {
++	c := &client{name: "ds", model: "deepseek-v4", deepseek: true, thinking: "enabled", effort: "high"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++
++	on := c.buildRequest(context.Background(), provider.Request{Messages: msg})
++	if on.Thinking == nil || on.Thinking.Type != "enabled" {
++		t.Fatalf("deepseek control must enable thinking, got %+v", on.Thinking)
++	}
++	if on.OutputConfig == nil || on.OutputConfig.Effort != "high" {
++		t.Fatalf("deepseek control must carry effort=high, got %+v", on.OutputConfig)
++	}
++
++	off := c.buildRequest(context.Background(), provider.Request{Messages: msg, NoReasoning: true})
++	if off.Thinking == nil || off.Thinking.Type != "disabled" {
++		t.Fatalf("deepseek NoReasoning must emit thinking.type=disabled, got %+v", off.Thinking)
++	}
++	if off.OutputConfig != nil {
++		t.Fatalf("deepseek NoReasoning must drop output_config, got %+v", off.OutputConfig)
++	}
++}
++
++func TestBuildRequestNoReasoningAnthropicAdaptive(t *testing.T) {
++	c := &client{name: "anthropic", model: "claude-opus-4-8", thinking: "adaptive", effort: "medium"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++
++	on := c.buildRequest(context.Background(), provider.Request{Messages: msg})
++	if on.Thinking == nil || on.Thinking.Type != "adaptive" {
++		t.Fatalf("anthropic control must use adaptive thinking, got %+v", on.Thinking)
++	}
++	if on.OutputConfig == nil || on.OutputConfig.Effort != "medium" {
++		t.Fatalf("anthropic control must carry effort=medium, got %+v", on.OutputConfig)
++	}
++
++	off := c.buildRequest(context.Background(), provider.Request{Messages: msg, NoReasoning: true})
++	if off.Thinking == nil || off.Thinking.Type != "disabled" {
++		t.Fatalf("anthropic NoReasoning must disable thinking, got %+v", off.Thinking)
++	}
++	if off.OutputConfig != nil {
++		t.Fatalf("anthropic NoReasoning must drop output_config, got %+v", off.OutputConfig)
++	}
++}
++
++func TestBuildRequestNoReasoningBinaryStyle(t *testing.T) {
++	c := &client{name: "lc", model: "longcat-model", thinking: "enabled"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++	off := c.buildRequest(context.Background(), provider.Request{Messages: msg, NoReasoning: true})
++	if off.Thinking == nil || off.Thinking.Type != "disabled" {
++		t.Fatalf("binary-knob NoReasoning must disable thinking, got %+v", off.Thinking)
++	}
++}
+diff --git a/internal/provider/openai/no_reasoning_test.go b/internal/provider/openai/no_reasoning_test.go
+new file mode 100644
+index 0000000..e3bcfbd
+--- /dev/null
++++ b/internal/provider/openai/no_reasoning_test.go
+@@ -0,0 +1,133 @@
++package openai
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++// marshalBuildRequest renders one wire body so tests assert on the exact JSON
++// an endpoint would receive, not on intermediate struct fields.
++
++func marshalBuildRequest(t *testing.T, c *client, req provider.Request) string {
++	t.Helper()
++	body, err := json.Marshal(c.buildRequest(req))
++	if err != nil {
++		t.Fatalf("marshal buildRequest: %v", err)
++	}
++	return string(body)
++}
++
++func TestBuildRequestNoReasoningDeepSeek(t *testing.T) {
++	c := &client{name: "deepseek", model: "deepseek-v4", deepseek: true, effort: "high"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++
++	on := marshalBuildRequest(t, c, provider.Request{Messages: msg})
++	if !strings.Contains(on, `"thinking":{"type":"enabled"}`) {
++		t.Fatalf("deepseek default wire must enable thinking: %s", on)
++	}
++	if !strings.Contains(on, `"reasoning_effort":"high"`) {
++		t.Fatalf("deepseek default wire must carry reasoning_effort: %s", on)
++	}
++
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
++	if !strings.Contains(off, `"thinking":{"type":"disabled"}`) {
++		t.Fatalf("deepseek NoReasoning must emit thinking.type=disabled: %s", off)
++	}
++	if strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("deepseek NoReasoning must drop reasoning_effort: %s", off)
++	}
++}
++
++func TestBuildRequestNoReasoningBeatsEffortOverride(t *testing.T) {
++	c := &client{
++		name:           "deepseek",
++		model:          "deepseek-v4",
++		deepseek:       true,
++		effort:         "high",
++		requestEfforts: []string{"low", "high"},
++	}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++
++	on := marshalBuildRequest(t, c, provider.Request{Messages: msg, EffortOverride: "low"})
++	if !strings.Contains(on, `"reasoning_effort":"low"`) {
++		t.Fatalf("per-request effort override must apply: %s", on)
++	}
++
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, EffortOverride: "low", NoReasoning: true})
++	if !strings.Contains(off, `"thinking":{"type":"disabled"}`) || strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("NoReasoning must beat an effort override: %s", off)
++	}
++}
++
++func TestBuildRequestNoReasoningBinaryKnobs(t *testing.T) {
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++	cases := []struct {
++		name string
++		c    *client
++	}{
++		{"minimax", &client{minimax: true, effort: "adaptive"}},
++		{"zhipu", &client{zhipu: true, effort: "enabled", thinkingType: "enabled"}},
++		{"zhipu-disabled-config", &client{zhipu: true, effort: "enabled", thinkingType: "disabled"}},
++		{"longcat", &client{longcat: true, effort: "enabled"}},
++		{"generic", &client{thinkingType: "enabled"}},
++	}
++	for _, tc := range cases {
++		tc.c.name = tc.name
++		tc.c.model = "m-" + tc.name
++		off := marshalBuildRequest(t, tc.c, provider.Request{Messages: msg, NoReasoning: true})
++		if !strings.Contains(off, `"thinking":{"type":"disabled"}`) {
++			t.Fatalf("%s: NoReasoning must map to thinking.type=disabled: %s", tc.name, off)
++		}
++		if strings.Contains(off, "reasoning_effort") {
++			t.Fatalf("%s: NoReasoning must drop reasoning_effort: %s", tc.name, off)
++		}
++	}
++}
++
++func TestBuildRequestNoReasoningGenericOmitsWhenUnconfigured(t *testing.T) {
++	// A vanilla OpenAI-compatible endpoint has no thinking knob; NoReasoning
++	// must simply omit both fields (the only wire shape that always means "no
++	// reasoning" there) instead of inventing an invalid value.
++	c := &client{name: "generic", model: "gpt-4o-mini", effort: "high"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
++	if strings.Contains(off, "thinking") || strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("generic NoReasoning must omit both fields: %s", off)
++	}
++}
++
++func TestBuildRequestNoReasoningKimiK3SkipsEffortLadder(t *testing.T) {
++	// K3's empty-effort ladder would map "" → "max"; NoReasoning must not
++	// resurrect a depth hint on the reasoning-off wire.
++	c := &client{name: "k3", model: "kimi-k3", kimiK3: true, effort: "high"}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++
++	on := marshalBuildRequest(t, c, provider.Request{Messages: msg})
++	if !strings.Contains(on, `"reasoning_effort":"high"`) {
++		t.Fatalf("kimi-k3 control wire must carry effort: %s", on)
++	}
++
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
++	if strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("kimi-k3 NoReasoning must skip the effort ladder: %s", off)
++	}
++}
++
++func TestBuildRequestNoReasoningOpenCodeWireUnchanged(t *testing.T) {
++	// The opencode Zen wire never carries thinking/effort at all, so
++	// NoReasoning must be byte-identical to the default request — the
++	// compaction flag cannot perturb the fixed opencode body shape.
++	c := &client{name: "opencode", model: "deepseek-v4-flash-free", opencode: true}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++	base := marshalBuildRequest(t, c, provider.Request{Messages: msg})
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
++	if base != off {
++		t.Fatalf("opencode wire must be byte-identical under NoReasoning:\nbase=%s\noff =%s", base, off)
++	}
++	if strings.Contains(off, "thinking") || strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("opencode body must never carry thinking/effort: %s", off)
++	}
++}
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index 31ef2c3..5f47fd6 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -799,6 +799,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 	if maxOutputTokens < 0 {
+ 		maxOutputTokens = 0
+ 	}
++	// NoReasoning (compaction summaries) drops any depth hint up front; the
++	// binary-knob branches below translate it to their native
++	// thinking.type=disabled instead of the configured default.
++	effort := c.requestEffort(req)
++	reasoningEffort := kimiK3ReasoningEffort(c.kimiK3, effort)
++	if req.NoReasoning {
++		effort = ""
++		// K3's empty-effort ladder would resurrect effort="max" — a
++		// reasoning-off summary must not send a depth hint, so skip the
++		// ladder entirely.
++		reasoningEffort = ""
++	}
+ 	out := chatRequest{
+ 		Model:           c.model,
+ 		Messages:        msgs,
+@@ -807,7 +819,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		StreamOptions:   &streamOptions{IncludeUsage: true},
+ 		Temperature:     req.Temperature,
+ 		MaxTokens:       maxOutputTokens,
+-		ReasoningEffort: kimiK3ReasoningEffort(c.kimiK3, c.requestEffort(req)),
++		ReasoningEffort: reasoningEffort,
+ 		ExtraBody:       c.extraBody,
+ 	}
+ 	switch {
+@@ -829,8 +841,10 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// DeepSeek's CoT is controlled by `thinking` plus `reasoning_effort` for
+ 		// depth. Thinking is on by default but can be turned off via
+ 		// effort=disabled / thinking=disabled (credit @eghrhegpe, #5063).
+-		if c.thinkingType == "disabled" {
++		// NoReasoning (compaction) forces the off knob and drops the depth hint.
++		if c.thinkingType == "disabled" || req.NoReasoning {
+ 			out.Thinking = &thinkingMode{Type: "disabled"}
++			out.ReasoningEffort = ""
+ 		} else {
+ 			out.Thinking = &thinkingMode{Type: "enabled"}
+ 		}
+@@ -839,7 +853,10 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// "adaptive" (default, thinking on) and "disabled" (off). Reasoning
+ 		// depth is not a knob on M3, so reasoning_effort is omitted entirely.
+ 		t := c.effort
+-		if t == "" {
++		switch {
++		case req.NoReasoning:
++			t = "disabled"
++		case t == "":
+ 			t = "adaptive" // /effort auto == the M3 model default
+ 		}
+ 		out.Thinking = &thinkingMode{Type: t}
+@@ -849,10 +866,12 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// "disabled". reasoning_effort is silently ignored by the endpoint, so we
+ 		// omit it and drive chain-of-thought purely through thinking.type.
+ 		t := c.effort
+-		if t == "" {
++		switch {
++		case req.NoReasoning:
++			t = "disabled"
++		case t == "":
+ 			t = "enabled" // auto == the GLM default (thinking on)
+-		}
+-		if c.thinkingType != "" {
++		case c.thinkingType != "":
+ 			t = c.thinkingType // explicit `thinking` config overrides the effort knob
+ 		}
+ 		out.Thinking = &thinkingMode{Type: t}
+@@ -862,10 +881,12 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		// "disabled". The API documents reasoning_content in OpenAI responses but
+ 		// not reasoning_effort, so keep depth out of the request.
+ 		t := c.effort
+-		if t == "" {
++		switch {
++		case req.NoReasoning:
++			t = "disabled"
++		case t == "":
+ 			t = c.thinkingType
+-		}
+-		if t == "" {
++		case t == "":
+ 			t = "enabled"
+ 		}
+ 		out.Thinking = &thinkingMode{Type: t}
+@@ -873,8 +894,14 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 	case c.thinkingType != "":
+ 		// Generic OpenAI-compatible provider with an explicit `thinking` config
+ 		// field (e.g. opencode.ai) — emit thinking.type; reasoning_effort, if any,
+-		// is left untouched for backends that also honour it.
+-		out.Thinking = &thinkingMode{Type: c.thinkingType}
++		// is left untouched for backends that also honour it. NoReasoning
++		// (compaction) maps to the off knob and strips the depth hint.
++		t := c.thinkingType
++		if req.NoReasoning {
++			t = "disabled"
++			out.ReasoningEffort = ""
++		}
++		out.Thinking = &thinkingMode{Type: t}
+ 	}
+ 	if c.opencode {
+ 		// The opencode CLI sends a fixed wire shape regardless of reasoning
+diff --git a/internal/provider/provider.go b/internal/provider/provider.go
+index 2499628..24012ff 100644
+--- a/internal/provider/provider.go
++++ b/internal/provider/provider.go
+@@ -222,6 +222,12 @@ type Request struct {
+ 	// entirely — the common path must stay byte-stable for prompt caching.
+ 	ResponseFormat *ResponseFormat `json:"ResponseFormat,omitempty"`
+ 	EffortOverride string          `json:"EffortOverride,omitempty"` // per-call reasoning-depth override; adapters apply it only when the endpoint's effort vocabulary accepts it
++	// NoReasoning forces this request to omit reasoning. Adapters wire the
++	// endpoint's native off knob (e.g. thinking.type=disabled) or drop the
++	// reasoning/effort fields entirely; a configured depth is never sent.
++	// It is host-internal: the Extension Protocol provider DTO has no such
++	// field, so extensions never observe it.
++	NoReasoning bool `json:"-"`
+ }
+ 
+ // ResponseFormat asks a provider to constrain its output shape.
+diff --git a/internal/provider/responses/no_reasoning_test.go b/internal/provider/responses/no_reasoning_test.go
+new file mode 100644
+index 0000000..6ba7348
+--- /dev/null
++++ b/internal/provider/responses/no_reasoning_test.go
+@@ -0,0 +1,34 @@
++package responses
++
++import (
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++func TestBuildRequestBodyNoReasoningDeepSeekNone(t *testing.T) {
++	c := New(Config{Name: "ds", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-pro"}).(*client)
++	body, _, _ := c.buildRequestBody(provider.Request{NoReasoning: true})
++	r, ok := body["reasoning"].(map[string]any)
++	if !ok || r["effort"] != "none" {
++		t.Fatalf("deepseek NoReasoning must map to reasoning.effort=none, got %#v", body["reasoning"])
++	}
++
++	control, _, _ := c.buildRequestBody(provider.Request{})
++	if _, exists := control["reasoning"]; exists {
++		t.Fatalf("deepseek control must not invent a reasoning block, got %#v", control["reasoning"])
++	}
++}
++
++func TestBuildRequestBodyNoReasoningNonDeepSeekOmitted(t *testing.T) {
++	c := &client{vendor: "mimo", model: "mimo-8", effort: "high", name: "m"}
++	on, _, _ := c.buildRequestBody(provider.Request{})
++	if r, ok := on["reasoning"].(map[string]any); !ok || r["effort"] != "high" {
++		t.Fatalf("mimo control must keep the configured effort, got %#v", on["reasoning"])
++	}
++
++	off, _, _ := c.buildRequestBody(provider.Request{NoReasoning: true})
++	if _, exists := off["reasoning"]; exists {
++		t.Fatalf("non-deepseek NoReasoning must omit the reasoning block, got %#v", off["reasoning"])
++	}
++}
+diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
+index 367f260..b1a7b05 100644
+--- a/internal/provider/responses/responses.go
++++ b/internal/provider/responses/responses.go
+@@ -258,7 +258,16 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+ 	body := map[string]any{"model": c.model, "stream": true}
+ 
+ 	effort := strings.ToLower(strings.TrimSpace(c.effort))
+-	if c.vendor == "deepseek" && (strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-flash") || strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-pro")) {
++	if req.NoReasoning {
++		// Compaction summaries skip reasoning. DeepSeek's Responses endpoint
++		// spells the off state "none"; vendors without a reasoning block get the
++		// fields omitted entirely rather than a possibly-invalid effort value.
++		if c.vendor != "deepseek" {
++			effort = ""
++		} else {
++			effort = "none"
++		}
++	} else if c.vendor == "deepseek" && (strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-flash") || strings.EqualFold(strings.TrimSpace(c.model), "deepseek-v4-pro")) {
+ 		if effort == "medium" || effort == "xhigh" {
+ 			effort = "high"
+ 		}
+From ca31eee0bfe930054efe333cc044d7d0639fe435 Mon Sep 17 00:00:00 2001
+From: dev <dev@local>
+Date: Wed, 19 Aug 2026 21:26:51 +0000
+Subject: [PATCH 7/6] openai: disable Zen thinking on DeepSeek compaction summaries
+
+Technically, PATCH 6/6 left deepseek-v4-flash-free (the user's model via the
+opencode Zen gateway) unaffected: the opencode wire has no thinking/effort
+knob, so NoReasoning changed nothing on the wire and the DeepSeek backend
+kept its default thinking-on behaviour.
+
+Fix: for DeepSeek models on the Zen gateway, NoReasoning now carries
+DeepSeek's native thinking-off field (thinking.type=disabled) appended
+after the CLI-fixed keys. Non-compaction requests stay byte-identical to
+the CLI capture, and generic Zen models (e.g. mimo) with no thinking mode
+keep the byte-identical body in both directions.
+
+Tests: exact wire strings for the DeepSeek compaction body (fixed key order
+plus trailing thinking off) and byte-identity for the default/non-DeepSeek
+bodies.
+---
+ internal/provider/openai/no_reasoning_test.go | 30 +++++++++++++++----
+ internal/provider/openai/openai.go            |  9 ++++++
+ internal/provider/openai/opencode.go          |  6 ++++
+ 3 files changed, 39 insertions(+), 6 deletions(-)
+
+diff --git a/internal/provider/openai/no_reasoning_test.go b/internal/provider/openai/no_reasoning_test.go
+index e3bcfbd..0e43e8c 100644
+--- a/internal/provider/openai/no_reasoning_test.go
++++ b/internal/provider/openai/no_reasoning_test.go
+@@ -116,18 +116,36 @@ func TestBuildRequestNoReasoningKimiK3SkipsEffortLadder(t *testing.T) {
+ 	}
+ }
+ 
+-func TestBuildRequestNoReasoningOpenCodeWireUnchanged(t *testing.T) {
+-	// The opencode Zen wire never carries thinking/effort at all, so
+-	// NoReasoning must be byte-identical to the default request — the
+-	// compaction flag cannot perturb the fixed opencode body shape.
++func TestBuildRequestNoReasoningOpenCodeDeepSeek(t *testing.T) {
++	// deepseek-v4-flash-free on the Zen gateway thinks by default. The fixed
++	// opencode body has no effort knob, so the compaction flag must reach the
++	// wire as DeepSeek's native thinking-off field — appended after the
++	// CLI-fixed keys, with no other key moved.
+ 	c := &client{name: "opencode", model: "deepseek-v4-flash-free", opencode: true}
+ 	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
+ 	base := marshalBuildRequest(t, c, provider.Request{Messages: msg})
++	const wantBase = `{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`
++	if base != wantBase {
++		t.Fatalf("default opencode wire drifted from the CLI shape:\ngot  %s\nwant %s", base, wantBase)
++	}
++	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
++	const wantOff = `{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"}}`
++	if off != wantOff {
++		t.Fatalf("opencode DeepSeek NoReasoning wire:\ngot  %s\nwant %s", off, wantOff)
++	}
++}
++
++func TestBuildRequestNoReasoningOpenCodeNonDeepSeekUnchanged(t *testing.T) {
++	// Generic Zen models (e.g. mimo-v2.5-free) have no thinking mode; their
++	// compaction body stays byte-identical to the CLI shape, exactly as before.
++	c := &client{name: "opencode", model: "mimo-v2.5-free", opencode: true}
++	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
++	base := marshalBuildRequest(t, c, provider.Request{Messages: msg})
+ 	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
+ 	if base != off {
+-		t.Fatalf("opencode wire must be byte-identical under NoReasoning:\nbase=%s\noff =%s", base, off)
++		t.Fatalf("non-DeepSeek opencode wire must be byte-identical under NoReasoning:\nbase=%s\noff =%s", base, off)
+ 	}
+ 	if strings.Contains(off, "thinking") || strings.Contains(off, "reasoning_effort") {
+-		t.Fatalf("opencode body must never carry thinking/effort: %s", off)
++		t.Fatalf("non-DeepSeek opencode body must never carry thinking/effort: %s", off)
+ 	}
+ }
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index 5f47fd6..46fe9db 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -911,6 +911,14 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		out.Temperature = nil
+ 		out.ReasoningEffort = ""
+ 		out.Thinking = nil
++		if req.NoReasoning && strings.Contains(strings.ToLower(out.Model), "deepseek") {
++			// deepseek-v4-flash(-free) on the Zen gateway thinks by default and
++			// the fixed opencode body has no effort knob, so carry the compaction
++			// flag through the wire as DeepSeek's native thinking-off field.
++			// Only DeepSeek models: generic Zen models (e.g. mimo) have no
++			// thinking mode and must keep the byte-identical CLI body.
++			out.NoReasoning = true
++		}
+ 		if len(tools) > 0 {
+ 			out.ToolChoice = "auto"
+ 		}
+@@ -1234,6 +1242,7 @@ type chatRequest struct {
+ 	Thinking            *thinkingMode  `json:"thinking,omitempty"`
+ 	ToolChoice          string         `json:"tool_choice,omitempty"`
+ 	Opencode            bool           `json:"-"`
++	NoReasoning         bool           `json:"-"`
+ 	ExtraBody           map[string]any `json:"-"`
+ }
+ 
+diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
+index b2cde1c..b1bfc92 100644
+--- a/internal/provider/openai/opencode.go
++++ b/internal/provider/openai/opencode.go
+@@ -47,6 +47,8 @@ func (c *client) applyOpenCodeHeaders(h http.Header) {
+ 
+ // openCodeRequest emits the opencode body key order exactly as the CLI sends it:
+ // model, max_tokens, messages, tools, tool_choice, stream, stream_options.
++// thinking appears only on compaction summary requests for DeepSeek models
++// (the sole case where the fixed body needs the native thinking-off knob).
+ type openCodeRequest struct {
+ 	Model         string         `json:"model"`
+ 	MaxTokens     int            `json:"max_tokens,omitempty"`
+@@ -55,6 +57,7 @@ type openCodeRequest struct {
+ 	ToolChoice    string         `json:"tool_choice,omitempty"`
+ 	Stream        bool           `json:"stream"`
+ 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
++	Thinking      *thinkingMode  `json:"thinking,omitempty"`
+ 	ExtraBody     map[string]any `json:"-"`
+ }
+ 
+@@ -69,6 +72,9 @@ func marshalOpenCodeRequest(r chatRequest) ([]byte, error) {
+ 		StreamOptions: r.StreamOptions,
+ 		ExtraBody:     r.ExtraBody,
+ 	}
++	if r.NoReasoning {
++		wire.Thinking = &thinkingMode{Type: "disabled"}
++	}
+ 	raw, err := json.Marshal(wire)
+ 	if err != nil {
+ 		return nil, err

@@ -3,7 +3,7 @@
   formats,
   mcp-nixos,
   context7-mcp,
-  nodejs-slim,
+  nodejs-slim_latest,
   go,
   nil,
   ty,
@@ -125,7 +125,7 @@
       "use_capability"
     ];
     deny = [
-      "Bash(*find /nix/store*)"
+      "Bash(*find /nix/store *)"
       "Bash(*ls /nix/store *)"
       "Bash(*find / *)"
     ];
@@ -161,9 +161,9 @@
     {
       name = "mobile-mcp";
       type = "stdio";
-      command = lib.getExe' nodejs-slim "npx";
+      command = lib.getExe' nodejs-slim_latest "npx";
       args = [
-        "-y"
+        "--yes"
         "@mobilenext/mobile-mcp@latest"
       ];
     }
