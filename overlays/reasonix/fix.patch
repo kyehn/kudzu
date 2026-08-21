@@ -1500,25 +1500,28 @@ index c87b401..bebb6d3 100644
  	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
  		adm.ApplyMaxTokens = false
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
-index 89b9f2d..619a3bc 100644
+index 26e44e5..b91cb5e 100644
 --- a/internal/provider/context_limit.go
 +++ b/internal/provider/context_limit.go
-@@ -41,6 +41,11 @@ var (
+@@ -67,7 +67,12 @@ var (
  	contextLimitEnglishRe = regexp.MustCompile(`(?i)maximum context length is (\d+) tokens?\.?\s*however,\s*you requested (\d+) tokens? \((\d+) in the (?:messages|prompt), (\d+) in the completion\)`)
  	contextLimitPromptRe  = regexp.MustCompile(`(?i)prompt is too long:\s*(\d+) tokens? > (\d+) maximum`)
  	contextLimitSumRe     = regexp.MustCompile("(?i)input length and [`']?max_tokens[`']? exceed context limit:\\s*(\\d+)\\s*\\+\\s*(\\d+)\\s*>\\s*(\\d+)")
+-	outputLimitRe         = regexp.MustCompile(`(?i)max_tokens\s*(?:is\s+too\s+large|too\s+large)\s*[:=]?\s*(\d+).*?(?:supports?|maximum|at\s+most)[^\d]*(\d+)`)
 +	// OpenAI-compatible gateways report the overflow as a bare input-vs-window
 +	// comparison, e.g. "The input (1165351 tokens) is longer than the model's
 +	// context length (1048576 tokens)". The window here is the gateway's real
 +	// capacity, which may exceed the conservative configured value.
 +	contextLimitLongerRe = regexp.MustCompile(`(?i)the input \((\d+) tokens?\) is longer than the model's context length \((\d+) tokens?\)`)
++	outputLimitRe        = regexp.MustCompile(`(?i)max_tokens\s*(?:is\s+too\s+large|too\s+large)\s*[:=]?\s*(\d+).*?(?:supports?|maximum|at\s+most)[^\d]*(\d+)`)
  )
  
  func contextLimitStatusOK(status int) bool {
-@@ -171,6 +176,13 @@ func parseContextLimitText(text string) (window, requested, prompt, completion i
+@@ -198,6 +203,14 @@ func parseContextLimitText(text string) (window, requested, prompt, completion i
  			return window, prompt, prompt, 0, true
  		}
  	}
++
 +	if m := contextLimitLongerRe.FindStringSubmatch(text); len(m) == 3 {
 +		prompt = atoiStrict(m[1])
 +		window = atoiStrict(m[2])
@@ -1530,11 +1533,11 @@ index 89b9f2d..619a3bc 100644
  }
  
 diff --git a/internal/provider/context_limit_test.go b/internal/provider/context_limit_test.go
-index 5f64002..93b6d74 100644
+index ec38555..6ebabc7 100644
 --- a/internal/provider/context_limit_test.go
 +++ b/internal/provider/context_limit_test.go
-@@ -49,3 +49,22 @@ func TestParseContextLimitErrorAccepts413And422(t *testing.T) {
- 		t.Fatal("422 should parse")
+@@ -59,3 +59,22 @@ func TestParseOutputLimitError(t *testing.T) {
+ 		t.Fatal("authorization errors must not be treated as output-limit errors")
  	}
  }
 +
@@ -1558,8 +1561,6 @@ index 5f64002..93b6d74 100644
 +}
 -- 
 2.54.0
-
-
 From a072c05944ad283d0c388cdaa17279cc1b14063e Mon Sep 17 00:00:00 2001
 From: kyehn <kyehn@users.noreply.github.com>
 Date: Wed, 19 Aug 2026 06:10:35 +0000
