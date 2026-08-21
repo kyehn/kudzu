@@ -3477,3 +3477,326 @@ index e6b52ff..8d685c5 100644
  	if !ok {
  		return nil
  	}
+From 7c91e26b00000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Thu, 21 Aug 2026 05:30:00 +0000
+Subject: [PATCH 10/10] agent, openai: survive summary requests the backend rejects
+
+Zen free-tier backends reject large summary inputs without usable numbers
+("[1261] Prompt exceeds max length", stream EOFs) and reasoning-capable
+models (mimo-v2.5-free) can spend the whole summary output budget on
+chain-of-thought and return empty content. The trusted ContextLimitError
+parser cannot learn from numberless bodies, so every retry resent the
+same oversized request and the turn died with ErrCompactionRequired.
+
+- opencode wire: carry NoReasoning as thinking.type=disabled for every
+  model on a compaction summary, not only DeepSeek; ordinary traffic keeps
+  the byte-identical CLI body.
+- foldContext: classify capacity-style summary failures (prompt exceeds /
+  too long / unexpected EOF / empty output), halve the learned window via
+  learnContextBudget, and refold against the recalibrated ceiling instead
+  of failing the turn. The halving stops at a 32k floor; rate limits and
+  other non-capacity errors never shrink.
+- maximumSafeSummaryPrefixEnd: a learned window below the configured one
+  (capacity shrink or gateway overflow) now fits the summary prefix even
+  for unknown-window backends that previously sent the fold uncut.
+---
+ internal/agent/compact_projection.go          |  74 +++++++++++++++++-
+ internal/agent/context_manager.go             |  11 +++
+ internal/agent/summary_capacity_test.go       | 105 ++++++++++++++++++++++++++
+ internal/provider/openai/no_reasoning_test.go |  21 ++++--
+ internal/provider/openai/openai.go            |  14 ++--
+ 5 files changed, 208 insertions(+), 17 deletions(-)
+diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
+index 541dc02..7c92e8c 100644
+--- a/internal/agent/compact_projection.go
++++ b/internal/agent/compact_projection.go
+@@ -619,6 +619,71 @@ func (a *Agent) activeTurnDominates(msgs []provider.Message, active int) bool {
+ 	return total > 0 && single*2 >= total
+ }
+ 
++// minUsableSummaryWindow stops the halving loop: below this the session
++// cannot hold even a system message plus a digest, and compaction is paused
++// by the too-small-window path instead.
++const minUsableSummaryWindow = 32768
++
++// summaryCapacityHints match backend failures that mean "this request was
++// larger than the real model limit". Zen gateway bodies carry no token counts
++// ("Error from provider (Console): Upstream request failed: [1261] Prompt
++// exceeds max length"), stream cuts ("unexpected EOF") and empty completions
++// are the same failure in disguise, and none of them parse as a trusted
++// ContextLimitError — so the fold loop recalibrates off these hints.
++var summaryCapacityHints = []string{
++	"prompt exceeds",
++	"exceeds max length",
++	"maximum context",
++	"context length",
++	"too long",
++	"unexpected eof",
++	"returned empty output",
++}
++
++func isSummaryCapacityError(err error) bool {
++	if err == nil {
++		return false
++	}
++	msg := strings.ToLower(err.Error())
++	for _, hint := range summaryCapacityHints {
++		if strings.Contains(msg, hint) {
++			return true
++		}
++	}
++	return false
++}
++
++// shrinkWindowOnSummaryCapacityError halves the effective window when a
++// summary request failed in a way that indicates the real backend limit sits
++// below the configured one. learnContextBudget only shrinks, never widens,
++// and every consumer (hard ceiling, fold trigger, summary prefix fitter)
++// reads it through effectiveContextWindow, so one learned value recalibrates
++// the whole fold loop. Returns true when the window shrank and the caller
++// should retry.
++func (a *Agent) shrinkWindowOnSummaryCapacityError(err error) bool {
++	if !isSummaryCapacityError(err) {
++		return false
++	}
++	half := a.effectiveContextWindow() / 2
++	if half < minUsableSummaryWindow {
++		return false
++	}
++	a.learnContextBudget(half, 0, false)
++	return true
++}
++
++// windowLearnedBelowConfig reports whether a learned window exists and sits
++// below the configured one. learnContextBudget only shrinks, so this is proof
++// the real backend limit is smaller than configured (capacity-error shrink or
++// a gateway-reported overflow), not just an estimate.
++func (a *Agent) windowLearnedBelowConfig() bool {
++	if a == nil || a.contextWindow <= 0 {
++		return false
++	}
++	snap := a.sess.output.learned.Load()
++	return snap != nil && snap.windowTokens > 0 && snap.windowTokens < a.contextWindow
++}
++
+ // maximumSafeSummaryPrefixEnd returns the largest balanced contiguous prefix
+ // whose exact summary request leaves the collector's minimum output budget.
+ // The remaining middle and tail stay verbatim in the projection.
+@@ -631,7 +696,11 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
+ 	if policy.WindowMode == provider.ContextWindowUnknown {
+ 		// A learned overflow makes an unknown gateway shared-window. Otherwise
+ 		// preserve the request because the configured window may be an estimate.
+-		if a.lastAdmission().ObservedWindow <= 0 {
++		// A capacity-error window shrink counts the same way: learnContextBudget
++		// only ever writes values below the configured window, so its presence
++		// proves the real backend is smaller than configured and the summary
++		// prefix must be fitted against the recalibrated ceiling.
++		if a.lastAdmission().ObservedWindow <= 0 && !a.windowLearnedBelowConfig() {
+ 			return end
+ 		}
+ 		policy.WindowMode = provider.ContextWindowShared
+@@ -640,9 +709,6 @@ func (a *Agent) maximumSafeSummaryPrefixEnd(msgs []provider.Message, head, end i
+ 	if policy.WindowMode == provider.ContextWindowShared {
+ 		maxPromptTokens = window - outputBudgetReserve - 256
+ 	}
+-	if maxPromptTokens <= 0 {
+-		return head
+-	}
+ 	fits := func(candidate int) bool {
+ 		request := a.summaryRequest(msgs[head:candidate], instructions)
+ 		return a.estimatedRequestTokens(request) <= maxPromptTokens
+diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
+index b124eb9..ad757b0 100644
+--- a/internal/agent/context_manager.go
++++ b/internal/agent/context_manager.go
+@@ -190,6 +190,17 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
+ 				status = "blocked"
+ 			}
+ 			reason := fmt.Sprintf("context summary failed: %v", err)
++			// A summary request rejected for size means the real backend limit
++			// sits below the configured window (zen gateway bodies carry no
++			// token numbers, so the trusted ContextLimitError parser cannot
++			// learn from them). Halve the learned window and refold against
++			// the recalibrated ceiling instead of failing the whole turn.
++			if policy.Trigger != CompactionTriggerManual && a.shrinkWindowOnSummaryCapacityError(err) {
++				hard = a.hardInputCeiling()
++				forceFold = true
++				a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason+" (window halved; retrying)")
++				continue
++			}
+ 			a.recordContextMaintenanceOutcome(inputHash, policy.Trigger, "summary", status, reason)
+ 			if policy.Trigger == CompactionTriggerManual {
+ 				return PreparedContext{}, err
+diff --git a/internal/agent/summary_capacity_test.go b/internal/agent/summary_capacity_test.go
+new file mode 100644
+index 0000000..dc4a805
+--- /dev/null
++++ b/internal/agent/summary_capacity_test.go
+@@ -0,0 +1,105 @@
++package agent
++
++import (
++	"context"
++	"errors"
++	"strings"
++	"testing"
++
++	"reasonix/internal/event"
++	"reasonix/internal/provider"
++	"reasonix/internal/tool"
++)
++
++// summaryFailingProvider fails every Stream with a capacity-style error, as
++// zen free-tier backends do when the request exceeds the real upstream limit
++// ("[1261] Prompt exceeds max length", stream EOFs, empty completions).
++type summaryFailingProvider struct {
++	sharedWindowTestProvider
++	errText string
++	calls   int
++}
++
++func (p *summaryFailingProvider) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
++	p.calls++
++	ch := make(chan provider.Chunk, 1)
++	ch <- provider.Chunk{Type: provider.ChunkError, Err: errors.New(p.errText)}
++	close(ch)
++	return ch, nil
++}
++
++// An unknown-window backend sends the whole fold on the first must-free
++// attempt (the configured window may be an underestimate). Once a capacity
++// failure halves the learned window, the fitter must cut the summary prefix
++// against the recalibrated hard ceiling instead of resending the same size.
++func TestSummaryPrefixCappedForUnknownWindow(t *testing.T) {
++	prov := &summaryFailingProvider{
++		sharedWindowTestProvider: sharedWindowTestProvider{shared: false},
++		errText:                  "opencode-zen: stream ended before completion: unexpected EOF",
++	}
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "You are a coding agent."})
++	for i := 0; i < 400; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: strings.Repeat("q ", 300)},
++			provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a ", 600)},
++		)
++	}
++	a := New(prov, tool.NewRegistry(), &Session{Messages: append([]provider.Message(nil), msgs...)}, Options{
++		ContextWindow: 30_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++	a.learnContextBudget(a.effectiveContextWindow()/2, 0, false)
++	head, end, ok := a.planFoldRegion(a.modelVisibleMessages(), true, true)
++	if !ok {
++		t.Fatal("expected a foldable region")
++	}
++	fitted := a.maximumSafeSummaryPrefixEnd(a.modelVisibleMessages(), head, end, "")
++	if fitted >= end {
++		t.Fatalf("shrunken-window summary prefix must be capped below the fold end: %d >= %d", fitted, end)
++	}
++	if fitted <= head {
++		t.Fatalf("fitted prefix collapsed to nothing: %d <= %d", fitted, head)
++	}
++}
++
++// A capacity-style summary failure must halve the learned window and retry
++// the fold against the recalibrated ceiling instead of failing the turn. The
++// halving stops at the floor and non-capacity errors never shrink.
++func TestCapacityErrorShrinksWindowAndRetries(t *testing.T) {
++	prov := &summaryFailingProvider{
++		sharedWindowTestProvider: sharedWindowTestProvider{shared: false},
++		errText: `opencode-zen: status 400: {"error":{"type":"server_error","message":"Error from provider (Console): Upstream request failed: [1261] Prompt exceeds max length"}}`,
++	}
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "You are a coding agent."})
++	for i := 0; i < 200; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: strings.Repeat("q ", 200)},
++			provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("a ", 400)},
++		)
++	}
++	a := New(prov, tool.NewRegistry(), &Session{Messages: append([]provider.Message(nil), msgs...)}, Options{
++		ContextWindow: 1_000_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++	before := a.effectiveContextWindow()
++	_, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerOverflow})
++	if err == nil {
++		t.Fatal("provider always fails; Prepare must report an error")
++	}
++	after := a.effectiveContextWindow()
++	if after >= before {
++		t.Fatalf("capacity error must shrink the learned window: %d >= %d", after, before)
++	}
++	if prov.calls == 0 {
++		t.Fatal("summary endpoint was never called")
++	}
++
++	// Non-capacity errors must not move the window.
++	held := a.effectiveContextWindow()
++	if a.shrinkWindowOnSummaryCapacityError(errors.New("opencode-zen: status 429 rate limit exceeded")) {
++		t.Fatal("rate-limit errors must not shrink the window")
++	}
++	if a.effectiveContextWindow() != held {
++		t.Fatalf("window moved on a non-capacity error: %d -> %d", held, a.effectiveContextWindow())
++	}
++}
+diff --git a/internal/provider/openai/no_reasoning_test.go b/internal/provider/openai/no_reasoning_test.go
+index 0e43e8c..2f077d7 100644
+--- a/internal/provider/openai/no_reasoning_test.go
++++ b/internal/provider/openai/no_reasoning_test.go
+@@ -135,17 +135,24 @@ func TestBuildRequestNoReasoningOpenCodeDeepSeek(t *testing.T) {
+ 	}
+ }
+ 
+-func TestBuildRequestNoReasoningOpenCodeNonDeepSeekUnchanged(t *testing.T) {
+-	// Generic Zen models (e.g. mimo-v2.5-free) have no thinking mode; their
+-	// compaction body stays byte-identical to the CLI shape, exactly as before.
++func TestBuildRequestNoReasoningOpenCodeNonDeepSeek(t *testing.T) {
++	// Generic Zen models with hidden reasoning (mimo-v2.5-free burned the
++	// whole summary output budget on thinking and returned empty content)
++	// carry NoReasoning on the wire as the gateway's thinking-off field too.
++	// Ordinary requests (no NoReasoning) keep the byte-identical CLI body.
+ 	c := &client{name: "opencode", model: "mimo-v2.5-free", opencode: true}
+ 	msg := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
+ 	base := marshalBuildRequest(t, c, provider.Request{Messages: msg})
++	const wantBase = `{"model":"mimo-v2.5-free","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true}}`
++	if base != wantBase {
++		t.Fatalf("ordinary opencode wire drifted from the CLI shape:\ngot  %s\nwant %s", base, wantBase)
++	}
+ 	off := marshalBuildRequest(t, c, provider.Request{Messages: msg, NoReasoning: true})
+-	if base != off {
+-		t.Fatalf("non-DeepSeek opencode wire must be byte-identical under NoReasoning:\nbase=%s\noff =%s", base, off)
++	const wantOff = `{"model":"mimo-v2.5-free","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"}}`
++	if off != wantOff {
++		t.Fatalf("non-DeepSeek opencode NoReasoning wire:\ngot  %s\nwant %s", off, wantOff)
+ 	}
+-	if strings.Contains(off, "thinking") || strings.Contains(off, "reasoning_effort") {
+-		t.Fatalf("non-DeepSeek opencode body must never carry thinking/effort: %s", off)
++	if strings.Contains(off, "reasoning_effort") {
++		t.Fatalf("opencode NoReasoning must never carry reasoning_effort: %s", off)
+ 	}
+ }
+diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
+index 46fe9db..570f3b7 100644
+--- a/internal/provider/openai/openai.go
++++ b/internal/provider/openai/openai.go
+@@ -911,12 +911,14 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+ 		out.Temperature = nil
+ 		out.ReasoningEffort = ""
+ 		out.Thinking = nil
+-		if req.NoReasoning && strings.Contains(strings.ToLower(out.Model), "deepseek") {
+-			// deepseek-v4-flash(-free) on the Zen gateway thinks by default and
+-			// the fixed opencode body has no effort knob, so carry the compaction
+-			// flag through the wire as DeepSeek's native thinking-off field.
+-			// Only DeepSeek models: generic Zen models (e.g. mimo) have no
+-			// thinking mode and must keep the byte-identical CLI body.
++		if req.NoReasoning {
++			// Compaction summaries must not spend the output budget on
++			// chain-of-thought. Zen gateway models with hidden reasoning
++			// (mimo-v2.5-free returned empty content after burning the whole
++			// budget on thinking) carry the flag as the gateway's native
++			// thinking-off field; models without a thinking mode ignore it.
++			// Only NoReasoning requests set it, so ordinary traffic keeps the
++			// byte-identical CLI body.
+ 			out.NoReasoning = true
+ 		}
+ 		if len(tools) > 0 {
