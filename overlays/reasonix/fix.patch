@@ -3801,3 +3801,153 @@ index 46fe9db..570f3b7 100644
  			out.NoReasoning = true
  		}
  		if len(tools) > 0 {
+From 9d24f31c00000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Thu, 21 Aug 2026 07:10:00 +0000
+Subject: [PATCH 11/11] agent: spend the last empty-final retry without reasoning
+
+Reasoning-heavy zen free tiers (mimo-v2.5-free, x-preview-f-free) can
+burn the whole output budget on chain-of-thought and finish with an empty
+content block. finish_reason="length" is not eligible for the
+reasoning-only acceptance, so the empty-final retry resent the identical
+request three times and then killed the turn with "model finished
+without a visible final answer 3 times".
+
+Arm the last allowed attempt with NoReasoning: adapters translate it to
+their native thinking-off knob, so the remaining output budget is spent
+on visible answer text. The first retry still runs at full reasoning,
+and the terminal error after the third empty round is unchanged.
+---
+ internal/agent/empty_final_retry_test.go | 76 ++++++++++++++++++++++++++++++++
+ internal/agent/run_loop.go               |  8 ++++
+ internal/agent/sampling_request.go       |  4 ++
+ internal/agent/turnruntime.go            |  1 +
+ 4 files changed, 89 insertions(+)
+diff --git a/internal/agent/empty_final_retry_test.go b/internal/agent/empty_final_retry_test.go
+new file mode 100644
+index 0000000..5f245aa
+--- /dev/null
++++ b/internal/agent/empty_final_retry_test.go
+@@ -0,0 +1,76 @@
++package agent
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"reasonix/internal/event"
++	"reasonix/internal/provider"
++	"reasonix/internal/tool"
++)
++
++// reasoningPolicyProvider is a fake that advertises the DeepSeek-style
++// tool-call reasoning contract (opencode-zen clients do), so the empty-final
++// retry path arms its last-attempt reasoning drop.
++type reasoningPolicyProvider struct {
++	fakeProvider
++}
++
++func (p *reasoningPolicyProvider) RequiresToolCallReasoning() bool { return true }
++
++func emptyFinalAgent(t *testing.T) *Agent {
++	t.Helper()
++	sess := &Session{Messages: []provider.Message{
++		{Role: provider.RoleSystem, Content: "sys"},
++		{Role: provider.RoleUser, Content: "task"},
++	}}
++	return New(&reasoningPolicyProvider{fakeProvider{reply: "ok"}}, tool.NewRegistry(), sess, Options{
++		ContextWindow: 100_000, CompactRatio: 0.7, MaxOutputTokens: 32_000,
++	}, event.Discard)
++}
++
++func TestEmptyFinalLastAttemptDropsReasoning(t *testing.T) {
++	a := emptyFinalAgent(t)
++	state := &a.turn
++	ctx := context.Background()
++
++	// First empty round: retry normally, reasoning stays on.
++	cont, err := a.handleFinalResponse(ctx, state, "", "", &provider.Usage{FinishReason: "length"})
++	if err != nil || !cont {
++		t.Fatalf("first empty final: cont=%v err=%v", cont, err)
++	}
++	if state.emptyFinalBlocks != 1 || state.forceNoReasoning {
++		t.Fatalf("after first round blocks=%d forceNoReasoning=%v", state.emptyFinalBlocks, state.forceNoReasoning)
++	}
++
++	// Second empty round: this arms the final attempt's reasoning drop.
++	cont, err = a.handleFinalResponse(ctx, state, "", "", &provider.Usage{FinishReason: "length"})
++	if err != nil || !cont {
++		t.Fatalf("second empty final: cont=%v err=%v", cont, err)
++	}
++	if !state.forceNoReasoning {
++		t.Fatal("last allowed attempt must drop reasoning")
++	}
++
++	// Third empty round: the safety net still terminates the turn.
++	_, err = a.handleFinalResponse(ctx, state, "", "", &provider.Usage{FinishReason: "length"})
++	if err == nil || !strings.Contains(err.Error(), "without a visible final answer") {
++		t.Fatalf("third empty final err=%v, want the terminal empty-final error", err)
++	}
++}
++
++// The armed flag must reach the sampling request so the adapter emits its
++// native reasoning-off knob (thinking.type=disabled on the opencode wire).
++func TestForceNoReasoningReachesSamplingRequest(t *testing.T) {
++	a := emptyFinalAgent(t)
++	a.turn.forceNoReasoning = true
++
++	sr, err := a.buildSamplingRequest(context.Background(), CompactionTriggerPressure)
++	if err != nil {
++		t.Fatalf("buildSamplingRequest: %v", err)
++	}
++	if !sr.req.NoReasoning {
++		t.Fatal("armed turn must set NoReasoning on the sampling request")
++	}
++}
+diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
+index 4bb0fd6..3fed47a 100644
+--- a/internal/agent/run_loop.go
++++ b/internal/agent/run_loop.go
+@@ -578,6 +578,14 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
+ 			if state.emptyFinalBlocks >= maxEmptyFinalBlocks {
+ 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.emptyFinalBlocks)
+ 			}
++			// Reasoning-heavy gateways (zen free tiers: mimo/x-preview) can burn
++			// the whole output budget on chain-of-thought with finish_reason=
++			// "length" and an empty content block; resending the same request
++			// reproduces the same empty round, so the final allowed attempt
++			// drops reasoning entirely to guarantee visible answer text.
++			if provider.RequiresToolCallReasoning(a.svc.prov) && state.emptyFinalBlocks+1 >= maxEmptyFinalBlocks {
++				state.forceNoReasoning = true
++			}
+ 			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.svc.prov.Name(), usage, len(reasoning))})
+ 			a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(emptyFinalRetryMessage())})
+ 			a.contextManager().ObserveUsage(usage)
+diff --git a/internal/agent/sampling_request.go b/internal/agent/sampling_request.go
+index 06f2065..7f0ab21 100644
+--- a/internal/agent/sampling_request.go
++++ b/internal/agent/sampling_request.go
+@@ -145,6 +145,10 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
+ 		ResponseFormat: responseFormatFromRequest(ctx),
+ 		EffortOverride: a.governorOverride(),
+ 	}
++	// The last empty-final retry drops reasoning so the remaining output
++	// budget is spent on visible answer text instead of another thinking
++	// round (adapters translate this to their native off knob).
++	req.NoReasoning = req.NoReasoning || a.turn.forceNoReasoning
+ 	// provider.request: the fully assembled request gets one last ruling
+ 	// (revalidated by the payload registry) before it goes on the wire.
+ 	req, err = a.interceptProviderRequest(ctx, req)
+diff --git a/internal/agent/turnruntime.go b/internal/agent/turnruntime.go
+index caddd82..7304a8c 100644
+--- a/internal/agent/turnruntime.go
++++ b/internal/agent/turnruntime.go
+@@ -14,6 +14,7 @@ type turnRuntime struct {
+ 	runMaxStepsKey string
+ 
+ 	emptyFinalBlocks   int
++	forceNoReasoning   bool
+ 	handoffNudges      int
+ 	usedAnyTool        bool
+ 	contextToolRepairs int
