@@ -2918,3 +2918,562 @@ index b2cde1c..b1bfc92 100644
  	raw, err := json.Marshal(wire)
  	if err != nil {
  		return nil, err
+From 4d93a11a00000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 20 Aug 2026 05:20:00 +0000
+Subject: [PATCH 8/8] agent, provider: shared-window input ceiling reserves reply budget
+
+DeepSeek-class providers count prompt and completion against one window.
+The opencode Zen gateway carries DeepSeek models on a generic OpenAI wire,
+so their shared semantics were lost: the physical input ceiling only kept
+window-protocolReserve, letting a session grow to the provider limit where
+compaction candidates could no longer reduce the view and requests were
+rejected with -32603. Treat Zen-carried DeepSeek models as shared-window
+and make the agent's hard input ceiling leave the reply reserve out of the
+input, so overflow compaction fires earlier and the summary request always
+fits below the ceiling.
+---
+ internal/agent/compact.go                          | 11 ++++++--
+ internal/agent/compact_threshold_test.go           |  4 +--
+ internal/agent/context_summary_admission_test.go   |  4 +--
+ internal/agent/shared_ceiling_test.go              | 112 +++++++++++++++++++++++++++++
+ internal/provider/openai/oczen_shared_window_test.go | 51 +++++++++++++++++
+ internal/provider/openai/output_budget.go          | 46 +++++++++++++++++++++-
+ 6 files changed, 209 insertions(+), 9 deletions(-)
+diff --git a/internal/agent/compact.go b/internal/agent/compact.go
+index bb92929..ceab5d6 100644
+--- a/internal/agent/compact.go
++++ b/internal/agent/compact.go
+@@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
+ 	return max(1, int(float64(window)*ratio))
+ }
+ 
+-// hardInputCeiling is a physical input-safety boundary, not another user
++// hardInputCeiling is the physical input-safety boundary, not another user
+ // compaction threshold. Reply budgets are resolved independently at send time.
++// On a shared prompt+completion window (DeepSeek-style) the ceiling must leave
++// the reply reserve out of the input so the session never wedges one token
++// away from the provider limit with nowhere to put an answer.
+ func (a *Agent) hardInputCeiling() int {
+ 	window := a.effectiveContextWindow()
+ 	if a == nil || window <= 0 {
+ 		return 0
+ 	}
+-	return max(1, window-protocolReserveTokens)
++	ceiling := window - protocolReserveTokens
++	if sharesContextWindow(a.svc.prov) {
++		ceiling = window - outputBudgetReserve - protocolReserveTokens
++	}
++	return max(1, ceiling)
+ }
+ 
+ // recentTailBudget is the content-construction budget for the recent verbatim
+diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
+index 145210b..544eba2 100644
+--- a/internal/agent/compact_threshold_test.go
++++ b/internal/agent/compact_threshold_test.go
+@@ -21,8 +21,8 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
+ 		t.Fatalf("trigger after larger output budget = %d, want %d", got, want)
+ 	}
+ 	hard := a.hardInputCeiling()
+-	if hard != 128_000-protocolReserveTokens {
+-		t.Fatalf("hard ceiling = %d, want window-protocolReserve", hard)
++	if hard != 128_000-outputBudgetReserve-protocolReserveTokens {
++		t.Fatalf("hard ceiling = %d, want window-output-reserve (%d)", hard, 128_000-outputBudgetReserve-protocolReserveTokens)
+ 	}
+ }
+ 
+diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
+index 1e99660..879c5bc 100644
+--- a/internal/agent/context_summary_admission_test.go
++++ b/internal/agent/context_summary_admission_test.go
+@@ -83,8 +83,8 @@ func TestAdmitOutputBudgetClampsObservedWindowToConfigured(t *testing.T) {
+ 	if got := a.effectiveContextWindow(); got != 200_000 {
+ 		t.Fatalf("effective window = %d, want configured 200000 (observed 1M clamped)", got)
+ 	}
+-	if got := a.hardInputCeiling(); got != 200_000-protocolReserveTokens {
+-		t.Fatalf("hard ceiling = %d, want configured-based %d", got, 200_000-protocolReserveTokens)
++	if got := a.hardInputCeiling(); got != 200_000-outputBudgetReserve-protocolReserveTokens {
++		t.Fatalf("hard ceiling = %d, want configured-based %d", got, 200_000-outputBudgetReserve-protocolReserveTokens)
+ 	}
+ 	// The provider's 131072 output cap cannot fit the configured 200k window
+ 	// with a 100k prompt: it must clip to the physical remaining budget.
+diff --git a/internal/agent/shared_ceiling_test.go b/internal/agent/shared_ceiling_test.go
+new file mode 100644
+index 0000000..637ee29
+--- /dev/null
++++ b/internal/agent/shared_ceiling_test.go
+@@ -0,0 +1,110 @@
++package agent
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"reasonix/internal/event"
++	"reasonix/internal/provider"
++	"reasonix/internal/tool"
++)
++
++// The physical input ceiling on a shared prompt+completion window must reserve
++// the reply budget; an independent window keeps the old one-token margin.
++func TestHardInputCeilingSharedWindow(t *testing.T) {
++	shared := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
++	a := New(shared, tool.NewRegistry(), &Session{Messages: []provider.Message{{Role: provider.RoleUser, Content: "x"}}}, Options{
++		ContextWindow: 200_000,
++	}, event.Discard)
++	const want = 200_000 - outputBudgetReserve - protocolReserveTokens
++	if got := a.hardInputCeiling(); got != want {
++		t.Fatalf("shared ceiling = %d, want %d", got, want)
++	}
++
++	indep := &recordingProvider{reply: "x"}
++	b := New(indep, tool.NewRegistry(), &Session{Messages: []provider.Message{{Role: provider.RoleUser, Content: "x"}}}, Options{
++		ContextWindow: 200_000,
++	}, event.Discard)
++	if got, want := b.hardInputCeiling(), 200_000-protocolReserveTokens; got != want {
++		t.Fatalf("independent ceiling = %d, want %d", got, want)
++	}
++}
++
++// A shared-window session that has grown past the physical input ceiling must
++// compact below it (with room for an answer) instead of wedging at the limit.
++func TestSharedWindowOverflowCompactsBelowCeiling(t *testing.T) {
++	prov := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "sys"})
++	for i := 0; i < 460; i++ {
++		msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: strings.Repeat("turntext ", 60) + "u"})
++		msgs = append(msgs, provider.Message{Role: provider.RoleAssistant, Content: strings.Repeat("worktext ", 140)})
++	}
++	sess := &Session{Messages: append([]provider.Message(nil), msgs...)}
++	a := New(prov, tool.NewRegistry(), sess, Options{
++		ContextWindow: 200_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++
++	src := a.estimatedVisibleRequestTokens(msgs)
++	hard := a.hardInputCeiling()
++	if src < hard {
++		t.Fatalf("probe setup: source %d did not exceed shared ceiling %d", src, hard)
++	}
++	if _, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true); err != nil {
++		t.Fatalf("overflow compaction failed at source %d: %v", src, err)
++	}
++	visible := a.modelVisibleMessages()
++	after := a.estimatedVisibleRequestTokens(visible)
++	if after >= hard {
++		t.Fatalf("projection %d tokens still at/above shared ceiling %d", after, hard)
++	}
++	if after >= src {
++		t.Fatalf("projection %d tokens did not shrink the view (source %d)", after, src)
++	}
++}
++
++// zenDeepSeekPolicyProvider simulates the patched openCodeZenDeepSeek policy:
++// shared-window budget with zero AutoOutputTokens so the gateway never sees
++// an auto-budget that becomes an oversized max_tokens on the wire.
++type zenDeepSeekPolicyProvider struct{}
++
++func (zenDeepSeekPolicyProvider) Name() string { return "opencode-zen" }
++func (zenDeepSeekPolicyProvider) Stream(_ context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
++	ch := make(chan provider.Chunk, 1)
++	close(ch)
++	return ch, nil
++}
++func (zenDeepSeekPolicyProvider) ContextBudgetPolicy() provider.ContextBudgetPolicy {
++	return provider.ContextBudgetPolicy{
++		WindowMode: provider.ContextWindowShared,
++		LimitMode:  provider.OutputLimitOmitWhenSafe,
++		// AutoOutputTokens and MaxOutputTokens deliberately zero: the Zen
++		// gateway does not understand DeepSeek's native omit-for-default
++		// semantics, so any auto budget that survives into a physical clip
++		// would become an explicit max_tokens the gateway rejects.
++	}
++}
++
++// When agent.maxOutputTokens is zero (the boot path does not pass one) the
++// admission step must not replace req.MaxTokens with the physical clip
++// value; the wire field must stay omitted so buildRequest can fall back to
++// the provider-configured max_output_tokens.
++func TestAdmitNoAutoClipForZenDeepSeek(t *testing.T) {
++	prov := zenDeepSeekPolicyProvider{}
++	a := &Agent{
++		agentConfig: agentConfig{contextWindow: 200_000, maxOutputTokens: 0},
++		svc:         agentServices{prov: prov, sink: event.Discard},
++		sess:        sessionRuntime{output: outputBudgetState{outputBudget: 0}},
++	}
++	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("x", 7000)}}
++	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 7000})
++	a.setPromptTokenCalibration(7000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
++	req := provider.Request{Messages: msgs, MaxTokens: 0}
++	if err := a.applyAdmissionToRequest(&req); err != nil {
++		t.Fatalf("admission failed: %v", err)
++	}
++	if req.MaxTokens != 0 {
++		t.Fatalf("req.MaxTokens = %d, want 0 (auto budget must not clip to physical)", req.MaxTokens)
++	}
++}
+diff --git a/internal/provider/openai/oczen_shared_window_test.go b/internal/provider/openai/oczen_shared_window_test.go
+new file mode 100644
+index 0000000..7791923
+--- /dev/null
++++ b/internal/provider/openai/oczen_shared_window_test.go
+@@ -0,0 +1,51 @@
++package openai
++
++import (
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++// DeepSeek models behind the opencode Zen gateway keep their official shared
++// prompt+completion window even though the wire is generic OpenAI.
++func TestOpenCodeZenDeepSeekSharedWindow(t *testing.T) {
++	p, err := New(provider.Config{
++		Name: "opencode-zen", BaseURL: "https://opencode.ai/zen/v1",
++		Model: "deepseek-v4-flash-free",
++		Extra: map[string]any{
++			"reasoning_protocol": "openai",
++			"context_window":     200000,
++			"max_output_tokens":  128000,
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	c := p.(*client)
++	got := c.ContextBudgetPolicy()
++	if got.WindowMode != provider.ContextWindowShared {
++		t.Fatalf("opencode-zen DeepSeek window mode = %v, want shared", got.WindowMode)
++	}
++	if !c.SharesContextWindow() {
++		t.Fatal("opencode-zen DeepSeek must share the context window")
++	}
++}
++
++// A non-DeepSeek model on the same gateway must stay independent.
++func TestOpenCodeZenNonDeepSeekIndependent(t *testing.T) {
++	p, err := New(provider.Config{
++		Name: "opencode-zen", BaseURL: "https://opencode.ai/zen/v1",
++		Model: "mimo-v2.5-free",
++		Extra: map[string]any{"reasoning_protocol": "openai"},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	c := p.(*client)
++	if got := c.ContextBudgetPolicy(); got.WindowMode == provider.ContextWindowShared {
++		t.Fatalf("opencode-zen mimo policy = %+v, want independent", got)
++	}
++	if c.SharesContextWindow() {
++		t.Fatal("opencode-zen mimo must not share the context window")
++	}
++}
+diff --git a/internal/provider/openai/output_budget.go b/internal/provider/openai/output_budget.go
+index 130edcd..07bb1a9 100644
+--- a/internal/provider/openai/output_budget.go
++++ b/internal/provider/openai/output_budget.go
+@@ -1,12 +1,32 @@
+ package openai
+ 
+-import "reasonix/internal/provider"
++import (
++	"strings"
++
++	"reasonix/internal/provider"
++)
++
++// isDeepSeekModelName reports whether a model id belongs to the DeepSeek
++// family, independent of the wire protocol in use.
++func isDeepSeekModelName(model string) bool {
++	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "deepseek")
++}
++
++// openCodeZenDeepSeek reports whether the opencode Zen gateway is carrying a
++// DeepSeek model. Those models keep their official prompt+completion shared
++// window even though the gateway speaks the generic OpenAI wire shape.
++func openCodeZenDeepSeek(name, baseURL, model string) bool {
++	return IsOpenCode(name, baseURL) && isDeepSeekModelName(model)
++}
+ 
+ // OutputBudget reports the default total output budget sent by this client.
+ func (c *client) OutputBudget() int { return c.maxOutputTokens }
+ 
+-// SharesContextWindow is true only for the recognized DeepSeek protocol mode.
+-func (c *client) SharesContextWindow() bool { return c.deepseek }
++// SharesContextWindow is true for the recognized DeepSeek protocol mode and
++// for DeepSeek models reached through the opencode Zen gateway.
++func (c *client) SharesContextWindow() bool {
++	return c.deepseek || openCodeZenDeepSeek(c.name, c.baseURL, c.model)
++}
+ 
+ func (c *client) ContextBudgetPolicy() provider.ContextBudgetPolicy {
+ 	if lim, ok := provider.LookupOfficialOpenCodeGo("openai", c.baseURL, c.model); ok {
+@@ -33,5 +53,19 @@ func (c *client) ContextBudgetPolicy() provider.ContextBudgetPolicy {
+ 			LimitMode:        provider.OutputLimitAlways,
+ 		}
+ 	}
++	if openCodeZenDeepSeek(c.name, c.baseURL, c.model) {
++		// The Zen gateway is OpenAI-shaped, so max_tokens stays omit-when-safe;
++		// the shared-window marker only changes local budget accounting.
++		// AutoOutputTokens/MaxOutputTokens must be zero: the gateway does not
++		// understand DeepSeek's native "omit for server default" semantics, so
++		// any auto-budget that survives into a physical clip becomes an explicit
++		// max_tokens value the gateway will reject (e.g. 184K > 128K limit).
++		// Zero keeps the wire field omitted; buildRequest falls back to the
++		// provider-configured max_output_tokens instead.
++		return provider.ContextBudgetPolicy{
++			WindowMode: provider.ContextWindowShared,
++			LimitMode:  provider.OutputLimitOmitWhenSafe,
++		}
++	}
+ 	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
+ }
+From 5b62d14a00000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kyehn <kyehn@users.noreply.github.com>
+Date: Wed, 20 Aug 2026 06:40:00 +0000
+Subject: [PATCH 9/9] agent: fold the dominating active turn on must-free overflow
+
+A physical-overflow fold (must-free at/above the hard input ceiling) can
+find no foldable region when the only remaining content is the active
+user turn itself: the active-turn protection used to skip it, so
+planFoldRegion returned CompactionNoop and every request deadlocked with
+"no foldable region remains".
+
+Fold the active turn too on the must-free path when it is the sole
+remaining content AND it dominates the visible view (one message already
+filling the window). The summary prefix fitter still caps the summary
+request below the physical ceiling, so an indivisible message that alone
+exceeds the ceiling fails with the precise "no balanced prefix" error
+instead of wedging the session. Normal pressure folds and small sessions
+keep excluding the active turn, so a too-small window still fails with
+ErrCompactionRequired instead of looping summaries.
+---
+ internal/agent/active_oversize_fold_test.go    | 118 +++++++++++++++++++++++++
+ internal/agent/compact_overflow_prefix_test.go |   2 +-
+ internal/agent/compact_projection.go           |  44 ++++++++++++++++----
+ internal/agent/compact_summary_failure_test.go |   2 +-
+ 4 files changed, 158 insertions(+), 8 deletions(-)
+diff --git a/internal/agent/active_oversize_fold_test.go b/internal/agent/active_oversize_fold_test.go
+new file mode 100644
+index 0000000..9cdfd71
+--- /dev/null
++++ b/internal/agent/active_oversize_fold_test.go
+@@ -0,0 +1,118 @@
++package agent
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"reasonix/internal/event"
++	"reasonix/internal/provider"
++	"reasonix/internal/tool"
++)
++
++// A physical-overflow fold must be able to reclaim space even when the only
++// remaining foldable content is the active user turn itself. Without that,
++// a session whose current message already crosses the hard ceiling deadlocks
++// with "no foldable region remains" (CompactionNoop) and every request is
++// rejected. The active turn is folded only on the must-free path; the summary
++// prefix fitter still caps the request below the physical ceiling, and an
++// indivisible message that alone exceeds the ceiling fails with the precise
++// "no balanced prefix" error instead of wedging the session.
++func TestOverflowFoldsOversizedActiveTurn(t *testing.T) {
++	prov := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "You are a coding agent."})
++	for i := 0; i < 100; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: "问题 " + strings.Repeat("x", 800)},
++			provider.Message{Role: provider.RoleAssistant, Content: "回答 " + strings.Repeat("y", 1600)},
++		)
++	}
++	// Large but individually foldable active paste: ~135k tokens, so history
++	// + active together cross the 191552 shared ceiling.
++	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: "大粘贴 " + strings.Repeat("z", 540_000), CreatedAt: 222})
++	sess := &Session{Messages: append([]provider.Message(nil), msgs...)}
++	a := New(prov, tool.NewRegistry(), sess, Options{
++		ContextWindow: 200_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++	a.activeTurnCreatedAt.Store(222)
++	src := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
++	hard := a.hardInputCeiling()
++	if src < hard {
++		t.Fatalf("probe setup: source %d below shared ceiling %d", src, hard)
++	}
++	outcome, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true)
++	if err != nil {
++		t.Fatalf("must-free fold with oversized active turn failed: %v", err)
++	}
++	if outcome == CompactionNoop {
++		t.Fatal("must-free fold returned noop; active turn must be foldable")
++	}
++	after := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
++	if after >= hard {
++		t.Fatalf("fold did not recover below hard ceiling: %d >= %d", after, hard)
++	}
++	if after >= src {
++		t.Fatalf("fold did not shrink the view: %d >= %d", after, src)
++	}
++}
++
++// An indivisible active message that alone exceeds the physical ceiling
++// cannot be summarized (the summary request would also overflow). It must
++// fail with a precise error, never a silent no-op deadlock.
++func TestOverflowIndivisibleActiveTurnFailsPrecisely(t *testing.T) {
++	prov := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
++	msgs := []provider.Message{
++		{Role: provider.RoleSystem, Content: "You are a coding agent."},
++		{Role: provider.RoleUser, Content: "超大粘贴 " + strings.Repeat("z", 850_000), CreatedAt: 333},
++	}
++	sess := &Session{Messages: append([]provider.Message(nil), msgs...)}
++	a := New(prov, tool.NewRegistry(), sess, Options{
++		ContextWindow: 200_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++	a.activeTurnCreatedAt.Store(333)
++	src := a.estimatedVisibleRequestTokens(a.modelVisibleMessages())
++	if src < a.hardInputCeiling() {
++		t.Fatalf("probe setup: source %d below shared ceiling", src)
++	}
++	_, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true)
++	if err == nil {
++		t.Fatal("indivisible oversized active turn must fail, not no-op")
++	}
++	if !strings.Contains(err.Error(), "balanced prefix") {
++		t.Fatalf("err = %v, want precise no-balanced-prefix error", err)
++	}
++}
++
++// Normal sessions keep protecting the active turn: folding older history must
++// not summarize the pending user message away.
++func TestActiveTurnStillProtectedOnPressureFold(t *testing.T) {
++	prov := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
++	var msgs []provider.Message
++	msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: "You are a coding agent."})
++	for i := 0; i < 60; i++ {
++		msgs = append(msgs,
++			provider.Message{Role: provider.RoleUser, Content: "问题 " + strings.Repeat("x", 500)},
++			provider.Message{Role: provider.RoleAssistant, Content: "回答 " + strings.Repeat("y", 1000)},
++		)
++	}
++	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: "当前问题 " + strings.Repeat("w", 60), CreatedAt: 444})
++	sess := &Session{Messages: append([]provider.Message(nil), msgs...)}
++	a := New(prov, tool.NewRegistry(), sess, Options{
++		ContextWindow: 200_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
++	}, event.Discard)
++	a.activeTurnCreatedAt.Store(444)
++	head, start, ok := a.planFoldRegion(a.modelVisibleMessages(), false, false)
++	if !ok {
++		t.Fatal("pressure fold should find a foldable region")
++	}
++	foldHasActive := false
++	for _, m := range a.modelVisibleMessages()[head:start] {
++		if m.CreatedAt == 444 {
++			foldHasActive = true
++		}
++	}
++	if foldHasActive {
++		t.Fatalf("pressure fold [%d:%d] must exclude the active turn", head, start)
++	}
++}
+diff --git a/internal/agent/compact_overflow_prefix_test.go b/internal/agent/compact_overflow_prefix_test.go
+index 27d310d..f988d19 100644
+--- a/internal/agent/compact_overflow_prefix_test.go
++++ b/internal/agent/compact_overflow_prefix_test.go
+@@ -33,7 +33,7 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
+ 	prov := &overflowSummaryProvider{}
+ 	a := agentOverForceWindow(t, prov, sess, 60_000)
+ 	msgs := sess.Snapshot()
+-	head, plannedEnd, ok := a.planFoldRegion(msgs, true)
++	head, plannedEnd, ok := a.planFoldRegion(msgs, true, false)
+ 	if !ok {
+ 		t.Fatal("fixture has no foldable prefix")
+ 	}
+diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
+index b4eaa40..541dc02 100644
+--- a/internal/agent/compact_projection.go
++++ b/internal/agent/compact_projection.go
+@@ -419,7 +419,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+ 	a.sess.compactionMu.Unlock()
+ 	msgs, onProjection := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
+ 	viewInputHash := providerVisibleFingerprint(modelInputMessages(msgs))
+-	head, start, ok := a.planFoldRegion(msgs, force)
++	head, start, ok := a.planFoldRegion(msgs, force, mustFree)
+ 	if !ok {
+ 		return CompactionNoop, nil
+ 	}
+@@ -573,20 +573,52 @@ func (a *Agent) acceptCheckpointCandidate(trigger string, sourceTokens, candidat
+ }
+ 
+ // planFoldRegion returns [head:start] to fold; force shrinks the recent tail.
+-func (a *Agent) planFoldRegion(msgs []provider.Message, force bool) (head, start int, ok bool) {
+-	head, start, ok = a.planCompaction(msgs, minCompactMessages, force)
++// mustFree marks a physical-overflow fold. The current user turn (the real or
++// synthetic message that began the active turn) is normally excluded from the
++// fold so a pending request is not summarized away before it is answered.
++// When mustFree leaves no other foldable region — a single message already
++// filling the window — that protection would deadlock the session with "no
++// foldable region remains", so the dominating active turn is folded too as
++// the only remaining way to reclaim space. maximumSafeSummaryPrefixEnd still
++// caps the summary input below the physical ceiling, so an indivisible
++// message that alone exceeds it fails with a precise error instead.
++func (a *Agent) planFoldRegion(msgs []provider.Message, force, mustFree bool) (head, start int, ok bool) {
++	head, plannedStart, ok := a.planCompaction(msgs, minCompactMessages, force)
+ 	if !ok {
+-		head, start, ok = a.planCompaction(msgs, 1, force)
++		head, plannedStart, ok = a.planCompaction(msgs, 1, force)
+ 	}
+ 	if !ok {
+-		return head, start, false
++		return head, plannedStart, false
+ 	}
+-	if active := a.activeTurnStart(msgs); active >= head && active < start {
++	start = plannedStart
++	if active := a.activeTurnStart(msgs); active >= head && active < plannedStart {
+ 		start = active
++		// Fold the active turn itself only when it is the sole remaining
++		// content AND it dominates the view (one message already filling the
++		// window). Otherwise the pending user message must stay preserved
++		// verbatim; a too-small window then fails with a precise error
++		// instead of looping summaries of tiny protected tails.
++		if mustFree && start <= head && a.activeTurnDominates(msgs, active) {
++			start = plannedStart
++		}
+ 	}
+ 	return head, start, start > head
+ }
+ 
++// activeTurnDominates reports whether the active user message alone accounts
++// for at least half of the visible model-input estimate. When a single
++// message already fills the window, folding it is the only way to reclaim
++// space; otherwise summarizing it would destroy the pending request for
++// nothing.
++func (a *Agent) activeTurnDominates(msgs []provider.Message, active int) bool {
++	if active < 0 || active >= len(msgs) {
++		return false
++	}
++	total := estimateMessagesTokens(modelInputMessages(msgs))
++	single := estimateMessagesTokens(modelInputMessages(msgs[active : active+1]))
++	return total > 0 && single*2 >= total
++}
++
+ // maximumSafeSummaryPrefixEnd returns the largest balanced contiguous prefix
+ // whose exact summary request leaves the collector's minimum output budget.
+ // The remaining middle and tail stay verbatim in the projection.
+diff --git a/internal/agent/compact_summary_failure_test.go b/internal/agent/compact_summary_failure_test.go
+index e6b52ff..8d685c5 100644
+--- a/internal/agent/compact_summary_failure_test.go
++++ b/internal/agent/compact_summary_failure_test.go
+@@ -67,7 +67,7 @@ func prepareContext(ctx context.Context, a *Agent, trigger string) error {
+ func foldRegionOf(a *Agent) []provider.Message {
+ 	canonical, version := a.sess.conversation.snapshotMessagesVersion()
+ 	msgs, _ := a.visibleInputForFold(a.sess.compactionState, canonical, version)
+-	head, start, ok := a.planFoldRegion(msgs, false)
++	head, start, ok := a.planFoldRegion(msgs, false, false)
+ 	if !ok {
+ 		return nil
+ 	}

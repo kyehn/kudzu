@@ -248,16 +248,16 @@ def build_all(providers_filter: list[str] | None = None) -> list[ProviderConfig]
 
 
 def _ensure_opencode_public_key() -> None:
-    """Ensure ``OPENCODE_API_KEY=public`` is in ``~/.reasonix/.env``.
+    """Ensure ``OPENCODE_API_KEY`` exists in ``~/.reasonix/.env``.
 
-    opencode Zen 默认使用 Bearer public 作为凭据. reasonix 从 Home 目录
-    的 .env 文件读取凭证. 这个函数在已有 .env 中添加/更新该行,
-    保留该文件中其他所有现有凭证.
+    opencode Zen 接受 ``Bearer public`` 作为匿名凭据, 缺失时补上 ``public``
+    保证开箱即用. 已有值必须原样保留: 用户可能用自己的 key 走付费模型或
+    独立配额, 静默降级成共享匿名凭据会破坏认证与限流. 重复行折叠为第一行
+    的原值.
     """
     env_path = REASONIX_CONFIG.parent / ".env"
     key = "OPENCODE_API_KEY"
-    value = "public"
-    line = f"{key}={value}"
+    prefix = f"{key}="
 
     if env_path.exists():
         existing_lines = env_path.read_text().splitlines()
@@ -267,20 +267,20 @@ def _ensure_opencode_public_key() -> None:
             stripped = old_line.strip()
             if stripped == "" or stripped.startswith("#"):
                 new_lines.append(old_line)
-            elif stripped.startswith(f"{key}="):
-                if not seen:  # 只保留第一个匹配行, 后续重复行丢弃
-                    new_lines.append(line)
+            elif stripped.startswith(prefix):
+                if not seen:  # 保留第一个原值, 后续重复行丢弃
+                    new_lines.append(stripped)
                     seen = True
             else:
                 new_lines.append(old_line)
         if not seen:
-            new_lines.append(line)
+            new_lines.append(f"{prefix}public")
             new_lines.append("")
         env_path.write_text("\n".join(new_lines) + "\n")
         # .env 含 API 密钥, 统一收紧为仅属主可读写 (新建与更新一致)
         env_path.chmod(0o600)
     else:
-        env_path.write_text(f"{line}\n")
+        env_path.write_text(f"{prefix}public\n")
         env_path.chmod(0o600)
 
 

@@ -78,8 +78,8 @@ jobs:
           pip install -e .
           reasonix-config
           popd
-          paseo onboard --voice disable
-          # paseo onboard --voice disable > /dev/null
+          # paseo onboard --voice disable
+          paseo onboard --voice disable > /dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |

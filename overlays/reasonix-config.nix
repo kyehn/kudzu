@@ -16,7 +16,7 @@
 
 (formats.toml { }).generate "config.toml" {
   config_version = 5;
-  default_model = "deepseek-v4-flash-free";
+  default_model = "x-preview-f-free";
   language = "zh";
   ui.show_reasoning = true;
   environment.enabled = false;
