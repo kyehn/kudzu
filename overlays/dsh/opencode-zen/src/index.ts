@@ -79,6 +79,12 @@ const MODELS_DEV_USER_AGENT = "opencode/prod/1.18.14/cli";
 let lastTimestamp = 0;
 let counter = 0;
 
+// One session id for the process lifetime, like the OpenCode CLI: a session
+// issues many requests under one `ses_`. Minting a fresh session id per
+// request reads as thousands of one-shot sessions on the server side — a
+// script signature that lands in a stricter rate-limit bucket (faster 429).
+const SESSION_ID = createId("ses", "descending");
+
 /**
  * Byte-identical port of OpenCode's `id/create()` (packages/opencode/src/id/id.ts).
  * Encodes `timestamp * 0x1000 + counter` as six big-endian bytes, optionally
@@ -285,10 +291,9 @@ export class OpenCodeZenAdapter extends LlmAdapter {
   ): Promise<readonly LlmModelInfo[]> {
     const connection = this.hooks.options();
     const apiKey = await this.hooks.resolveApiKey(connection);
-    const sessionId = createId("ses", "descending");
     const requestId = createId("msg", "ascending");
     const response = await fetch(`${connection.baseURL}/models`, {
-      headers: opencodeHeaders(apiKey, sessionId, requestId),
+      headers: opencodeHeaders(apiKey, SESSION_ID, requestId),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!response.ok) {
@@ -360,7 +365,6 @@ export class OpenCodeZenAdapter extends LlmAdapter {
     const serialized = serializeRequest(options, connection.defaults);
     normalizeToolCallIds(serialized.messages);
     const payload = JSON.stringify(serialized);
-    const sessionId = createId("ses", "descending");
     const requestId = createId("msg", "ascending");
     let response: Response;
     try {
@@ -371,7 +375,7 @@ export class OpenCodeZenAdapter extends LlmAdapter {
         // intentionally subordinated to the OpenCode impersonation here.
         headers: {
           ...attributionHeaders(),
-          ...opencodeHeaders(apiKey, sessionId, requestId),
+          ...opencodeHeaders(apiKey, SESSION_ID, requestId),
         },
         body: payload,
         signal: upstream,
