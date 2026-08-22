@@ -1,14 +1,18 @@
-# pi-coding-agent, packaged to run with Bun.
+# pi-coding-agent: compiled Bun binary, matching upstream build-binaries.sh.
 #
-# Pattern: npm ci FOD (node_modules) + offline workspace build, following the
-# lukasl/pi.nix Bun approach for installPhase — copy the entire node_modules
-# tree to the output so all runtime dependencies (chalk, commander, etc.) are
-# present; overlay workspace packages with their built dist/.
+# Two derivations:
+#   1. node_modules FOD (npm ci --ignore-scripts)
+#   2. main: workspace build → bun build --compile → install binary + assets
 #
-# Runtime layout:
-#   $out/bin/pi                                    bun → dist/cli.js wrapper
-#   $out/lib/node_modules/@earendil-works/pi-*/dist/   built workspace JS
-#   $out/lib/node_modules/...                      all npm runtime deps
+# Runtime layout (mirrors upstream release archives):
+#   $out/bin/pi                         compiled binary
+#   $out/lib/pi/photon_rs_bg.wasm       WASM loaded from process.execPath dir
+#   $out/lib/pi/theme/                  TUI theme JSON
+#   $out/lib/pi/assets/                 image assets
+#   $out/lib/pi/export-html/            HTML export templates
+#   $out/lib/pi/docs/                   documentation
+#   $out/lib/pi/examples/               examples
+#   $out/lib/pi/node_modules/@mariozechner/clipboard*   native bindings
 {
   lib,
   stdenv,
@@ -33,13 +37,11 @@ let
     hash = "sha256-d29ft9otYxdHRWYIAX8KMHPpppToX9ME5LbPb1rPcYo=";
   };
 
-  # Hydrated provider model catalog shipped in the published pi-ai package.
   modelData = fetchurl {
     url = "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-${version}.tgz";
     hash = "sha256-AmJ4Wnaw6y7sWWzYp6su4j7vidLvG7EhHE8KGUTaz0E=";
   };
 
-  # node_modules FOD — network only here, fixed output.
   nodeModules = stdenv.mkDerivation {
     pname = "pi-coding-agent-node_modules";
     inherit version src;
@@ -62,11 +64,7 @@ let
       runHook postInstall
     '';
 
-    # Workspace symlinks point back into packages/*, absent in this FOD by
-    # construction. The main derivation has the tree and rebuilds those
-    # workspaces before packaging.
     dontFixup = true;
-
     outputHashMode = "recursive";
     outputHashAlgo = "sha256";
     outputHash = "sha256-nvku/nqBHt7QU+bB2olGlzTK9vKzK6lg3VQb1j8lEU0=";
@@ -78,10 +76,16 @@ let
   ];
 in
 stdenv.mkDerivation {
-  pname = "pi-coding-agent-bun";
+  pname = "pi-coding-agent";
   inherit version src;
 
   strictDeps = true;
+
+  # CRITICAL: Bun compiled binaries contain an embedded virtual filesystem
+  # (bunfs). Stripping or patching the ELF breaks it — the binary must be
+  # installed exactly as produced by `bun build --compile`.
+  dontStrip = true;
+  dontPatchELF = true;
 
   env.NODE_EXTRA_CA_CERTS = "${cacert}/etc/ssl/certs/ca-bundle.crt";
 
@@ -99,7 +103,7 @@ stdenv.mkDerivation {
     chmod -R u+w node_modules
     patchShebangs node_modules >/dev/null
 
-    # Restore gitignored model catalog from the published pi-ai tarball.
+    # Restore gitignored model catalog.
     mkdir -p packages/ai/src/providers/data
     tar --extract --gzip --file=${modelData} \
       --directory=packages/ai/src/providers/data \
@@ -109,9 +113,6 @@ stdenv.mkDerivation {
     runHook postConfigure
   '';
 
-  # Workspace build order: tsgo for deps, npm run build for coding-agent.
-  # pi-ai uses tsgo directly — its npm build script would re-fetch the model
-  # catalog over the network, which modelData above already supplies.
   buildPhase = ''
     runHook preBuild
 
@@ -126,36 +127,54 @@ stdenv.mkDerivation {
     runHook postBuild
   '';
 
-  # Follow the lukasl/pi.nix pattern: copy the entire node_modules tree
-  # (including all runtime deps like chalk, commander, etc.) to the output,
-  # then overlay workspace packages with their built dist/.
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/lib/node_modules/@earendil-works
+    cd packages/coding-agent
 
-    # Stage built workspace dist + package.json.
-    for pkg in tui telemetry ai agent protocol client coding-agent; do
-      [ -d "packages/$pkg/dist" ] || continue
-      mkdir -p "$out/lib/node_modules/@earendil-works/pi-$pkg"
-      cp -r packages/$pkg/dist "$out/lib/node_modules/@earendil-works/pi-$pkg/"
-      cp packages/$pkg/package.json "$out/lib/node_modules/@earendil-works/pi-$pkg/"
-    done
+    mkdir -p $out/bin $out/lib/pi
 
-    # Copy the full node_modules tree (following symlinks with -L for
-    # workspace packages). This gives us ALL runtime deps: chalk, commander,
-    # @silvia-odwyer/photon-node/photon_rs_bg.wasm, etc.
-    cp -rL node_modules/. "$out/lib/node_modules/"
+    # Compile into a standalone binary matching upstream build-binaries.sh.
+    # Without --target, bun embeds its own runtime (nixpkgs bun IS baseline).
+    bun build --compile \
+      --no-compile-autoload-bunfig \
+      ./dist/bun/cli.js \
+      ./src/utils/image-resize-worker.ts \
+      --outfile $out/bin/pi
 
-    # Wrapper: bun executes the coding-agent entry point.
-    mkdir -p $out/bin
-    makeWrapper ${lib.getExe bun} $out/bin/pi \
-      --add-flags "$out/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" \
-      --prefix PATH : "${runtimeBins}" \
-      --set-default PI_SKIP_VERSION_CHECK 1 \
-      --set-default PI_TELEMETRY 0
+    chmod +x $out/bin/pi
+
+    # WASM — loaded at runtime from process.execPath directory.
+    cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm \
+      $out/lib/pi/
+
+    # package.json — pi reads VERSION from it; the compiled binary looks
+    # in PI_PACKAGE_DIR (set by wrapper below).
+    cp package.json $out/lib/pi/
+
+    # Static assets matching upstream release layout.
+    mkdir -p $out/lib/pi/theme
+    cp dist/modes/interactive/theme/*.json $out/lib/pi/theme/
+    mkdir -p $out/lib/pi/assets
+    cp dist/modes/interactive/assets/*.png $out/lib/pi/assets/
+    cp -r dist/core/export-html $out/lib/pi/
+    cp -r docs $out/lib/pi/
+    cp -r examples $out/lib/pi/
+
+    # Clipboard native bindings.
+    mkdir -p $out/lib/pi/node_modules/@mariozechner
+    cp -rL ../../node_modules/@mariozechner/clipboard \
+      $out/lib/pi/node_modules/@mariozechner/
 
     runHook postInstall
+  '';
+
+  postFixup = ''
+    wrapProgram $out/bin/pi \
+      --prefix PATH : "${runtimeBins}" \
+      --set PI_PACKAGE_DIR "$out/lib/pi" \
+      --set-default PI_SKIP_VERSION_CHECK 1 \
+      --set-default PI_TELEMETRY 0
   '';
 
   doInstallCheck = true;
@@ -168,13 +187,15 @@ stdenv.mkDerivation {
   };
 
   meta = {
-    description = "Pi coding agent CLI, running on Bun";
+    description = "Pi coding agent CLI, compiled binary";
     homepage = "https://pi.dev/";
     license = lib.licenses.mit;
     mainProgram = "pi";
     platforms = [
       "x86_64-linux"
       "aarch64-linux"
+      "x86_64-darwin"
+      "aarch64-darwin"
     ];
   };
 }
