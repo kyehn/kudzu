@@ -174,7 +174,7 @@ const MAX_BOOTSTRAP_ATTEMPTS = 3;
  * Build headers that closely mimic the real opencode client.
  *
  * Real opencode sends:
- *   User-Agent: opencode/${version}/${channel}   (e.g. "opencode/1.17.15/stable")
+ *   User-Agent: "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
  *   x-opencode-client:   RuntimeFlags.client (default "cli")
  *   x-opencode-session:  "ses_" + descending-id  (stable per session)
  *   x-opencode-project:  project.ID               (stable per project)
@@ -186,7 +186,7 @@ const MAX_BOOTSTRAP_ATTEMPTS = 3;
  * 2. Project ID is derived deterministically from cwd
  *    (real opencode uses the project's on-disk ID which is stable)
  * 3. Request ID uses the msg_ prefix and is unique per request
- * 4. User-Agent uses the real format (version is cosmetic, server logs it)
+ * 4. User-Agent matches the real CLI format exactly
  */
 function opencodeHeaders(): Record<string, string> {
 	// Derive project ID lazily from cwd if available
@@ -200,9 +200,8 @@ function opencodeHeaders(): Record<string, string> {
 	}
 
 	return {
-		// Real format: opencode/${version}/${channel}
-		// Server only logs this; version number is cosmetic
-		"User-Agent": "opencode/1.17.15/cli",
+		// Matches the real opencode CLI User-Agent exactly
+		"User-Agent": "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
 		// Client identifier (matches RuntimeFlags.client default)
 		"x-opencode-client": "cli",
 		// Stable session ID (real opencode keeps same ID per session)

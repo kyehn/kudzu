@@ -3,6 +3,7 @@
 final: prev: {
   nix = inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default;
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
+  pi-coding-agent = prev.callPackage ./pi-coding-agent/default.nix { };
   pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   pi-wrapper = prev.callPackage ./pi-wrapper.nix { };
