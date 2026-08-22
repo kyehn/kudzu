@@ -1,18 +1,13 @@
-# pi-coding-agent: compiled Bun binary, matching upstream build-binaries.sh.
+# pi-coding-agent: Bun runtime wrapper, matching nixpkgs/lukasl pattern.
 #
 # Two derivations:
 #   1. node_modules FOD (npm ci --ignore-scripts)
-#   2. main: workspace build → bun build --compile → install binary + assets
+#   2. main: workspace build → bun runtime wrapper
 #
-# Runtime layout (mirrors upstream release archives):
-#   $out/bin/pi                         compiled binary
-#   $out/lib/pi/photon_rs_bg.wasm       WASM loaded from process.execPath dir
-#   $out/lib/pi/theme/                  TUI theme JSON
-#   $out/lib/pi/assets/                 image assets
-#   $out/lib/pi/export-html/            HTML export templates
-#   $out/lib/pi/docs/                   documentation
-#   $out/lib/pi/examples/               examples
-#   $out/lib/pi/node_modules/@mariozechner/clipboard*   native bindings
+# Runtime layout:
+#   $out/bin/pi  →  bun ... $out/lib/node_modules/.../dist/cli.js
+#   $out/lib/node_modules/                       all runtime deps
+#   $out/lib/node_modules/@earendil-works/pi-*/  built workspace packages
 {
   lib,
   stdenv,
@@ -21,7 +16,7 @@
   fetchurl,
   bun,
   nodejs,
-  makeBinaryWrapper,
+  makeWrapper,
   ripgrep,
   fd,
   versionCheckHook,
@@ -41,6 +36,11 @@ let
     url = "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-${version}.tgz";
     hash = "sha256-AmJ4Wnaw6y7sWWzYp6su4j7vidLvG7EhHE8KGUTaz0E=";
   };
+
+  runtimeBins = lib.makeBinPath [
+    ripgrep
+    fd
+  ];
 
   nodeModules = stdenv.mkDerivation {
     pname = "pi-coding-agent-node_modules";
@@ -72,30 +72,18 @@ let
     outputHashAlgo = "sha256";
     outputHash = "sha256-nvku/nqBHt7QU+bB2olGlzTK9vKzK6lg3VQb1j8lEU0=";
   };
-
-  runtimeBins = lib.makeBinPath [
-    ripgrep
-    fd
-  ];
 in
 stdenv.mkDerivation {
   pname = "pi-coding-agent";
   inherit version src;
 
   strictDeps = true;
-
-  # CRITICAL: Bun compiled binaries contain an embedded virtual filesystem
-  # (bunfs). Stripping or patching the ELF breaks it — the binary must be
-  # installed exactly as produced by `bun build --compile`.
-  dontStrip = true;
-  dontPatchELF = true;
-
   env.NODE_EXTRA_CA_CERTS = "${cacert}/etc/ssl/certs/ca-bundle.crt";
 
   nativeBuildInputs = [
     bun
     nodejs
-    makeBinaryWrapper
+    makeWrapper
     writableTmpDirAsHomeHook
   ];
 
@@ -106,7 +94,6 @@ stdenv.mkDerivation {
     chmod -R u+w node_modules
     patchShebangs node_modules >/dev/null
 
-    # Restore gitignored model catalog.
     mkdir -p packages/ai/src/providers/data
     tar --extract --gzip --file=${modelData} \
       --directory=packages/ai/src/providers/data \
@@ -130,54 +117,30 @@ stdenv.mkDerivation {
     runHook postBuild
   '';
 
+  # Follow lukasl/pi.nix: stage workspace dist, then copy full node_modules.
   installPhase = ''
     runHook preInstall
 
-    cd packages/coding-agent
+    mkdir -p $out/bin $out/lib/node_modules/@earendil-works
 
-    mkdir -p $out/bin $out/lib/pi
+    for pkg in tui telemetry ai agent protocol client coding-agent; do
+      [ -d "packages/$pkg/dist" ] || continue
+      mkdir -p "$out/lib/node_modules/@earendil-works/pi-$pkg"
+      cp -r packages/$pkg/dist/* "$out/lib/node_modules/@earendil-works/pi-$pkg/"
+      cp packages/$pkg/package.json "$out/lib/node_modules/@earendil-works/pi-$pkg/"
+    done
 
-    # Compile into a standalone binary matching upstream build-binaries.sh.
-    # Without --target, bun embeds its own runtime (nixpkgs bun IS baseline).
-    bun build --compile \
-      --no-compile-autoload-bunfig \
-      ./dist/bun/cli.js \
-      ./src/utils/image-resize-worker.ts \
-      --outfile $out/bin/pi
+    cp -rL node_modules/. "$out/lib/node_modules/"
 
-    chmod +x $out/bin/pi
-
-    # WASM — loaded at runtime from process.execPath directory.
-    cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm \
-      $out/lib/pi/
-
-    # package.json — pi reads VERSION from it; the compiled binary looks
-    # in PI_PACKAGE_DIR (set by wrapper below).
-    cp package.json $out/lib/pi/
-
-    # Static assets matching upstream release layout.
-    mkdir -p $out/lib/pi/theme
-    cp dist/modes/interactive/theme/*.json $out/lib/pi/theme/
-    mkdir -p $out/lib/pi/assets
-    cp dist/modes/interactive/assets/*.png $out/lib/pi/assets/
-    cp -r dist/core/export-html $out/lib/pi/
-    cp -r docs $out/lib/pi/
-    cp -r examples $out/lib/pi/
-
-    # Clipboard native bindings.
-    mkdir -p $out/lib/pi/node_modules/@mariozechner
-    cp -rL ../../node_modules/@mariozechner/clipboard \
-      $out/lib/pi/node_modules/@mariozechner/
-
-    runHook postInstall
-  '';
-
-  postFixup = ''
-    wrapProgram $out/bin/pi \
-      --prefix PATH : "${runtimeBins}" \
-      --set PI_PACKAGE_DIR "$out/lib/pi" \
+    makeWrapper ${lib.getExe bun} $out/bin/pi \
+      --add-flags "$out/lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" \
+      --set PI_PACKAGE_DIR "$out/lib/node_modules/@earendil-works/pi-coding-agent" \
+      --prefix NODE_PATH : "$out/lib/node_modules" \
+      --suffix PATH : "${runtimeBins}" \
       --set-default PI_SKIP_VERSION_CHECK 1 \
       --set-default PI_TELEMETRY 0
+
+    runHook postInstall
   '';
 
   doInstallCheck = true;
@@ -193,7 +156,7 @@ stdenv.mkDerivation {
   };
 
   meta = {
-    description = "Pi coding agent CLI, compiled binary";
+    description = "Pi coding agent CLI, built with Bun";
     homepage = "https://pi.dev/";
     license = lib.licenses.mit;
     mainProgram = "pi";
