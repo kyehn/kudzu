@@ -1,19 +1,19 @@
+import { createHash, randomBytes } from "node:crypto";
 import {
 	type Api,
 	type AssistantMessageEventStream,
 	type Context,
+	type Model,
+	type SimpleStreamOptions,
 	streamSimpleAnthropic,
 	streamSimpleGoogle,
 	streamSimpleOpenAICompletions,
 	streamSimpleOpenAIResponses,
-	type Model,
-	type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
-import { randomBytes, createHash } from "node:crypto";
 
 const BASE_URL = "https://opencode.ai/zen/v1";
 const MODELS_DEV_URL = "https://models.dev/api.json";
@@ -31,7 +31,8 @@ const API_KEY = "public";
 //
 // Source: packages/schema/src/identifier.ts in anomalyco/opencode
 
-const RANDOM_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const RANDOM_CHARS =
+	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const IDENT_LENGTH = 26;
 const TIME_HEX_LENGTH = 12; // 6 bytes × 2 hex chars
 const RANDOM_PART_LENGTH = IDENT_LENGTH - TIME_HEX_LENGTH; // 14 chars
@@ -79,11 +80,11 @@ function descendingId(): string {
 }
 
 /** Stable session ID — persists for the lifetime of this extension. */
-const STABLE_SESSION_ID = "ses_" + descendingId();
+const STABLE_SESSION_ID = `ses_${descendingId()}`;
 
 /** Generate a unique request ID per API call. */
 function requestId(): string {
-	return "msg_" + descendingId();
+	return `msg_${descendingId()}`;
 }
 
 /** Stable project ID derived deterministically from cwd. */
@@ -96,10 +97,11 @@ function deriveProjectId(dir: string): string {
 		hash[i].toString(16).padStart(2, "0"),
 	).join("");
 	// Use bytes 6-19 to derive 14 chars from RANDOM_CHARS
-	const randomPart = Array.from({ length: RANDOM_PART_LENGTH }, (_, i) =>
-		RANDOM_CHARS[hash[6 + i] % 62],
+	const randomPart = Array.from(
+		{ length: RANDOM_PART_LENGTH },
+		(_, i) => RANDOM_CHARS[hash[6 + i] % 62],
 	).join("");
-	return "prj_" + timePart + randomPart;
+	return `prj_${timePart}${randomPart}`;
 }
 
 let cachedProjectId: string | undefined;
@@ -201,7 +203,8 @@ function opencodeHeaders(): Record<string, string> {
 
 	return {
 		// Matches the real opencode CLI User-Agent exactly
-		"User-Agent": "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
+		"User-Agent":
+			"opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14",
 		// Client identifier (matches RuntimeFlags.client default)
 		"x-opencode-client": "cli",
 		// Stable session ID (real opencode keeps same ID per session)
@@ -242,12 +245,29 @@ function isFreeModelId(id: string): boolean {
  *   - Map pi levels to nearest supported provider level
  *   - "off" always maps to null (thinking disabled)
  */
-const PI_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const PI_THINKING_LEVELS = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
 
 /** Sort order for effort levels (lowest to highest) */
-const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const EFFORT_ORDER = [
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
 
-function buildThinkingLevelMap(info?: ModelsDevModelInfo): Record<string, string | null> | undefined {
+function buildThinkingLevelMap(
+	info?: ModelsDevModelInfo,
+): Record<string, string | null> | undefined {
 	if (!info?.reasoning) return undefined;
 
 	const map: Record<string, string | null> = {};
@@ -282,7 +302,9 @@ function buildThinkingLevelMap(info?: ModelsDevModelInfo): Record<string, string
 	const findNearest = (level: string): string | null => {
 		if (supportedEffort.has(level)) return level;
 
-		const levelIdx = EFFORT_ORDER.indexOf(level as any);
+		const levelIdx = EFFORT_ORDER.indexOf(
+			level as (typeof EFFORT_ORDER)[number],
+		);
 		if (levelIdx === -1) return null;
 
 		let best: string | null = null;
@@ -439,7 +461,9 @@ function getVisibleModels(
 			cost: { ...model.cost },
 			contextWindow: model.contextWindow,
 			maxTokens: model.maxTokens,
-			...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
+			...(model.thinkingLevelMap
+				? { thinkingLevelMap: model.thinkingLevelMap }
+				: {}),
 		};
 	});
 }
@@ -481,7 +505,6 @@ function streamOpencodeZen(
 				context,
 				wrappedOptions,
 			);
-		case "openai-completions":
 		default:
 			return streamSimpleOpenAICompletions(
 				wrappedModel as Model<"openai-completions">,

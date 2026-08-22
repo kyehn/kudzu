@@ -49,7 +49,10 @@ let
     impureEnvVars = lib.fetchers.proxyImpureEnvVars;
     env.NODE_EXTRA_CA_CERTS = "${cacert}/etc/ssl/certs/ca-bundle.crt";
 
-    nativeBuildInputs = [ nodejs writableTmpDirAsHomeHook ];
+    nativeBuildInputs = [
+      nodejs
+      writableTmpDirAsHomeHook
+    ];
     dontConfigure = true;
 
     buildPhase = ''
@@ -178,7 +181,10 @@ stdenv.mkDerivation {
   '';
 
   doInstallCheck = true;
-  nativeInstallCheckInputs = [ versionCheckHook writableTmpDirAsHomeHook ];
+  nativeInstallCheckInputs = [
+    versionCheckHook
+    writableTmpDirAsHomeHook
+  ];
   versionCheckKeepEnvironment = [ "HOME" ];
   versionCheckProgramArg = "--version";
 
