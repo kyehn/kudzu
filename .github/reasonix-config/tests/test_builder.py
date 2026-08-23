@@ -7,6 +7,7 @@ from typing import ClassVar
 
 import pytest
 
+from reasonix_config import builder as builder_module
 from reasonix_config.builder import (
     CONFIG_VERSION,
     _build_override,
@@ -388,3 +389,100 @@ class TestEnsureOpencodePublicKeyDedup:
         )
         assert "OTHER_KEY=secret" in content  # 其他凭证保留
         assert (env.stat().st_mode & 0o777) == ENV_FILE_PERMS
+
+
+class TestEnsureOpencodeKeyPreserved:
+    """用户已设置的 OPENCODE_API_KEY 必须原样保留.
+
+    工具只负责在缺失时补 ``public`` (开箱即用); 把用户自己的 key 静默
+    覆盖成共享匿名凭据会破坏付费模型认证与独立限流配额.
+    """
+
+    def test_existing_user_key_not_overwritten(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg_file = tmp_path / "config.toml"
+        cfg_file.write_text("config_version = 5\n\n")
+        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
+        env = tmp_path / ".env"
+        env.write_text("OPENCODE_API_KEY=sk-user-own-key\nOTHER_KEY=secret\n")
+        write_config(
+            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
+        )
+        content = env.read_text()
+        assert "OPENCODE_API_KEY=sk-user-own-key" in content
+        assert "OPENCODE_API_KEY=public" not in content
+        assert "OTHER_KEY=secret" in content
+
+    def test_dedup_keeps_first_real_value(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg_file = tmp_path / "config.toml"
+        cfg_file.write_text("config_version = 5\n\n")
+        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
+        env = tmp_path / ".env"
+        env.write_text(
+            "OPENCODE_API_KEY=sk-real-key\n"
+            "OPENCODE_API_KEY=public\n"
+        )
+        write_config(
+            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
+        )
+        content = env.read_text()
+        assert content.count("OPENCODE_API_KEY=") == 1
+        assert "OPENCODE_API_KEY=sk-real-key" in content
+
+
+class TestDeprecatedFilter:
+    """models.dev 标记 deprecated 的模型必须被剔除.
+
+    免费推广结束的模型 (如 deepseek-v4-flash-free) 仍会出现在 zen /models
+    列表里, 只有 models.dev 的 status 元数据能识别; stale 缓存曾让该过滤
+    失效, 这里用纯 mock 数据固定行为.
+    """
+
+    @staticmethod
+    def _patch_fetch(
+        monkeypatch: pytest.MonkeyPatch,
+        zen_ids: list[str],
+        md_models: dict,
+    ) -> None:
+        zen = {"object": "list", "data": [{"id": i} for i in zen_ids]}
+        md = {"opencode": {"models": md_models}, "nvidia": {"models": {}}}
+        monkeypatch.setattr(builder_module, "fetch_zen_models", lambda: zen)
+        monkeypatch.setattr(builder_module, "fetch_models_dev", lambda: md)
+
+    def test_deprecated_model_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_fetch(
+            monkeypatch,
+            ["alpha-free", "beta-free"],
+            {
+                "alpha-free": {
+                    "status": "deprecated",
+                    "limit": {"context": 200000, "output": 32000},
+                },
+                "beta-free": {"limit": {"context": 200000, "output": 32000}},
+            },
+        )
+        providers = get_opencode_zen_free_providers()
+        models = providers[0].models
+        assert "alpha-free" not in models, "deprecated 模型必须被剔除"
+        assert models == ["beta-free"]
+
+    def test_unknown_model_kept_without_metadata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """zen 有而 models.dev 未收录的模型仍收录 (无元数据优于不可用)."""
+        self._patch_fetch(monkeypatch, ["brand-new-free"], {})
+        providers = get_opencode_zen_free_providers()
+        assert providers[0].models == ["brand-new-free"]
+        assert providers[0].model_overrides is None
+
+    def test_all_deprecated_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_fetch(
+            monkeypatch,
+            ["gone-free"],
+            {"gone-free": {"status": "deprecated", "limit": {"context": 100000}}},
+        )
+        with pytest.raises(SystemExit, match="No free OpenCode Zen models"):
+            get_opencode_zen_free_providers()

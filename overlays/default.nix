@@ -6,11 +6,11 @@ final: prev: {
       inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default
     else
       prev.nixVersions.latest;
+  pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
+  pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
-  dsh-config = prev.callPackage ./dsh-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
-  dsh = prev.callPackage ./dsh { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
