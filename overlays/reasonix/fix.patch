@@ -1748,16 +1748,18 @@ diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
 index edfa2d656..f58d0379f 100644
 --- a/internal/provider/openai/host.go
 +++ b/internal/provider/openai/host.go
-@@ -65,6 +65,14 @@ func IsOpenAI(baseURL string) bool {
+@@ -65,6 +65,16 @@ func IsOpenAI(baseURL string) bool {
  	return strings.EqualFold(u.Hostname(), "api.openai.com")
  }
  
 +// IsOpenCode reports whether a provider speaks the opencode Zen wire shape.
-+// The generated config always names the provider "opencode-zen" (and keeps that
-+// name even when a local capture proxy rewrites base_url to an IP), so the name
-+// alone is a reliable, option-free signal.
++// reasonix-config names the provider after its models.dev id ("opencode";
++// "opencode-zen" kept for configs generated before the rename), so the name
++// alone stays a reliable, option-free signal even when a local capture proxy
++// rewrites base_url to an IP.
 +func IsOpenCode(name, baseURL string) bool {
-+	return strings.EqualFold(strings.TrimSpace(name), "opencode-zen")
++	name = strings.ToLower(strings.TrimSpace(name))
++	return name == "opencode" || name == "opencode-zen"
 +}
 +
  // deepSeekPrefixChatURL returns the official Beta chat endpoint that enables
@@ -1768,7 +1770,7 @@ new file mode 100644
 index 000000000..7791923e0
 --- /dev/null
 +++ b/internal/provider/openai/oczen_shared_window_test.go
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,74 @@
 +package openai
 +
 +import (
@@ -1818,6 +1820,29 @@ index 000000000..7791923e0
 +	}
 +	if c.SharesContextWindow() {
 +		t.Fatal("opencode-zen mimo must not share the context window")
++	}
++}
++
++// The generated config names the provider after its models.dev id.
++func TestOpenCodeModelsDevNameDetected(t *testing.T) {
++	p, err := New(provider.Config{
++		Name: "opencode", BaseURL: "https://opencode.ai/zen/v1",
++		Model: "deepseek-v4-flash-free",
++		Extra: map[string]any{
++			"reasoning_protocol": "openai",
++			"context_window":     200000,
++			"max_output_tokens":  128000,
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	c := p.(*client)
++	if got := c.ContextBudgetPolicy(); got.WindowMode != provider.ContextWindowShared {
++		t.Fatalf("opencode DeepSeek window mode = %v, want shared", got.WindowMode)
++	}
++	if !c.SharesContextWindow() {
++		t.Fatal("opencode DeepSeek must share the context window")
 +	}
 +}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go

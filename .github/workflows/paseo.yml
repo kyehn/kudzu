@@ -106,13 +106,14 @@ jobs:
           pip install -e .
           reasonix-config
           popd
-          paseo onboard --relay --voice disable
-          # paseo onboard --relay --voice disable > /dev/null
+          pi --help
+          # paseo onboard --relay --voice disable
+          paseo onboard --relay --voice disable > /dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |
           paseo daemon stop
-          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/commands ~/.paseo/paseo.pid ~/.paseo/daemon.log
+          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/commands ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.reasonix/ ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
       - if: always()
         uses: actions/cache/save@main
         with:

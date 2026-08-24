@@ -17,6 +17,7 @@ writeText "settings.json" (
       provider.maxRetries = 9;
     };
     packages = [
+      "npm:pi-background-tasks"
       "npm:pi-subagents"
       "npm:context-mode"
       "npm:@cortexkit/pi-magic-context"
@@ -26,11 +27,7 @@ writeText "settings.json" (
       "npm:pi-lens"
       "npm:@ff-labs/pi-fff"
     ];
-    env = {
-      HYPA_PI_ASK_NON_INTERACTIVE = "allow";
-      HYPA_PI_CONFIG = "none";
-      PI_LENS_STARTUP_MODE = "minimal";
-    };
+    env.PI_LENS_STARTUP_MODE = "minimal";
     defaultProvider = "opencode";
     defaultModel = "mimo-v2.5-free";
     defaultThinkingLevel = "max";

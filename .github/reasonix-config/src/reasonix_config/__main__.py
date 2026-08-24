@@ -8,14 +8,14 @@ from reasonix_config.builder import build_all, write_config
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Sync NVIDIA NIM and OpenCode Zen free models to reasonix config.",
+        description="Sync OpenCode Zen free and NVIDIA NIM models to reasonix config.",
     )
     parser.add_argument(
         "--provider",
         action="append",
-        choices=["opencode-zen", "nvidia-nim"],
+        choices=["opencode", "nvidia"],
         default=None,
-        help="provider to configure; repeat for multiple (default: all)",
+        help="provider to configure (models.dev provider id); repeat for multiple (default: all)",
     )
     return parser.parse_args(argv)
 

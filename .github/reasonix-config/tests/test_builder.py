@@ -14,21 +14,21 @@ from reasonix_config.builder import (
     _is_chat_model,
     _repair_default_model,
     build_all,
+    build_nvidia,
+    build_opencode,
     get_free_zen_model_ids,
-    get_nvidia_providers,
-    get_opencode_zen_free_providers,
     write_config,
 )
-from reasonix_config.fetcher import ZEN_CACHE
+from reasonix_config.fetcher import ZEN_CACHE, fetch_models_dev, fetch_zen_models
 from reasonix_config.models import ProviderConfig
 
 EXPECTED_PROVIDER_COUNT = 2
 ENV_FILE_PERMS = 0o600  # .env 含密钥, 仅属主可读写
 
 
-def _load_zen_cache() -> dict | None:
+def _load_zen_cache() -> dict:
     if not ZEN_CACHE.exists():
-        return None
+        pytest.skip("zen cache not found at /tmp/reasonix-models/opencode_zen_models.json")
     return json.loads(ZEN_CACHE.read_text())
 
 
@@ -45,20 +45,14 @@ class TestIsChatModel:
 
 class TestFreeZenIds:
     def test_returns_free_ids(self) -> None:
-        zen = _load_zen_cache()
-        if zen is None:
-            pytest.skip("zen cache not found at /tmp/reasonix-models/opencode_zen_models.json")
-        ids = get_free_zen_model_ids(zen)
+        ids = get_free_zen_model_ids(_load_zen_cache())
         assert "deepseek-v4-flash-free" in ids
         assert "big-pickle" in ids
         for mid in ids:
             assert "-free" in mid or mid == "big-pickle"
 
     def test_excludes_paid(self) -> None:
-        zen = _load_zen_cache()
-        if zen is None:
-            pytest.skip("zen cache not found")
-        ids = get_free_zen_model_ids(zen)
+        ids = get_free_zen_model_ids(_load_zen_cache())
         assert "gpt-4o" not in ids
         assert "claude-sonnet-4-6" not in ids
 
@@ -159,17 +153,47 @@ class TestTomlSchemaValidity:
     """
 
     PROVIDER_KEYS: ClassVar[set[str]] = {
-        "name", "kind", "base_url", "chat_url", "model", "models", "models_url",
-        "default", "api_key_env", "preset_id", "preset_version", "headers",
-        "extra_body", "auth_header", "responses_mode", "responses_stateful",
-        "balance_url", "context_window", "max_output_tokens", "price", "prices",
-        "thinking", "effort", "vision", "vision_models", "vision_detail",
-        "web_search", "reasoning_protocol", "supported_efforts", "default_effort",
-        "model_overrides", "no_proxy", "cache_ttl_minutes",
+        "name",
+        "kind",
+        "base_url",
+        "chat_url",
+        "model",
+        "models",
+        "models_url",
+        "default",
+        "api_key_env",
+        "preset_id",
+        "preset_version",
+        "headers",
+        "extra_body",
+        "auth_header",
+        "responses_mode",
+        "responses_stateful",
+        "balance_url",
+        "context_window",
+        "max_output_tokens",
+        "price",
+        "prices",
+        "thinking",
+        "effort",
+        "vision",
+        "vision_models",
+        "vision_detail",
+        "web_search",
+        "reasoning_protocol",
+        "supported_efforts",
+        "default_effort",
+        "model_overrides",
+        "no_proxy",
+        "cache_ttl_minutes",
     }
     OVERRIDE_KEYS: ClassVar[set[str]] = {
-        "reasoning_protocol", "supported_efforts", "default_effort", "vision",
-        "context_window", "max_output_tokens",
+        "reasoning_protocol",
+        "supported_efforts",
+        "default_effort",
+        "vision",
+        "context_window",
+        "max_output_tokens",
     }
 
     def test_provider_keys_valid(self) -> None:
@@ -242,35 +266,41 @@ class TestIntegration:
         providers = build_all()
         assert len(providers) >= EXPECTED_PROVIDER_COUNT
         names = {p.name for p in providers}
-        assert "opencode-zen" in names
-        assert "nvidia-nim" in names
+        assert "opencode" in names
+        assert "nvidia" in names
 
     def test_build_all_filter_opencode_only(self) -> None:
-        providers = build_all(providers_filter=["opencode-zen"])
+        providers = build_all(providers_filter=["opencode"])
         assert len(providers) == 1
-        assert providers[0].name == "opencode-zen"
+        assert providers[0].name == "opencode"
 
     def test_build_all_filter_nvidia_only(self) -> None:
-        providers = build_all(providers_filter=["nvidia-nim"])
+        providers = build_all(providers_filter=["nvidia"])
         assert len(providers) == 1
-        assert providers[0].name == "nvidia-nim"
+        assert providers[0].name == "nvidia"
 
     def test_opencode_zen_has_free_models(self) -> None:
-        providers = get_opencode_zen_free_providers()
+        providers = [build_opencode(fetch_models_dev(), fetch_zen_models())]
         assert len(providers) == 1
         p = providers[0]
+        # 字段遵循 models.dev 的 opencode provider 条目.
+        assert p.name == "opencode"
+        assert p.base_url == "https://opencode.ai/zen/v1"
         assert p.api_key_env == "OPENCODE_API_KEY"
         assert len(p.models) > 0
         for mid in p.models:
             assert "-free" in mid or mid == "big-pickle"
-        # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测
-        # opencode-zen 后动态生成, 配置里不再静态写入, 避免与源码重复.
+        # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测到该
+        # provider 后动态生成, 配置里不再静态写入, 避免与源码重复.
         assert p.headers is None
 
     def test_nvidia_has_chat_models(self) -> None:
-        providers = get_nvidia_providers()
+        providers = [build_nvidia(fetch_models_dev())]
         assert len(providers) == 1
         p = providers[0]
+        # 字段遵循 models.dev 的 nvidia provider 条目.
+        assert p.name == "nvidia"
+        assert p.base_url == "https://integrate.api.nvidia.com/v1"
         assert p.api_key_env == "NVIDIA_API_KEY"
         assert len(p.models) > 0
 
@@ -332,10 +362,8 @@ class TestEnsureOpencodePublicKey:
 
     def test_creates_env_with_0600(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text('config_version = 5\n\n')
-        monkeypatch.setattr(
-            "reasonix_config.builder.REASONIX_CONFIG", cfg_file
-        )
+        cfg_file.write_text("config_version = 5\n\n")
+        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
         assert not (tmp_path / ".env").exists()
         write_config(
             [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
@@ -349,10 +377,8 @@ class TestEnsureOpencodePublicKey:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text('config_version = 5\n\n')
-        monkeypatch.setattr(
-            "reasonix_config.builder.REASONIX_CONFIG", cfg_file
-        )
+        cfg_file.write_text("config_version = 5\n\n")
+        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
         env = tmp_path / ".env"
         env.write_text("OTHER_KEY=secret\n")
         env.chmod(0o644)  # 模拟宽松权限的既有文件
@@ -421,10 +447,7 @@ class TestEnsureOpencodeKeyPreserved:
         cfg_file.write_text("config_version = 5\n\n")
         monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
         env = tmp_path / ".env"
-        env.write_text(
-            "OPENCODE_API_KEY=sk-real-key\n"
-            "OPENCODE_API_KEY=public\n"
-        )
+        env.write_text("OPENCODE_API_KEY=sk-real-key\nOPENCODE_API_KEY=public\n")
         write_config(
             [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
         )
@@ -448,12 +471,28 @@ class TestDeprecatedFilter:
         md_models: dict,
     ) -> None:
         zen = {"object": "list", "data": [{"id": i} for i in zen_ids]}
-        md = {"opencode": {"models": md_models}, "nvidia": {"models": {}}}
+        md = {
+            "opencode": {
+                "api": "https://opencode.ai/zen/v1",
+                "env": ["OPENCODE_API_KEY"],
+                "models": md_models,
+            },
+            "nvidia": {"models": {}},
+        }
         monkeypatch.setattr(builder_module, "fetch_zen_models", lambda: zen)
         monkeypatch.setattr(builder_module, "fetch_models_dev", lambda: md)
 
+    @staticmethod
+    def _build_patched(
+        monkeypatch: pytest.MonkeyPatch,
+        zen_ids: list[str],
+        md_models: dict,
+    ) -> ProviderConfig:
+        TestDeprecatedFilter._patch_fetch(monkeypatch, zen_ids, md_models)
+        return build_opencode(builder_module.fetch_models_dev(), builder_module.fetch_zen_models())
+
     def test_deprecated_model_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._patch_fetch(
+        p = self._build_patched(
             monkeypatch,
             ["alpha-free", "beta-free"],
             {
@@ -464,25 +503,18 @@ class TestDeprecatedFilter:
                 "beta-free": {"limit": {"context": 200000, "output": 32000}},
             },
         )
-        providers = get_opencode_zen_free_providers()
-        models = providers[0].models
-        assert "alpha-free" not in models, "deprecated 模型必须被剔除"
-        assert models == ["beta-free"]
+        assert p.models == ["beta-free"], "deprecated 模型必须被剔除"
 
-    def test_unknown_model_kept_without_metadata(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unknown_model_kept_without_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """zen 有而 models.dev 未收录的模型仍收录 (无元数据优于不可用)."""
-        self._patch_fetch(monkeypatch, ["brand-new-free"], {})
-        providers = get_opencode_zen_free_providers()
-        assert providers[0].models == ["brand-new-free"]
-        assert providers[0].model_overrides is None
+        p = self._build_patched(monkeypatch, ["brand-new-free"], {})
+        assert p.models == ["brand-new-free"]
+        assert p.model_overrides is None
 
     def test_all_deprecated_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._patch_fetch(
-            monkeypatch,
-            ["gone-free"],
-            {"gone-free": {"status": "deprecated", "limit": {"context": 100000}}},
-        )
         with pytest.raises(SystemExit, match="No free OpenCode Zen models"):
-            get_opencode_zen_free_providers()
+            self._build_patched(
+                monkeypatch,
+                ["gone-free"],
+                {"gone-free": {"status": "deprecated", "limit": {"context": 100000}}},
+            )

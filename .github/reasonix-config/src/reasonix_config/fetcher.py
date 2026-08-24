@@ -19,20 +19,26 @@ MODELS_DEV_API = "https://models.dev/api.json"
 
 # 与 opencode packages/core/src/models-dev.ts 一致: opencode/<channel>/<version>/<client>
 # 发布版 channel 为 "prod" (源码 .github/workflows/publish.yml), client 默认 "cli".
-MODELS_DEV_USER_AGENT = "opencode/prod/1.18.14/cli"
+MODELS_DEV_USER_AGENT = "opencode/prod/1.18.21/cli"
 
 
-def _cache_fresh(path: Path) -> bool:
-    if not path.exists():
-        return False
-    age = time.time() - path.stat().st_mtime
-    return age < CACHE_TTL_SECONDS
+def _load_fresh_cache(path: Path) -> dict | None:
+    """返回 TTL 内的缓存快照; 文件消失或内容损坏视为未命中, 走网络重新拉取."""
+    try:
+        age = time.time() - path.stat().st_mtime
+        if age >= CACHE_TTL_SECONDS:
+            return None
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        # 缓存不可用不能让工具崩溃, 真正的网络错误由请求路径原样抛出.
+        return None
 
 
 def fetch_zen_models() -> dict:
+    cached = _load_fresh_cache(ZEN_CACHE)
+    if cached is not None:
+        return cached
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    if _cache_fresh(ZEN_CACHE):
-        return json.loads(ZEN_CACHE.read_text())
     resp = httpx.get(ZEN_API, timeout=30, headers={"User-Agent": MODELS_DEV_USER_AGENT})
     resp.raise_for_status()
     data = resp.json()
@@ -41,9 +47,10 @@ def fetch_zen_models() -> dict:
 
 
 def fetch_models_dev() -> dict:
+    cached = _load_fresh_cache(MODELS_DEV_CACHE)
+    if cached is not None:
+        return cached
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    if _cache_fresh(MODELS_DEV_CACHE):
-        return json.loads(MODELS_DEV_CACHE.read_text())
     resp = httpx.get(MODELS_DEV_API, timeout=60, headers={"User-Agent": MODELS_DEV_USER_AGENT})
     resp.raise_for_status()
     data = resp.json()

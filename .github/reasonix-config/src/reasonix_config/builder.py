@@ -13,21 +13,10 @@ from reasonix_config.fetcher import fetch_models_dev, fetch_zen_models
 from reasonix_config.models import ModelOverride, Pricing, ProviderConfig
 
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
-NVIDIA_API = "https://integrate.api.nvidia.com/v1"
-OPENCODE_ZEN_API = "https://opencode.ai/zen/v1"
 MIN_CHAT_CONTEXT = 8000
 CONFIG_VERSION = 5
 
-
-def _lookup_model(models_raw: dict[str, Any], model_id: str) -> tuple[str, dict[str, Any]] | None:
-    result = models_raw.get(model_id)
-    if result is not None:
-        return model_id, result
-    normalised = model_id.replace(".", "_")
-    result = models_raw.get(normalised)
-    if result is not None:
-        return normalised, result
-    return None
+PROVIDER_NAMES = ("opencode", "nvidia")
 
 
 def _build_override(m: dict[str, Any]) -> dict[str, Any]:
@@ -44,9 +33,8 @@ def _build_override(m: dict[str, Any]) -> dict[str, Any]:
     max_output = m.get("limit", {}).get("output", 0)
     if max_output:
         override["max_output_tokens"] = max_output
-    reasoning = m.get("reasoning", False)
     reasoning_options = m.get("reasoning_options", [])
-    if reasoning:
+    if m.get("reasoning", False):
         override["reasoning_protocol"] = "openai"
         for opt in reasoning_options:
             if isinstance(opt, dict) and opt.get("type") == "effort":
@@ -61,6 +49,19 @@ def _build_override(m: dict[str, Any]) -> dict[str, Any]:
     if m.get("attachment") or ("image" in (modalities_input or [])):
         override["vision"] = True
     return override
+
+
+def _price_of(m: dict[str, Any]) -> Pricing | None:
+    # 数值合法性交由 pydantic 校验, 非法输入直接抛 ValidationError.
+    cost = m.get("cost", {})
+    price = Pricing(
+        input=cost.get("input", 0),
+        output=cost.get("output", 0),
+        cache_hit=cost.get("cache_read"),
+    )
+    if price.input or price.output or price.cache_hit:
+        return price
+    return None
 
 
 def _is_chat_model(mid: str, mdata: dict[str, Any]) -> bool:
@@ -109,45 +110,28 @@ def get_free_zen_model_ids(zen_data: dict) -> set[str]:
     return ids
 
 
-def get_opencode_zen_free_providers() -> list[ProviderConfig]:
-    zen_data = fetch_zen_models()
-    md_data = fetch_models_dev()
-
-    free_ids = get_free_zen_model_ids(zen_data)
-    oc_provider = md_data.get("opencode", {})
-    oc_models_raw: dict[str, Any] = oc_provider.get("models", {})
+def build_opencode(md_data: dict, zen_data: dict) -> ProviderConfig:
+    """OpenCode Zen 免费模型, 字段遵循 models.dev 的 opencode provider 条目."""
+    provider = md_data["opencode"]
+    models_raw = provider["models"]
 
     models_list: list[str] = []
     model_prices: dict[str, Pricing] = {}
     model_overrides: dict[str, ModelOverride] = {}
     max_context = 0
 
-    for mid in sorted(free_ids):
-        lookup = _lookup_model(oc_models_raw, mid)
-        if lookup is None:
-            models_list.append(mid)
+    for mid in sorted(get_free_zen_model_ids(zen_data)):
+        m = models_raw.get(mid)
+        if m is not None and m.get("status") == "deprecated":
             continue
-
-        _resolved_id, m = lookup
-
-        status = m.get("status", "")
-        if status == "deprecated":
-            continue
-
+        # zen 有而 models.dev 未收录的模型仍收录 (无元数据优于不可用).
         models_list.append(mid)
-
-        ctx = m.get("limit", {}).get("context", 0)
-        max_context = max(max_context, ctx)
-
-        cost = m.get("cost", {})
-        price = Pricing(
-            input=float(cost.get("input", 0)),
-            output=float(cost.get("output", 0)),
-            cache_hit=(float(cost["cache_read"]) if cost.get("cache_read") is not None else None),
-        )
-        if price.input or price.output or price.cache_hit:
+        if m is None:
+            continue
+        max_context = max(max_context, m.get("limit", {}).get("context", 0))
+        price = _price_of(m)
+        if price:
             model_prices[mid] = price
-
         override = _build_override(m)
         if override:
             model_overrides[mid] = ModelOverride(**override)
@@ -156,66 +140,48 @@ def get_opencode_zen_free_providers() -> list[ProviderConfig]:
         msg = "No free OpenCode Zen models found"
         raise SystemExit(msg)
 
-    cfg = ProviderConfig(
-        name="opencode-zen",
+    # api_key_env 取 models.dev env 首项; reasonix 从 .env 读 key 并发送
+    # Authorization: Bearer public (匹配 opencode 客户端默认行为), 每次
+    # reasonix-config 运行自动确保 ~/.reasonix/.env 中有该条目.
+    #
+    # opencode 头部 (User-Agent / x-opencode-* / utls TLS 指纹) 由 reasonix
+    # 源码检测到该 provider 后动态生成, 因此这里不写静态 headers, 避免与
+    # 源码重复; X-Opencode-Session / X-Opencode-Request 为动态 ID, 静态
+    # 配置本就无法表达.
+    return ProviderConfig(
+        name="opencode",
         kind="openai",
-        base_url=OPENCODE_ZEN_API,
+        base_url=provider["api"],
         models=models_list,
         default=models_list[0],
-        # api_key_env="OPENCODE_API_KEY" → reasonix 从 .env 读 key 并发送
-        # Authorization: Bearer public (匹配 opencode 客户端默认行为).
-        # 每次 reasonix-config 运行自动确保 ~/.reasonix/.env 中有该条目.
-        api_key_env="OPENCODE_API_KEY",
-        context_window=max_context or 200000,
+        api_key_env=provider["env"][0],
+        context_window=max_context,
         prices=model_prices or None,
         model_overrides=model_overrides or None,
-        # 与 opencode 客户端 (packages/opencode/src/session/llm/request.ts) 高度一致:
-        #   - reasonix 源码在检测到 provider 名 opencode-zen 时自动打上 opencode 头部
-        #     (User-Agent=opencode/1.18.18 ..., Accept: */*,
-        #     Accept-Encoding: gzip, deflate, br, zstd, x-opencode-*), 并用 utls
-        #     复刻 CLI 的 BoringSSL TLS 指纹 (JA3/JA4), 因此这里不再写静态 headers.
-        #   - X-Opencode-Session (ses_<descending 编码>) 由 reasonix 每个客户端
-        #     实例动态生成, X-Opencode-Request (msg_<ascending 编码>) 每请求生成 —
-        #     与 opencode src/id/id.ts 的 create() 逐字节一致, 静态配置无法表达.
-        # 注意: 不要在此设置 opencode 头部, 会与源码生成的小写 x-opencode-* 重复.
         headers=None,
     )
-    return [cfg]
 
 
-def get_nvidia_providers() -> list[ProviderConfig]:
-    md_data = fetch_models_dev()
-    nv_provider = md_data.get("nvidia", {})
-    nv_models_raw: dict[str, Any] = nv_provider.get("models", {})
+def build_nvidia(md_data: dict) -> ProviderConfig:
+    """NVIDIA NIM 聊天模型, 字段遵循 models.dev 的 nvidia provider 条目."""
+    provider = md_data["nvidia"]
+    models_raw = provider["models"]
 
     models_list: list[str] = []
     model_prices: dict[str, Pricing] = {}
     model_overrides: dict[str, ModelOverride] = {}
     max_context = 0
 
-    for mid, m in sorted(nv_models_raw.items()):
-        status = m.get("status", "")
-        if status == "deprecated":
+    for mid, m in sorted(models_raw.items()):
+        if m.get("status") == "deprecated":
             continue
         if not _is_chat_model(mid, m):
             continue
-
-        ctx = m.get("limit", {}).get("context", 0)
-        if ctx < MIN_CHAT_CONTEXT:
-            continue
-
         models_list.append(mid)
-        max_context = max(max_context, ctx)
-
-        cost = m.get("cost", {})
-        price = Pricing(
-            input=float(cost.get("input", 0)),
-            output=float(cost.get("output", 0)),
-            cache_hit=(float(cost["cache_read"]) if cost.get("cache_read") is not None else None),
-        )
-        if price.input or price.output or price.cache_hit:
+        max_context = max(max_context, m.get("limit", {}).get("context", 0))
+        price = _price_of(m)
+        if price:
             model_prices[mid] = price
-
         override = _build_override(m)
         if override:
             model_overrides[mid] = ModelOverride(**override)
@@ -224,26 +190,27 @@ def get_nvidia_providers() -> list[ProviderConfig]:
         msg = "No NVIDIA NIM chat models found"
         raise SystemExit(msg)
 
-    cfg = ProviderConfig(
-        name="nvidia-nim",
+    return ProviderConfig(
+        name="nvidia",
         kind="openai",
-        base_url=NVIDIA_API,
+        base_url=provider["api"],
         models=models_list,
         default=models_list[0],
-        api_key_env="NVIDIA_API_KEY",
-        context_window=max_context or 128000,
+        api_key_env=provider["env"][0],
+        context_window=max_context,
         prices=model_prices or None,
         model_overrides=model_overrides or None,
     )
-    return [cfg]
 
 
 def build_all(providers_filter: list[str] | None = None) -> list[ProviderConfig]:
+    wanted = set(providers_filter) if providers_filter is not None else set(PROVIDER_NAMES)
+    md_data = fetch_models_dev()
     providers: list[ProviderConfig] = []
-    if providers_filter is None or "opencode-zen" in providers_filter:
-        providers.extend(get_opencode_zen_free_providers())
-    if providers_filter is None or "nvidia-nim" in providers_filter:
-        providers.extend(get_nvidia_providers())
+    if "opencode" in wanted:
+        providers.append(build_opencode(md_data, fetch_zen_models()))
+    if "nvidia" in wanted:
+        providers.append(build_nvidia(md_data))
     return providers
 
 

@@ -19,7 +19,7 @@ from reasonix_config.fetcher import (
 def _no_cache(monkeypatch: pytest.MonkeyPatch, cache_attr: str) -> None:
     """把缓存文件 mock 成不存在, 强制走网络路径 (环境里可能有真实 /tmp 缓存)."""
     fake_cache = mock.Mock()
-    fake_cache.exists.return_value = False
+    fake_cache.stat.side_effect = FileNotFoundError(cache_attr)
     monkeypatch.setattr(f"reasonix_config.fetcher.{cache_attr}", fake_cache)
 
 
@@ -42,7 +42,7 @@ def _stale_cache(payload: str) -> mock.Mock:
 class TestFetchZenModels:
     def test_uses_opencode_user_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """请求应携带与 opencode 一致的 UA (opencode/prod/<version>/cli)."""
-        assert MODELS_DEV_USER_AGENT == "opencode/prod/1.18.14/cli"
+        assert MODELS_DEV_USER_AGENT == "opencode/prod/1.18.21/cli"
         _no_cache(monkeypatch, "ZEN_CACHE")
         with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(
