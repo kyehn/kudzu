@@ -14,7 +14,11 @@ from reasonix_config.models import ModelOverride, Pricing, ProviderConfig
 
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 MIN_CHAT_CONTEXT = 8000
-CONFIG_VERSION = 5
+# 与上游 DeepSeek-Reasonix Default().ConfigVersion 同步 (v1.31.3 = 7)。
+# 钉旧值会让每次部署后的首次启动触发 ApplyUserConfigUpgradesOnStartup
+# 迁移重写整个 config.toml (billing/pricing 默认值物化), 下一轮部署又
+# 被钉回, 形成无谓的迁移循环。
+CONFIG_VERSION = 7
 
 PROVIDER_NAMES = ("opencode", "nvidia")
 
@@ -101,11 +105,26 @@ def _is_chat_model(mid: str, mdata: dict[str, Any]) -> bool:
     return all(pat not in name_lower for pat in skip_patterns)
 
 
-def get_free_zen_model_ids(zen_data: dict) -> set[str]:
+def get_free_zen_model_ids(zen_data: dict[str, Any], md_models: dict[str, Any]) -> set[str]:
+    """Zen 在售模型中的免费集.
+
+    判定与 pi-opencode 同规则: 名字带 "-free" (zen 免费层命名约定), 或
+    models.dev 已收录且标价 input/output 均为零 (缺 cost 字段视同零,
+    big-pickle 等无后缀免费模型由此收录, 不再逐个硬编码). models.dev
+    未收录的非 -free id 一律排除: 条目缺失与标价缺失不同, 前者无法证明
+    免费, 误收会导致无标价模型进入配置甚至成为排序最前的 default.
+    """
     ids: set[str] = set()
     for m in zen_data.get("data", []):
         mid = m["id"]
-        if "-free" in mid or mid == "big-pickle":
+        if "-free" in mid:
+            ids.add(mid)
+            continue
+        mdata = md_models.get(mid)
+        if mdata is None:
+            continue
+        cost = mdata.get("cost") or {}
+        if not cost.get("input") and not cost.get("output"):
             ids.add(mid)
     return ids
 
@@ -120,7 +139,7 @@ def build_opencode(md_data: dict, zen_data: dict) -> ProviderConfig:
     model_overrides: dict[str, ModelOverride] = {}
     max_context = 0
 
-    for mid in sorted(get_free_zen_model_ids(zen_data)):
+    for mid in sorted(get_free_zen_model_ids(zen_data, models_raw)):
         m = models_raw.get(mid)
         if m is not None and m.get("status") == "deprecated":
             continue

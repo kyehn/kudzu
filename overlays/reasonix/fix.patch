@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 5361f913c..d4f225a83 100644
+index 5361f91..d4f225a 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -23,7 +23,7 @@ index 5361f913c..d4f225a83 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 diff --git a/go.sum b/go.sum
-index c929316b5..569b0bcf9 100644
+index c929316..569b0bc 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -54,7 +54,7 @@ index c929316b5..569b0bcf9 100644
  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
  github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 diff --git a/internal/acp/e2e_test.go b/internal/acp/e2e_test.go
-index 8ff2d1626..c0ded2afe 100644
+index 8ff2d16..c0ded2a 100644
 --- a/internal/acp/e2e_test.go
 +++ b/internal/acp/e2e_test.go
 @@ -102,7 +102,10 @@ func (f *e2eFactory) NewSession(_ context.Context, p SessionParams) (*control.Co
@@ -134,7 +134,7 @@ index 8ff2d1626..c0ded2afe 100644
  		SessionID: sid,
  		Prompt:    []ContentBlock{{Type: "text", Text: "write README.md"}},
 diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
-index 3af50cb8d..11cfdb2f1 100644
+index 3af50cb..11cfdb2 100644
 --- a/internal/acp/server_test.go
 +++ b/internal/acp/server_test.go
 @@ -978,8 +978,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
@@ -192,7 +192,7 @@ index 3af50cb8d..11cfdb2f1 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index 002802db0..df8f13eb5 100644
+index 002802d..df8f13e 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
 @@ -659,7 +659,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -240,7 +240,7 @@ index 002802db0..df8f13eb5 100644
  	goalDraftMode := false
 diff --git a/internal/agent/active_oversize_fold_test.go b/internal/agent/active_oversize_fold_test.go
 new file mode 100644
-index 000000000..9cdfd7150
+index 0000000..9cdfd71
 --- /dev/null
 +++ b/internal/agent/active_oversize_fold_test.go
 @@ -0,0 +1,118 @@
@@ -363,7 +363,7 @@ index 000000000..9cdfd7150
 +	}
 +}
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index 6a19406f0..fc73a40d2 100644
+index 6a19406..fc73a40 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
 @@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
@@ -400,7 +400,7 @@ index 6a19406f0..fc73a40d2 100644
  	}
  	if req.MaxTokens > summaryOutputMaxTokens {
 diff --git a/internal/agent/compact_overflow_prefix_test.go b/internal/agent/compact_overflow_prefix_test.go
-index 27d310d93..f988d199f 100644
+index 27d310d..f988d19 100644
 --- a/internal/agent/compact_overflow_prefix_test.go
 +++ b/internal/agent/compact_overflow_prefix_test.go
 @@ -33,7 +33,7 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
@@ -413,7 +413,7 @@ index 27d310d93..f988d199f 100644
  		t.Fatal("fixture has no foldable prefix")
  	}
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index 8117c0d52..541dc02de 100644
+index 8117c0d..541dc02 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
 @@ -419,7 +419,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
@@ -513,7 +513,7 @@ index 8117c0d52..541dc02de 100644
  // whose exact summary request leaves the collector's minimum output budget.
  // The remaining middle and tail stay verbatim in the projection.
 diff --git a/internal/agent/compact_summary_failure_test.go b/internal/agent/compact_summary_failure_test.go
-index e6b52ff5c..8d685c5c0 100644
+index e6b52ff..8d685c5 100644
 --- a/internal/agent/compact_summary_failure_test.go
 +++ b/internal/agent/compact_summary_failure_test.go
 @@ -67,7 +67,7 @@ func prepareContext(ctx context.Context, a *Agent, trigger string) error {
@@ -526,7 +526,7 @@ index e6b52ff5c..8d685c5c0 100644
  		return nil
  	}
 diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
-index db9614828..544eba2fc 100644
+index db96148..544eba2 100644
 --- a/internal/agent/compact_threshold_test.go
 +++ b/internal/agent/compact_threshold_test.go
 @@ -21,8 +21,8 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
@@ -586,7 +586,7 @@ index db9614828..544eba2fc 100644
 +	}
  }
 diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
-index a49a22676..b124eb9e1 100644
+index a49a226..b124eb9 100644
 --- a/internal/agent/context_manager.go
 +++ b/internal/agent/context_manager.go
 @@ -155,13 +155,23 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
@@ -648,7 +648,7 @@ index a49a22676..b124eb9e1 100644
  		return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
  	}
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
-index e3bf8bf6d..91adb8fe6 100644
+index e3bf8bf..91adb8f 100644
 --- a/internal/agent/context_recovery.go
 +++ b/internal/agent/context_recovery.go
 @@ -21,7 +21,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
@@ -662,7 +662,7 @@ index e3bf8bf6d..91adb8fe6 100644
  	adm.ObservedPrompt = limit.PromptTokens
 diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
 new file mode 100644
-index 000000000..879c5bcd1
+index 0000000..879c5bc
 --- /dev/null
 +++ b/internal/agent/context_summary_admission_test.go
 @@ -0,0 +1,186 @@
@@ -853,7 +853,7 @@ index 000000000..879c5bcd1
 +	}
 +}
 diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
-index ba1f81405..1d189439d 100644
+index ba1f814..1d18943 100644
 --- a/internal/agent/coordinator_test.go
 +++ b/internal/agent/coordinator_test.go
 @@ -639,10 +639,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
@@ -962,7 +962,7 @@ index ba1f81405..1d189439d 100644
  				t.Fatalf("Run = %v, want the safe planner boundary error", err)
  			}
 diff --git a/internal/agent/dispatch_test.go b/internal/agent/dispatch_test.go
-index 1871dd560..88c72fad4 100644
+index 1871dd5..88c72fa 100644
 --- a/internal/agent/dispatch_test.go
 +++ b/internal/agent/dispatch_test.go
 @@ -13,20 +13,29 @@ import (
@@ -1014,7 +1014,7 @@ index 1871dd560..88c72fad4 100644
  	if full != 1 {
  		t.Errorf("want 1 full dispatch, got %d", full)
 diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
-index 42ff84f20..999052dcf 100644
+index 42ff84f..999052d 100644
 --- a/internal/agent/goal_boundaries_test.go
 +++ b/internal/agent/goal_boundaries_test.go
 @@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
@@ -1043,7 +1043,7 @@ index 42ff84f20..999052dcf 100644
  }
  
 diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
-index c1ae5b1b9..d5be56a35 100644
+index c1ae5b1..d5be56a 100644
 --- a/internal/agent/output_budget.go
 +++ b/internal/agent/output_budget.go
 @@ -366,14 +366,20 @@ func (a *Agent) effectiveContextWindow() int {
@@ -1142,7 +1142,7 @@ index c1ae5b1b9..d5be56a35 100644
  	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
  		adm.ApplyMaxTokens = false
 diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
-index 13f1e3d80..d3c9691c0 100644
+index 13f1e3d..d3c9691 100644
 --- a/internal/agent/planner_adaptive_research_test.go
 +++ b/internal/agent/planner_adaptive_research_test.go
 @@ -43,10 +43,15 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
@@ -1190,7 +1190,7 @@ index 13f1e3d80..d3c9691c0 100644
  	}
  	sawTruncation := false
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 2d9715935..9d672e5af 100644
+index 2d97159..9d672e5 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
 @@ -244,7 +244,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
@@ -1226,7 +1226,7 @@ index 2d9715935..9d672e5af 100644
  
 diff --git a/internal/agent/shared_ceiling_test.go b/internal/agent/shared_ceiling_test.go
 new file mode 100644
-index 000000000..4744791ea
+index 0000000..4744791
 --- /dev/null
 +++ b/internal/agent/shared_ceiling_test.go
 @@ -0,0 +1,110 @@
@@ -1341,7 +1341,7 @@ index 000000000..4744791ea
 +	}
 +}
 diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
-index 7a5042f05..d0c5686c9 100644
+index 7a5042f..d0c5686 100644
 --- a/internal/agent/task_budget_gate_test.go
 +++ b/internal/agent/task_budget_gate_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1386,7 +1386,7 @@ index 7a5042f05..d0c5686c9 100644
  	}
  }
 diff --git a/internal/agent/todo_progress_guard_test.go b/internal/agent/todo_progress_guard_test.go
-index a301af5d0..94cfb004a 100644
+index a301af5..94cfb00 100644
 --- a/internal/agent/todo_progress_guard_test.go
 +++ b/internal/agent/todo_progress_guard_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1426,7 +1426,7 @@ index a301af5d0..94cfb004a 100644
  }
  
 diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
-index f565bbdc6..a64c85530 100644
+index f565bbd..a64c855 100644
 --- a/internal/control/chat_run_budget_test.go
 +++ b/internal/control/chat_run_budget_test.go
 @@ -100,8 +100,11 @@ func TestOrdinaryChatTurnStopsOnItsTimeBudget(t *testing.T) {
@@ -1454,7 +1454,7 @@ index f565bbdc6..a64c85530 100644
  	}
  }
 diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
-index a466fa960..5fbc4bf98 100644
+index a466fa9..5fbc4bf 100644
 --- a/internal/netclient/netclient.go
 +++ b/internal/netclient/netclient.go
 @@ -44,12 +44,15 @@ type ProxySpec struct {
@@ -1488,7 +1488,7 @@ index a466fa960..5fbc4bf98 100644
  
 diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
 new file mode 100644
-index 000000000..535728e9b
+index 0000000..535728e
 --- /dev/null
 +++ b/internal/netclient/opencode_spec_test.go
 @@ -0,0 +1,53 @@
@@ -1547,7 +1547,7 @@ index 000000000..535728e9b
 +}
 diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
 new file mode 100644
-index 000000000..7d91d969b
+index 0000000..7d91d96
 --- /dev/null
 +++ b/internal/netclient/opencode_tls.go
 @@ -0,0 +1,133 @@
@@ -1685,7 +1685,7 @@ index 000000000..7d91d969b
 +	}
 +}
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
-index 26e44e5e8..b91cb5e2f 100644
+index 26e44e5..b91cb5e 100644
 --- a/internal/provider/context_limit.go
 +++ b/internal/provider/context_limit.go
 @@ -67,7 +67,12 @@ var (
@@ -1718,7 +1718,7 @@ index 26e44e5e8..b91cb5e2f 100644
  }
  
 diff --git a/internal/provider/context_limit_test.go b/internal/provider/context_limit_test.go
-index ec3855522..6ebabc750 100644
+index ec38555..6ebabc7 100644
 --- a/internal/provider/context_limit_test.go
 +++ b/internal/provider/context_limit_test.go
 @@ -59,3 +59,22 @@ func TestParseOutputLimitError(t *testing.T) {
@@ -1745,7 +1745,7 @@ index ec3855522..6ebabc750 100644
 +	}
 +}
 diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
-index edfa2d656..f58d0379f 100644
+index edfa2d6..4e363f7 100644
 --- a/internal/provider/openai/host.go
 +++ b/internal/provider/openai/host.go
 @@ -65,6 +65,16 @@ func IsOpenAI(baseURL string) bool {
@@ -1767,7 +1767,7 @@ index edfa2d656..f58d0379f 100644
  // DeepSeek: custom gateways may opt into the DeepSeek reasoning wire shape, but
 diff --git a/internal/provider/openai/oczen_shared_window_test.go b/internal/provider/openai/oczen_shared_window_test.go
 new file mode 100644
-index 000000000..7791923e0
+index 0000000..20c934c
 --- /dev/null
 +++ b/internal/provider/openai/oczen_shared_window_test.go
 @@ -0,0 +1,74 @@
@@ -1846,7 +1846,7 @@ index 000000000..7791923e0
 +	}
 +}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index fd25ded68..2b07e56c5 100644
+index fd25ded..2b07e56 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
 @@ -225,10 +225,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
@@ -1975,7 +1975,7 @@ index fd25ded68..2b07e56c5 100644
  	baseReq := wire(r)
  	baseReq.ExtraBody = nil
 diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
-index d85e06f37..65e367552 100644
+index d85e06f..65e3675 100644
 --- a/internal/provider/openai/openai_test.go
 +++ b/internal/provider/openai/openai_test.go
 @@ -1045,6 +1045,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
@@ -2017,10 +2017,10 @@ index d85e06f37..65e367552 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 000000000..b2cde1c17
+index 0000000..feb474c
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,134 @@
 +package openai
 +
 +import (
@@ -2107,34 +2107,57 @@ index 000000000..b2cde1c17
 +	return json.Marshal(body)
 +}
 +
++// decodedBody couples a Content-Encoding decoder with the underlying response
++// body. Codec Close methods (gzip/flate) do not close — nor unblock a blocked
++// Read on — the transport connection, so ownership of the raw body moves here:
++// closing the decoded body tears down the connection, which is what lets the
++// SSE stall watchdog and context cancellation always unblock scanner.Scan,
++// regardless of codec.
++type decodedBody struct {
++	io.Reader
++	decoder io.Closer // per-codec decoder; may be nil when GC-owned
++	raw     io.ReadCloser
++}
++
++func (d *decodedBody) Close() error {
++	if d.decoder != nil {
++		_ = d.decoder.Close()
++	}
++	return d.raw.Close()
++}
++
 +// decompressBody unwraps the response body according to Content-Encoding.
 +// The opencode header Accept-Encoding: gzip, deflate, br, zstd disables Go's
 +// transparent gzip handling, so the SSE parser must decode manually.
 +func decompressBody(resp *http.Response) (io.ReadCloser, error) {
++	raw := resp.Body
 +	switch strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))) {
 +	case "gzip":
-+		zr, err := gzip.NewReader(resp.Body)
++		zr, err := gzip.NewReader(raw)
 +		if err != nil {
++			raw.Close()
 +			return nil, err
 +		}
-+		return zr, nil
++		return &decodedBody{Reader: zr, decoder: zr, raw: raw}, nil
 +	case "deflate":
-+		return flate.NewReader(resp.Body), nil
++		fr := flate.NewReader(raw)
++		return &decodedBody{Reader: fr, decoder: fr, raw: raw}, nil
 +	case "br":
-+		return io.NopCloser(brotli.NewReader(resp.Body)), nil
++		return &decodedBody{Reader: brotli.NewReader(raw), raw: raw}, nil
 +	case "zstd":
-+		zr, err := zstd.NewReader(resp.Body)
++		zr, err := zstd.NewReader(raw)
 +		if err != nil {
++			raw.Close()
 +			return nil, err
 +		}
-+		return zr.IOReadCloser(), nil
++		return &decodedBody{Reader: zr.IOReadCloser(), decoder: io.Closer(zr.IOReadCloser()), raw: raw}, nil // IOReadCloser.Close frees the decoder
 +	default:
-+		return resp.Body, nil
++		return raw, nil
 +	}
 +}
 diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
 new file mode 100644
-index 000000000..a0d9f1d34
+index 0000000..a0d9f1d
 --- /dev/null
 +++ b/internal/provider/openai/opencode_concurrency_test.go
 @@ -0,0 +1,36 @@
@@ -2176,7 +2199,7 @@ index 000000000..a0d9f1d34
 +}
 diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
 new file mode 100644
-index 000000000..eca549e2e
+index 0000000..eca549e
 --- /dev/null
 +++ b/internal/provider/openai/opencode_decompress_test.go
 @@ -0,0 +1,72 @@
@@ -2254,7 +2277,7 @@ index 000000000..eca549e2e
 +}
 diff --git a/internal/provider/openai/opencode_id.go b/internal/provider/openai/opencode_id.go
 new file mode 100644
-index 000000000..a61104722
+index 0000000..a611047
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id.go
 @@ -0,0 +1,76 @@
@@ -2336,7 +2359,7 @@ index 000000000..a61104722
 +}
 diff --git a/internal/provider/openai/opencode_id_test.go b/internal/provider/openai/opencode_id_test.go
 new file mode 100644
-index 000000000..d7ac21dd0
+index 0000000..d7ac21d
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id_test.go
 @@ -0,0 +1,38 @@
@@ -2378,9 +2401,93 @@ index 000000000..d7ac21dd0
 +		_ = msg
 +	}
 +}
+diff --git a/internal/provider/openai/opencode_stall_test.go b/internal/provider/openai/opencode_stall_test.go
+new file mode 100644
+index 0000000..908b7c3
+--- /dev/null
++++ b/internal/provider/openai/opencode_stall_test.go
+@@ -0,0 +1,78 @@
++package openai
++
++import (
++	"bytes"
++	"compress/gzip"
++	"context"
++	"errors"
++	"net/http"
++	"sync"
++	"testing"
++	"time"
++
++	"reasonix/internal/provider"
++)
++
++// stalledConnBody models a half-open transport body after Content-Encoding
++// framing: some buffered bytes are served, then every Read blocks forever
++// until Close tears the connection down — exactly how net.Conn behaves when a
++// server stalls mid-stream.
++type stalledConnBody struct {
++	data   []byte
++	off    int
++	closed chan struct{}
++	once   sync.Once
++}
++
++func newStalledConnBody(data []byte) *stalledConnBody {
++	return &stalledConnBody{data: data, closed: make(chan struct{})}
++}
++
++func (s *stalledConnBody) Read(p []byte) (int, error) {
++	if s.off < len(s.data) {
++		n := copy(p, s.data[s.off:])
++		s.off += n
++		return n, nil
++	}
++	<-s.closed
++	return 0, errors.New("stalled connection closed by watchdog")
++}
++
++func (s *stalledConnBody) Close() error {
++	s.once.Do(func() { close(s.closed) })
++	return nil
++}
++
++// TestReadStreamStallRecoversThroughDecompression verifies the SSE stall
++// watchdog still unblocks scanner.Scan when the response body is wrapped by a
++// Content-Encoding decoder. A half-open compressed stream must surface at
++// idleTimeout instead of hanging forever: closing the decoder alone does not
++// unblock the underlying read, so decoder wrappers must forward ownership of
++// the raw body.
++func TestReadStreamStallRecoversThroughDecompression(t *testing.T) {
++	var buf bytes.Buffer
++	gw := gzip.NewWriter(&buf)
++	gw.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"))
++	gw.Close()
++
++	raw := newStalledConnBody(buf.Bytes())
++	resp := &http.Response{
++		Header: http.Header{"Content-Encoding": []string{"gzip"}},
++		Body:   raw,
++	}
++	c := &client{name: "x", idleTimeout: 100 * time.Millisecond}
++	ch := make(chan provider.Chunk, 8)
++	done := make(chan error, 1)
++	go func() {
++		_, err := c.readStream(context.Background(), resp, ch)
++		close(ch)
++		done <- err
++	}()
++
++	select {
++	case <-done:
++		// Watchdog unblocked the scanner through the decoder chain.
++	case <-time.After(3 * time.Second):
++		t.Fatal("readStream hung: stall watchdog could not unblock the decompressed body")
++	}
++}
 diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
 new file mode 100644
-index 000000000..7ab2789fb
+index 0000000..7ab2789
 --- /dev/null
 +++ b/internal/provider/openai/opencode_stream_test.go
 @@ -0,0 +1,105 @@
@@ -2490,7 +2597,7 @@ index 000000000..7ab2789fb
 +	}
 +}
 diff --git a/internal/provider/openai/output_budget.go b/internal/provider/openai/output_budget.go
-index 130edcdac..7b178f3f1 100644
+index 130edcd..7b178f3 100644
 --- a/internal/provider/openai/output_budget.go
 +++ b/internal/provider/openai/output_budget.go
 @@ -1,12 +1,32 @@
@@ -2549,3 +2656,54 @@ index 130edcdac..7b178f3f1 100644
 +	}
  	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
  }
+diff --git a/internal/runtimepolicy/constraints.go b/internal/runtimepolicy/constraints.go
+index 5fd8f97..0987962 100644
+--- a/internal/runtimepolicy/constraints.go
++++ b/internal/runtimepolicy/constraints.go
+@@ -179,7 +179,29 @@ func globalMutationTail(tail string) bool {
+ 	if strings.HasPrefix(tail, ":") {
+ 		return false
+ 	}
+-	return hasBroadTarget(tail)
++	if !hasBroadTarget(tail) {
++		return false
++	}
++	// A broad target narrowed by a scope qualifier names a subtree, not the
++	// whole tree: "do not modify anything under tests/" only fences tests/.
++	for _, marker := range []string{" under ", " within ", " inside ", " in "} {
++		if _, rest, ok := strings.Cut(tail, marker); ok && !globalContainer(rest) {
++			return false
++		}
++	}
++	return true
++}
++
++// globalContainer reports whether the text after a scope qualifier still
++// names the entire tree rather than a subtree of it.
++func globalContainer(rest string) bool {
++	return startsWithAnyWord(strings.TrimSpace(rest), []string{
++		"the workspace", "this workspace", "workspace",
++		"the repository", "this repository", "repository",
++		"the repo", "this repo", "repo",
++		"the codebase", "this codebase", "codebase",
++		"the project", "the source tree",
++	})
+ }
+ 
+ func globalFixTail(tail string) bool {
+diff --git a/internal/runtimepolicy/constraints_test.go b/internal/runtimepolicy/constraints_test.go
+index afce472..b01dca2 100644
+--- a/internal/runtimepolicy/constraints_test.go
++++ b/internal/runtimepolicy/constraints_test.go
+@@ -12,6 +12,11 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {
+ 		instruction string
+ 		forbid      bool
+ 	}{
++		{name: "scoped subtree under tests", instruction: "Make the suite pass. Do not modify anything under tests/."},
++		{name: "scoped subtree in folder", instruction: "Do not modify anything in the generated directory."},
++		{name: "scoped subtree within src", instruction: "Do not edit any files within src/auth."},
++		{name: "broad under whole workspace", instruction: "Do not modify anything under the workspace.", forbid: true},
++		{name: "broad in repository", instruction: "Do not modify anything in the repository.", forbid: true},
+ 		{name: "scoped PR", instruction: "Do not modify PR #10. Create a branch and implement the repair."},
+ 		{name: "scoped product", instruction: "Do not modify Strategy Lab. Commit the Battleboard fix."},
+ 		{name: "scoped list", instruction: "Do not modify:\n- main\n- PR #10\nCreate feature/fix and commit."},

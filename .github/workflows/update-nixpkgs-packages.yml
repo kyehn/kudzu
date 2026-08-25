@@ -27,8 +27,8 @@ on:
         type: choice
         options:
           - ubuntu-latest
-          - ubuntu-24.04-arm
-          - macos-26
+          - ubuntu-26.04-arm
+          - macos-latest
 jobs:
   prepare:
     runs-on: ubuntu-latest

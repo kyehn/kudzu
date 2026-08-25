@@ -1,7 +1,2 @@
 repositories/
-result
-result-*
-.reasonix/
-__pycache__/
-.venv/
-node_modules/
+result*

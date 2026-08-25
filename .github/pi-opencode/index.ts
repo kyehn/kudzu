@@ -13,19 +13,22 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
+// 显式导入而非依赖全局 process：类型解析不再依赖环境自动发现 @types/node。
+import process from "node:process";
 import path from "node:path";
 import { promisify } from "node:util";
+// Import from the compat entrypoint: the host aliases extension imports of
+// "@earendil-works/pi-ai/compat" to its bundled copy (loader.js), and this
+// surface exposes the api-dispatching streamSimple that routes by model.api —
+// one call covers all four wire protocols without per-protocol imports.
 import {
 	type Api,
 	type AssistantMessageEventStream,
 	type Context,
 	type Model,
 	type SimpleStreamOptions,
-	streamSimpleAnthropic,
-	streamSimpleGoogle,
-	streamSimpleOpenAICompletions,
-	streamSimpleOpenAIResponses,
-} from "@earendil-works/pi-ai";
+	streamSimple,
+} from "@earendil-works/pi-ai/compat";
 import type {
 	ExtensionAPI,
 	ProviderConfig,
@@ -491,32 +494,7 @@ function streamOpencodeZen(
 	}
 
 	const wrappedModel = { ...model, api, baseUrl: BASE_URL };
-	switch (api) {
-		case "anthropic-messages":
-			return streamSimpleAnthropic(
-				wrappedModel as Model<"anthropic-messages">,
-				context,
-				wrappedOptions,
-			);
-		case "google-generative-ai":
-			return streamSimpleGoogle(
-				wrappedModel as Model<"google-generative-ai">,
-				context,
-				wrappedOptions,
-			);
-		case "openai-responses":
-			return streamSimpleOpenAIResponses(
-				wrappedModel as Model<"openai-responses">,
-				context,
-				wrappedOptions,
-			);
-		default:
-			return streamSimpleOpenAICompletions(
-				wrappedModel as Model<"openai-completions">,
-				context,
-				wrappedOptions,
-			);
-	}
+	return streamSimple(wrappedModel as Model<Api>, context, wrappedOptions);
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {

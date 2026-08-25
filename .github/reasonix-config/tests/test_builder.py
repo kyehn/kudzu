@@ -19,7 +19,7 @@ from reasonix_config.builder import (
     get_free_zen_model_ids,
     write_config,
 )
-from reasonix_config.fetcher import ZEN_CACHE, fetch_models_dev, fetch_zen_models
+from reasonix_config.fetcher import MODELS_DEV_CACHE, ZEN_CACHE, fetch_models_dev, fetch_zen_models
 from reasonix_config.models import ProviderConfig
 
 EXPECTED_PROVIDER_COUNT = 2
@@ -30,6 +30,12 @@ def _load_zen_cache() -> dict:
     if not ZEN_CACHE.exists():
         pytest.skip("zen cache not found at /tmp/reasonix-models/opencode_zen_models.json")
     return json.loads(ZEN_CACHE.read_text())
+
+
+def _load_md_cache() -> dict:
+    if not MODELS_DEV_CACHE.exists():
+        pytest.skip("models.dev cache not found at /tmp/reasonix-models/models_dev_api.json")
+    return json.loads(MODELS_DEV_CACHE.read_text())
 
 
 class TestIsChatModel:
@@ -45,16 +51,70 @@ class TestIsChatModel:
 
 class TestFreeZenIds:
     def test_returns_free_ids(self) -> None:
-        ids = get_free_zen_model_ids(_load_zen_cache())
-        assert "deepseek-v4-flash-free" in ids
-        assert "big-pickle" in ids
+        md_models = _load_md_cache().get("opencode", {}).get("models", {})
+        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
+        assert "deepseek-v4-flash-free" in ids  # zen 免费层命名约定
+        assert "big-pickle" in ids  # models.dev 标价为 0
         for mid in ids:
-            assert "-free" in mid or mid == "big-pickle"
+            if "-free" in mid:
+                continue
+            # 非 -free id 必须有元数据且双项零标价: 空洞的 get 兑底会让
+            # 未知元数据的 id 空过本循环 (round-2 finding 1).
+            assert mid in md_models
+            cost = (md_models.get(mid) or {}).get("cost") or {}
+            assert not cost.get("input")
+            assert not cost.get("output")
+
+    def test_zero_cost_no_suffix_included(self) -> None:
+        """big-pickle 无 "-free" 后缀, 仅凭 models.dev 零标价入选 (原硬编码特判已删)."""
+        md_models = _load_md_cache().get("opencode", {}).get("models", {})
+        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
+        assert "big-pickle" in ids
+        cost = (md_models.get("big-pickle") or {}).get("cost") or {}
+        assert not cost.get("input")
+        assert not cost.get("output")
 
     def test_excludes_paid(self) -> None:
-        ids = get_free_zen_model_ids(_load_zen_cache())
-        assert "gpt-4o" not in ids
+        md_models = _load_md_cache().get("opencode", {}).get("models", {})
+        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
+        assert "gpt-5-nano" not in ids  # models.dev 标价 > 0, 非 -free 命名
         assert "claude-sonnet-4-6" not in ids
+
+
+class TestFreeZenClassification:
+    """合成夹具直接钉死分类契约, 不依赖 live 缓存."""
+
+    def test_unknown_metadata_non_free_excluded(self) -> None:
+        # models.dev 未收录的非 -free id 一律排除, 即使 zen 在售:
+        # 元数据缺失时无法证明免费.
+        zen = {"data": [{"id": "brand-new-paid"}, {"id": "tag-free"}]}
+        assert get_free_zen_model_ids(zen, {}) == {"tag-free"}
+
+    def test_zero_cost_included_without_suffix(self) -> None:
+        zen = {"data": [{"id": "alpha"}, {"id": "beta"}]}
+        md = {
+            "alpha": {"cost": {"input": 0, "output": 0}},
+            "beta": {"cost": {"input": 1, "output": 2}},
+        }
+        assert get_free_zen_model_ids(zen, md) == {"alpha"}
+
+    def test_partial_zero_cost_excluded(self) -> None:
+        """单项零标价不够: input/output 必须同时为零."""
+        zen = {"data": [{"id": "delta"}]}
+        md = {"delta": {"cost": {"input": 0, "output": 2}}}
+        assert get_free_zen_model_ids(zen, md) == set()
+
+    def test_paid_model_named_like_free_is_excluded(self) -> None:
+        """钉死无硬编码: 即使模型名与历史特判对象同名, 有标价即排除."""
+        zen = {"data": [{"id": "big-pickle"}]}
+        md = {"big-pickle": {"cost": {"input": 5, "output": 5}}}
+        assert get_free_zen_model_ids(zen, md) == set()
+
+    def test_missing_cost_fields_treated_free(self) -> None:
+        # cost 键/字段缺失按 0 处理, 与 pi-opencode isFreeModel 对齐.
+        zen = {"data": [{"id": "gamma"}]}
+        md = {"gamma": {"reasoning": True}}
+        assert get_free_zen_model_ids(zen, md) == {"gamma"}
 
 
 class TestProviderConfig:
@@ -280,7 +340,8 @@ class TestIntegration:
         assert providers[0].name == "nvidia"
 
     def test_opencode_zen_has_free_models(self) -> None:
-        providers = [build_opencode(fetch_models_dev(), fetch_zen_models())]
+        md_data = fetch_models_dev()
+        providers = [build_opencode(md_data, fetch_zen_models())]
         assert len(providers) == 1
         p = providers[0]
         # 字段遵循 models.dev 的 opencode provider 条目.
@@ -288,8 +349,14 @@ class TestIntegration:
         assert p.base_url == "https://opencode.ai/zen/v1"
         assert p.api_key_env == "OPENCODE_API_KEY"
         assert len(p.models) > 0
+        md_models = md_data["opencode"]["models"]
         for mid in p.models:
-            assert "-free" in mid or mid == "big-pickle"
+            if "-free" in mid:
+                continue
+            assert mid in md_models
+            cost = (md_models.get(mid) or {}).get("cost") or {}
+            assert not cost.get("input")
+            assert not cost.get("output")
         # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测到该
         # provider 后动态生成, 配置里不再静态写入, 避免与源码重复.
         assert p.headers is None

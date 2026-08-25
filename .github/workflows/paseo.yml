@@ -12,8 +12,8 @@ on:
         type: choice
         options:
           - ubuntu-latest
-          - ubuntu-24.04-arm
-          - macos-26
+          - ubuntu-26.04-arm
+          - macos-latest
 jobs:
   paseo:
     timeout-minutes: 319
@@ -56,7 +56,7 @@ jobs:
       - run: |
           set -euo pipefail
           rm -f "$HOME/.config/nix/nix.conf"
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix"
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix" "$HOME/.config/mcp"
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
           nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#nixd nixpkgs#ruff nixpkgs#bun .#reasonix
@@ -70,9 +70,7 @@ jobs:
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           npm install --global --yes open-websearch
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
-      - env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-        run: |
+      - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
             "opencode": {
@@ -81,7 +79,7 @@ jobs:
             },
             "nvidia": {
               "type": "api_key",
-              "key": "$NVIDIA_API_KEY"
+              "key": "${{ secrets.NVIDIA_API_KEY }}"
             }
           }
           EOF
@@ -107,8 +105,8 @@ jobs:
           reasonix-config
           popd
           pi --help
-          # paseo onboard --relay --voice disable
-          paseo onboard --relay --voice disable > /dev/null
+          paseo onboard --relay --voice disable
+          # paseo onboard --relay --voice disable > /dev/null
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 jobs:
   check:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     steps:
       - uses: actions/checkout@main
       - uses: ./.github/actions/install-nix

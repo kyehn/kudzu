@@ -15,7 +15,7 @@
 }:
 
 (formats.toml { }).generate "config.toml" {
-  config_version = 5;
+  config_version = 7;
   default_model = "mimo-v2.5-free";
   language = "zh";
   ui.show_reasoning = true;
