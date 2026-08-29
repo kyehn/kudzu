@@ -43,8 +43,15 @@ class ProviderConfig(BaseModel):
     context_window: int = 128000
     max_output_tokens: int | None = None
     balance_url: str | None = None
+    # kind="responses" 时生效: "stateless" 省略 previous_response_id 续接
+    # (reasonix ProviderEntry.ResponsesMode, 上游 opencode go responses 预设同款).
+    responses_mode: str | None = None
     price: Pricing | None = None
     prices: dict[str, Pricing] | None = None
+    # models.dev 标价一律为美元; 显式标注 provider 级 list-price 币种, 否则
+    # reasonix 默认按本地 display_currency 换算, 免费模型价格长期误显示为 ¥0 的
+    # 等值而非明确的 USD 0.
+    billing_currency: str | None = None
     model_overrides: dict[str, ModelOverride] | None = None
     reasoning_protocol: str | None = None
     supported_efforts: list[str] | None = None
@@ -58,7 +65,7 @@ class ProviderConfig(BaseModel):
     extra_body: dict[str, Any] | None = None
     no_proxy: bool | None = None
 
-    def to_toml(self) -> dict[str, Any]:  # noqa: PLR0912
+    def to_toml(self) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         d: dict[str, Any] = {"name": self.name, "kind": self.kind, "base_url": self.base_url}
         if self.chat_url:
             d["chat_url"] = self.chat_url
@@ -77,11 +84,15 @@ class ProviderConfig(BaseModel):
             d["max_output_tokens"] = self.max_output_tokens
         if self.balance_url:
             d["balance_url"] = self.balance_url
+        if self.responses_mode:
+            d["responses_mode"] = self.responses_mode
         if self.price:
             d["price"] = self.price.model_dump(exclude_none=True)
         if self.prices:
             dump = {k: v.model_dump(exclude_none=True) for k, v in self.prices.items()}
             d["prices"] = dump
+        if self.billing_currency:
+            d["billing_currency"] = self.billing_currency
         if self.model_overrides:
             dump = {k: v.model_dump(exclude_none=True) for k, v in self.model_overrides.items()}
             d["model_overrides"] = dump

@@ -13,6 +13,7 @@ from reasonix_config.builder import (
     _build_override,
     _is_chat_model,
     _repair_default_model,
+    _wire_kind,
     build_all,
     build_nvidia,
     build_opencode,
@@ -22,7 +23,10 @@ from reasonix_config.builder import (
 from reasonix_config.fetcher import MODELS_DEV_CACHE, ZEN_CACHE, fetch_models_dev, fetch_zen_models
 from reasonix_config.models import ProviderConfig
 
-EXPECTED_PROVIDER_COUNT = 2
+EXPECTED_PROVIDER_COUNT = 3  # opencode + opencode-responses + nvidia
+# muse-spark-1.2-contributor-free 的 models.dev limit (2026-08 快照)
+MUSE_SPARK_CONTEXT = 1_048_576
+MUSE_SPARK_OUTPUT = 131_072
 ENV_FILE_PERMS = 0o600  # .env 含密钥, 仅属主可读写
 
 
@@ -47,6 +51,88 @@ class TestIsChatModel:
 
     def test_small_context_excluded(self) -> None:
         assert not _is_chat_model("tiny-model", {"limit": {"context": 1024}})
+
+    def test_non_text_output_excluded(self) -> None:
+        """纯图像/视频/音频生成器 (flux/cosmos) 即便名字漏过 skip 也不应入选."""
+        assert not _is_chat_model(
+            "nvidia/cosmos-predict",
+            {"limit": {"context": 1000000}, "modalities": {"output": ["image"]}},
+        )
+        assert not _is_chat_model(
+            "flux-pro",
+            {"limit": {"context": 1000000}, "modalities": {"output": ["image", "video"]}},
+        )
+
+    def test_text_output_allowed(self) -> None:
+        # 显式含 text 的输出模态保留
+        assert _is_chat_model(
+            "nvidia/llama-3.1-nemotron-70b-instruct",
+            {"limit": {"context": 1000000}, "modalities": {"output": ["text"]}},
+        )
+        # 缺失 modalities 视为聊天模型 (历史条目无该字段)
+        assert _is_chat_model("legacy-model", {"limit": {"context": 1000000}})
+
+    def test_tool_call_false_excluded(self) -> None:
+        """agent 需要工具调用; 显式 tool_call=False 的非 agent 模型必须剔除."""
+        assert not _is_chat_model(
+            "nvidia/bge-m3",
+            {"limit": {"context": 32768}, "tool_call": False},
+        )
+        assert not _is_chat_model(
+            "nvidia/paligemma",
+            {"limit": {"context": 1000000}, "tool_call": False},
+        )
+
+    def test_tool_call_true_or_absent_allowed(self) -> None:
+        assert _is_chat_model("m", {"limit": {"context": 1000000}, "tool_call": True})
+        # 缺省字段视为允许 (历史条目未暴露 tool_call)
+        assert _is_chat_model("m", {"limit": {"context": 1000000}})
+
+
+class TestFieldCoverage:
+    """models.dev 提供的每一个字段都必须被归类为 handled 或 ignored, 不允许遗漏.
+
+    只要 opencode/nvidia 任一下游出现一个未归类的 key, 测试即失败——这强制
+    任何新增字段都必须在 MODEL_FIELD_HANDLED / MODEL_FIELD_IGNORED (或 provider
+    对应集合) 中显式归类, 实现 100% 字段覆盖率审计.
+    """
+
+    def test_model_field_coverage(self) -> None:
+        md = _load_md_cache()
+        known = builder_module.MODEL_FIELD_HANDLED | builder_module.MODEL_FIELD_IGNORED
+        for prov in ("opencode", "nvidia"):
+            for mid, m in md.get(prov, {}).get("models", {}).items():
+                unknown = set(m.keys()) - known
+                assert not unknown, f"{prov}/{mid} 含未归类字段: {unknown}"
+
+    def test_provider_field_coverage(self) -> None:
+        md = _load_md_cache()
+        known = builder_module.PROVIDER_FIELD_HANDLED | builder_module.PROVIDER_FIELD_IGNORED
+        for prov in ("opencode", "nvidia"):
+            unknown = set(md.get(prov, {}).keys()) - known
+            assert not unknown, f"{prov} provider 含未归类字段: {unknown}"
+
+    def test_billing_currency_set(self) -> None:
+        providers = build_all()
+        for p in providers:
+            assert p.billing_currency == "USD", f"{p.name} 缺少 provider 级 USD 币种标注"
+
+    def test_override_maps_limit_and_reasoning(self) -> None:
+        """回归: limit/reasoning 字段正确落到 override (不依赖 live 缓存)."""
+        m = {
+            "limit": {"context": 200000, "output": 128000},
+            "reasoning": True,
+            "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}],
+            "modalities": {"input": ["text"]},
+            "attachment": False,
+        }
+        assert _build_override(m) == {
+            "context_window": 200000,
+            "max_output_tokens": 128000,
+            "reasoning_protocol": "openai",
+            "supported_efforts": ["low", "high", "max"],
+            "default_effort": "max",
+        }
 
 
 class TestFreeZenIds:
@@ -201,7 +287,7 @@ class TestTomlSchemaValidity:
     """生成的 TOML 字段必须与 reasonix ProviderEntry / ProviderModelOverride 的
     toml tag 完全一致, 否则字段会被静默忽略.
 
-    白名单来源: reasonix internal/config/config.go (v1.21.2):
+    白名单来源: reasonix internal/config/config.go (v1.33.0):
       ProviderEntry: name kind base_url chat_url model models models_url default
         api_key_env preset_id preset_version headers extra_body auth_header
         responses_mode responses_stateful balance_url context_window
@@ -246,6 +332,7 @@ class TestTomlSchemaValidity:
         "model_overrides",
         "no_proxy",
         "cache_ttl_minutes",
+        "billing_currency",
     }
     OVERRIDE_KEYS: ClassVar[set[str]] = {
         "reasoning_protocol",
@@ -321,6 +408,88 @@ class TestTomlSchemaValidity:
         }
 
 
+class TestWireKind:
+    """provider.npm → wire 协议映射的合成契约 (不依赖 live 缓存)."""
+
+    def test_responses_package(self) -> None:
+        assert _wire_kind({"provider": {"npm": "@ai-sdk/openai"}}) == "responses"
+
+    def test_other_packages_default_to_chat(self) -> None:
+        assert _wire_kind({"provider": {"npm": "@ai-sdk/openai-compatible"}}) == "openai"
+        assert _wire_kind({"provider": {"npm": "@ai-sdk/anthropic"}}) == "openai"
+        assert _wire_kind({"provider": {"npm": "@ai-sdk/google"}}) == "openai"
+
+    def test_missing_metadata_defaults_to_chat(self) -> None:
+        # zen 有而 models.dev 未收录: 免费集实测 (big-pickle 等) 均走 chat.
+        assert _wire_kind(None) == "openai"
+        assert _wire_kind({}) == "openai"
+
+
+class TestBuildOpencodeSplit:
+    """muse-spark-1.2-contributor-free (Responses wire) 必须与 chat 模型拆分."""
+
+    MD: ClassVar[dict[str, object]] = {
+        "opencode": {
+            "api": "https://opencode.ai/zen/v1",
+            "env": ["OPENCODE_API_KEY"],
+            "models": {
+                "alpha-free": {
+                    "limit": {"context": 128000, "output": 8192},
+                    "cost": {"input": 0, "output": 0},
+                },
+                "muse-spark-1.2-contributor-free": {
+                    "provider": {"npm": "@ai-sdk/openai"},
+                    "limit": {"context": MUSE_SPARK_CONTEXT, "output": MUSE_SPARK_OUTPUT},
+                    "cost": {"input": 0, "output": 0},
+                    "reasoning": True,
+                    "reasoning_options": [
+                        {"type": "effort", "values": ["minimal", "low", "medium", "high", "xhigh"]}
+                    ],
+                    "attachment": True,
+                    "modalities": {"input": ["text", "image"]},
+                },
+            },
+        }
+    }
+    ZEN: ClassVar[dict] = {
+        "data": [
+            {"id": "alpha-free"},
+            {"id": "muse-spark-1.2-contributor-free"},
+        ]
+    }
+
+    def test_splits_into_two_providers(self) -> None:
+        providers = {p.name: p for p in build_opencode(self.MD, self.ZEN)}
+        assert set(providers) == {"opencode", "opencode-responses"}
+        chat = providers["opencode"]
+        resp = providers["opencode-responses"]
+        assert chat.kind == "openai"
+        assert chat.models == ["alpha-free"]
+        assert resp.kind == "responses"
+        assert resp.responses_mode == "stateless"
+        assert resp.models == ["muse-spark-1.2-contributor-free"]
+        # 共享同一网关 / key
+        assert resp.base_url == chat.base_url == "https://opencode.ai/zen/v1"
+        assert resp.api_key_env == chat.api_key_env == "OPENCODE_API_KEY"
+
+    def test_responses_override_carries_muse_metadata(self) -> None:
+        providers = {p.name: p for p in build_opencode(self.MD, self.ZEN)}
+        ov = providers["opencode-responses"].model_overrides["muse-spark-1.2-contributor-free"]
+        assert ov.model_dump(exclude_none=True) == {
+            "context_window": 1048576,
+            "max_output_tokens": 131072,
+            "reasoning_protocol": "openai",
+            "supported_efforts": ["minimal", "low", "medium", "high", "xhigh"],
+            "default_effort": "xhigh",
+            "vision": True,
+        }
+
+    def test_chat_only_zen_keeps_single_provider(self) -> None:
+        providers = {p.name: p for p in build_opencode(self.MD, {"data": [{"id": "alpha-free"}]})}
+        assert set(providers) == {"opencode"}
+        assert providers["opencode"].models == ["alpha-free"]
+
+
 class TestIntegration:
     def test_build_all_returns_providers(self) -> None:
         providers = build_all()
@@ -331,8 +500,7 @@ class TestIntegration:
 
     def test_build_all_filter_opencode_only(self) -> None:
         providers = build_all(providers_filter=["opencode"])
-        assert len(providers) == 1
-        assert providers[0].name == "opencode"
+        assert {p.name for p in providers} == {"opencode", "opencode-responses"}
 
     def test_build_all_filter_nvidia_only(self) -> None:
         providers = build_all(providers_filter=["nvidia"])
@@ -341,8 +509,8 @@ class TestIntegration:
 
     def test_opencode_zen_has_free_models(self) -> None:
         md_data = fetch_models_dev()
-        providers = [build_opencode(md_data, fetch_zen_models())]
-        assert len(providers) == 1
+        providers = build_opencode(md_data, fetch_zen_models())
+        assert len(providers) > 0
         p = providers[0]
         # 字段遵循 models.dev 的 opencode provider 条目.
         assert p.name == "opencode"
@@ -360,6 +528,42 @@ class TestIntegration:
         # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测到该
         # provider 后动态生成, 配置里不再静态写入, 避免与源码重复.
         assert p.headers is None
+
+    def test_muse_spark_responses_provider(self) -> None:
+        """zen 在售的 muse-spark-1.2-contributor-free 必须走 Responses wire.
+
+        models.dev provider.npm=@ai-sdk/openai 声明该模型是 Responses 模型,
+        chat/completions 端点实测返回 HTTP 500, 只有 /responses 可用. 拆到
+        kind=responses 的独立 provider (stateless) 后模型才真正可用.
+        """
+        md_data = fetch_models_dev()
+        zen = fetch_zen_models()
+        zen_ids = {m["id"] for m in zen.get("data", [])}
+        if "muse-spark-1.2-contributor-free" not in zen_ids:
+            pytest.skip("zen 暂未在售 muse-spark-1.2-contributor-free")
+        providers = {p.name: p for p in build_opencode(md_data, zen)}
+        assert "opencode-responses" in providers
+        resp = providers["opencode-responses"]
+        assert resp.kind == "responses"
+        assert resp.responses_mode == "stateless"
+        assert "muse-spark-1.2-contributor-free" in resp.models
+        # chat provider 不得再包含 Responses 模型
+        assert "muse-spark-1.2-contributor-free" not in providers["opencode"].models
+        # 共享同一网关 / key
+        assert resp.base_url == providers["opencode"].base_url
+        assert resp.api_key_env == "OPENCODE_API_KEY"
+
+    def test_muse_spark_responses_override(self) -> None:
+        """muse 的 models.dev 元数据必须完整落到 model_overrides."""
+        md_data = fetch_models_dev()
+        m = md_data["opencode"]["models"]["muse-spark-1.2-contributor-free"]
+        override = _build_override(m)
+        assert override["reasoning_protocol"] == "openai"
+        assert override["supported_efforts"] == ["minimal", "low", "medium", "high", "xhigh"]
+        assert override["default_effort"] == "xhigh"
+        assert override["context_window"] == MUSE_SPARK_CONTEXT
+        assert override["max_output_tokens"] == MUSE_SPARK_OUTPUT
+        assert override["vision"] is True
 
     def test_nvidia_has_chat_models(self) -> None:
         providers = [build_nvidia(fetch_models_dev())]
@@ -556,7 +760,12 @@ class TestDeprecatedFilter:
         md_models: dict,
     ) -> ProviderConfig:
         TestDeprecatedFilter._patch_fetch(monkeypatch, zen_ids, md_models)
-        return build_opencode(builder_module.fetch_models_dev(), builder_module.fetch_zen_models())
+        providers = build_opencode(
+            builder_module.fetch_models_dev(), builder_module.fetch_zen_models()
+        )
+        # 这些夹具全是 chat 模型, 拆分后只有一个 opencode provider
+        assert len(providers) == 1
+        return providers[0]
 
     def test_deprecated_model_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         p = self._build_patched(

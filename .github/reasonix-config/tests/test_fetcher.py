@@ -56,9 +56,7 @@ class TestFetchZenModels:
 
     def test_uses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """命中新鲜缓存(TTL 内)时不发网络请求, 直接返回缓存内容."""
-        monkeypatch.setattr(
-            "reasonix_config.fetcher.ZEN_CACHE", _fresh_cache('{"cached": true}')
-        )
+        monkeypatch.setattr("reasonix_config.fetcher.ZEN_CACHE", _fresh_cache('{"cached": true}'))
         with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
             data = fetch_zen_models()
             assert data == {"cached": True}
@@ -67,9 +65,7 @@ class TestFetchZenModels:
     def test_stale_cache_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """缓存超过 TTL 必须重新拉取: 旧快照会让 deprecated 过滤失效
         (实例: deepseek-v4-flash-free 免费推广结束后 models.dev 才标 deprecated)."""
-        monkeypatch.setattr(
-            "reasonix_config.fetcher.ZEN_CACHE", _stale_cache('{"stale": true}')
-        )
+        monkeypatch.setattr("reasonix_config.fetcher.ZEN_CACHE", _stale_cache('{"stale": true}'))
         with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(
                 status_code=200,

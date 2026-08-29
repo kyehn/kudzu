@@ -9,16 +9,16 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "fast-nix-gc";
-  version = "0-unstable-2026-08-20";
+  version = "0-unstable-2026-08-27";
 
   src = fetchFromGitHub {
     owner = "Mic92";
     repo = "fast-nix-gc";
-    rev = "68287b2eb3ff360daead3e879568a9e26df5bfb1";
-    hash = "sha256-AiAvfCRAeUMHmhUaKbtKhKyEmLJ2whreUP2XG2xgj8U=";
+    rev = "217094c7568a288a91de06ea09fc27b825fff13e";
+    hash = "sha256-cWKRacO/FdQqI/CZiAd7VHFdihLt3Am6+edgcTgxs9Y=";
   };
 
-  cargoHash = "sha256-18tDUm75DZHfKrlPj57rpwYVboWfOdI5jCzqRlNN7fY=";
+  cargoHash = "sha256-bHMR29uAAy0lUkqRIxv0GFqCe2ljA/UEsmzVillidkU=";
 
   nativeBuildInputs = [ pkg-config ];
 

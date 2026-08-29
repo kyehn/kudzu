@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 5361f91..d4f225a 100644
+index b5524a5..44ab937 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -10,20 +10,21 @@ index 5361f91..d4f225a 100644
  	github.com/atotto/clipboard v0.1.4
  	github.com/aymanbagabas/go-udiff v0.4.1
  	github.com/bmatcuk/doublestar/v4 v4.10.0
-@@ -19,9 +20,11 @@ require (
- 	github.com/godbus/dbus/v5 v5.2.2
+@@ -20,10 +21,12 @@ require (
+ 	github.com/gorilla/websocket v1.5.3
  	github.com/joho/godotenv v1.5.1
  	github.com/kevinburke/ssh_config v1.6.0
 +	github.com/klauspost/compress v1.17.4
  	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
  	github.com/mattn/go-runewidth v0.0.27
+ 	github.com/modelcontextprotocol/go-sdk v1.7.0
  	github.com/pkg/sftp v1.13.11
 +	github.com/refraction-networking/utls v1.8.2
  	github.com/rivo/uniseg v0.4.7
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 diff --git a/go.sum b/go.sum
-index c929316..569b0bc 100644
+index d736e36..93f60ad 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -35,7 +36,7 @@ index c929316..569b0bc 100644
  github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
  github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
  github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=
-@@ -77,6 +79,8 @@ github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRg
+@@ -82,6 +84,8 @@ github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRg
  github.com/kevinburke/ssh_config v1.6.0/go.mod h1:q2RIzfka+BXARoNexmF9gkxEX7DmvbW9P4hIVx2Kg4M=
  github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
  github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
@@ -44,7 +45,7 @@ index c929316..569b0bc 100644
  github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
  github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
  github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
-@@ -101,6 +105,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
+@@ -108,6 +112,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
  github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
  github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
  github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -363,7 +364,7 @@ index 0000000..9cdfd71
 +	}
 +}
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index 6a19406..fc73a40 100644
+index fcd3e23..df47d2f 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
 @@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
@@ -526,7 +527,7 @@ index e6b52ff..8d685c5 100644
  		return nil
  	}
 diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
-index db96148..544eba2 100644
+index 70e9c63..eb37fef 100644
 --- a/internal/agent/compact_threshold_test.go
 +++ b/internal/agent/compact_threshold_test.go
 @@ -21,8 +21,8 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
@@ -540,7 +541,7 @@ index db96148..544eba2 100644
  	}
  }
  
-@@ -74,24 +74,39 @@ func TestExplicitLegacyCompactRatioStillApplies(t *testing.T) {
+@@ -81,24 +81,39 @@ func TestLowCompactRatioTriggerAtThirtyPercent(t *testing.T) {
  func TestAcceptCheckpointCandidateRules(t *testing.T) {
  	a := &Agent{agentConfig: agentConfig{contextWindow: 1_000_000, compactRatio: 0.85}}
  	// 20% candidate under normal path: accept.
@@ -586,7 +587,7 @@ index db96148..544eba2 100644
 +	}
  }
 diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
-index a49a226..b124eb9 100644
+index 9dfc705..b7638bc 100644
 --- a/internal/agent/context_manager.go
 +++ b/internal/agent/context_manager.go
 @@ -155,13 +155,23 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
@@ -1190,10 +1191,10 @@ index 13f1e3d..d3c9691 100644
  	}
  	sawTruncation := false
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 2d97159..9d672e5 100644
+index 837eaa4..9e55949 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -244,7 +244,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
+@@ -242,7 +242,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
  // assistant turn into final-response or tool-round handling.
  func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
  	ctx = a.withAgentContext(ctx)
@@ -1202,7 +1203,7 @@ index 2d97159..9d672e5 100644
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -331,10 +331,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+@@ -329,10 +329,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
  			return terr
  		}
  	}
@@ -1213,7 +1214,7 @@ index 2d97159..9d672e5 100644
  }
  
  // streamWithSamplingRecovery coordinates Codex-style original-request replay
-@@ -715,10 +711,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+@@ -719,10 +715,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
  		a.armFinalizationRound(ctx, state, landCause{kind: "task_budget", axis: axis, detail: detail})
  		return true, nil
  	}
@@ -1759,7 +1760,7 @@ index edfa2d6..4e363f7 100644
 +// rewrites base_url to an IP.
 +func IsOpenCode(name, baseURL string) bool {
 +	name = strings.ToLower(strings.TrimSpace(name))
-+	return name == "opencode" || name == "opencode-zen"
++	return name == "opencode" || name == "opencode-zen" || name == "opencode-responses" || strings.HasPrefix(name, "opencode-")
 +}
 +
  // deepSeekPrefixChatURL returns the official Beta chat endpoint that enables
