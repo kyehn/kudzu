@@ -109,7 +109,7 @@
                 extraSpecialArgs = { inherit inputs; };
                 backupFileExtension = "bak";
                 overwriteBackup = true;
-                users.root.imports = [ ./home-manager.nix ];
+                users.nix-on-droid.imports = [ ./home-manager.nix ];
               };
             }
           ];

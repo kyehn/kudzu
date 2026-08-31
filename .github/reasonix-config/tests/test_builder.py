@@ -393,7 +393,7 @@ class TestTomlSchemaValidity:
         }
 
     def test_build_override_toggle_reasoning(self) -> None:
-        """reasoning_options 为 toggle 格式时只声明 reasoning_protocol."""
+        """reasoning_options 为 toggle 格式时声明 high 兜底 effort."""
         m = {
             "limit": {"context": 1000000, "output": 131072},
             "reasoning": True,
@@ -405,6 +405,8 @@ class TestTomlSchemaValidity:
             "context_window": 1000000,
             "max_output_tokens": 131072,
             "reasoning_protocol": "openai",
+            "supported_efforts": ["high"],
+            "default_effort": "high",
         }
 
 

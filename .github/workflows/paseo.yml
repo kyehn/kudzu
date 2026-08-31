@@ -16,25 +16,26 @@ on:
           - macos-latest
 jobs:
   paseo:
-    timeout-minutes: 319
+    timeout-minutes: 317
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
         with:
+          path: ${{ github.event.repository.name }}
           fetch-depth: "0"
           token: ${{ secrets.GH_PAT }}
-      - uses: ./.github/actions/install-nix
+      - uses: ./kudzu/.github/actions/install-nix
       - uses: actions/checkout@main
         with:
           repository: ${{ github.actor }}/nixpkgs
           fetch-depth: "2"
-          path: repositories/nixpkgs
+          path: nixpkgs
           token: ${{ secrets.GH_PAT }}
       - uses: actions/checkout@main
         with:
           repository: ${{ github.actor }}/torvox
           fetch-depth: "0"
-          path: repositories/torvox
+          path: torvox
           token: ${{ secrets.GH_PAT }}
       - uses: cachix/cachix-action@master
         timeout-minutes: 2
@@ -53,7 +54,8 @@ jobs:
           key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
             ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-
-      - run: |
+      - working-directory: ${{ github.event.repository.name }}
+        run: |
           set -euo pipefail
           rm -f "$HOME/.config/nix/nix.conf"
           mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix" "$HOME/.config/mcp"
@@ -87,7 +89,8 @@ jobs:
           echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
           echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
-      - env:
+      - working-directory: ${{ github.event.repository.name }}
+        env:
           PI_SKIP_VERSION_CHECK: "1"
           PI_TELEMETRY: "0"
         run: |
@@ -111,7 +114,7 @@ jobs:
       - if: always()
         run: |
           paseo daemon stop
-          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/commands ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.reasonix/ ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
+          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/mcp-state ~/.reasonix/commands ~/.reasonix/AGENTS.md ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/mcp-cache.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
       - if: always()
         uses: actions/cache/save@main
         with:

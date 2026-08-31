@@ -6,9 +6,9 @@ models.dev 模型条目 (opencode/nvidia) 字段与 reasonix 配置的对应关�
   limit.context          → context_window (model_overrides, provider 取组内最大值)
   limit.output           → max_output_tokens (model_overrides)
   reasoning (bool)       → reasoning_protocol="openai" (model_overrides)
-  reasoning_options      → effort 类型取 supported_efforts + default_effort
-                           (取最高档; toggle/budget_tokens 类型无 reasonix 对应项,
-                           toggle 只声明 reasoning_protocol)
+  reasoning_options      → effort 取 supported_efforts + default_effort
+                           (取最高档; toggle 兜底为 high, 空列表/仅 budget_tokens
+                           兜底为 low/medium/high 与 pi 保持一致)
   attachment / modalities.input 含 "image" → vision=true (model_overrides)
   provider.npm           → zen 网关 wire 协议: "@ai-sdk/openai" = Responses
                            (kind="responses", responses_mode="stateless"),
@@ -124,8 +124,8 @@ def _build_override(m: dict[str, Any]) -> dict[str, Any]:
       reasoning == True     -> reasoning_protocol="openai"
       reasoning_options[].type=="effort"
                             -> supported_efforts / default_effort (取末个非 none 值)
-      reasoning_options[].type=="toggle"
-                            -> 仅声明 reasoning_protocol (无 effort 等级)
+      reasoning_options[].type=="toggle" 或空列表/仅 budget_tokens
+                            -> 兜底: toggle→high, 否则 low/medium/high (与 pi 一致)
       attachment / modalities.input 含 image
                             -> vision=True
       cost                 -> 见 _price_of (落到 provider.prices[mid], 非 override)
@@ -152,6 +152,22 @@ def _build_override(m: dict[str, Any]) -> dict[str, Any]:
                     non_none = [v for v in values if v != "none"]
                     override["default_effort"] = non_none[-1] if non_none else values[-1]
                     break
+        # reasoning=True 但无 effort 选项时, 仍需声明 supported_efforts 以免 reasonix
+        # 将模型视为不可调努力等级: toggle 兜底为 high, 无选项时按 pi 的低/中/高梯度
+        # 兜底 (与 pi 的 buildThinkingLevelMap fallback 一致). 覆盖所有 94 个 opencode
+        # 模型中空 reasoning_options / 仅 toggle / 仅 budget_tokens 的 38 例.
+        if "supported_efforts" not in override:
+            has_toggle = any(
+                isinstance(o, dict) and o.get("type") == "toggle" for o in reasoning_options
+            )
+            if has_toggle:
+                override["supported_efforts"] = ["high"]
+                override["default_effort"] = "high"
+            else:
+                # 与 pi 的 fallback 一致: low/medium/high (pi 的 alwaysThinks 特例外, 由
+                # 上游元数据真实 effort 值覆盖, 此处统一兜底不做特殊前缀匹配).
+                override["supported_efforts"] = ["low", "medium", "high"]
+                override["default_effort"] = "high"
     modalities_input = m.get("modalities", {}).get("input", [])
     if m.get("attachment") or ("image" in (modalities_input or [])):
         override["vision"] = True

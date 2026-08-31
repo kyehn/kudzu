@@ -17,7 +17,7 @@ index b5524a5..44ab937 100644
 +	github.com/klauspost/compress v1.17.4
  	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
  	github.com/mattn/go-runewidth v0.0.27
- 	github.com/modelcontextprotocol/go-sdk v1.7.0
+ 	github.com/modelcontextprotocol/go-sdk v1.7.1-0.20260825122737-c68ad9a4e6e1
  	github.com/pkg/sftp v1.13.11
 +	github.com/refraction-networking/utls v1.8.2
  	github.com/rivo/uniseg v0.4.7
@@ -2037,10 +2037,10 @@ index 0000000..feb474c
 +	"github.com/klauspost/compress/zstd"
 +)
 +
-+// Wire constants captured from the real opencode CLI (v1.18.18) so a reasonix
++// Wire constants captured from the real opencode CLI (v1.18.21) so a reasonix
 +// request against an opencode Zen endpoint is indistinguishable from the CLI's.
 +const (
-+	opencodeUserAgent      = "opencode/1.18.18 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++	opencodeUserAgent      = "opencode/1.18.21 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 +	opencodeAcceptEncoding = "gzip, deflate, br, zstd"
 +)
 +

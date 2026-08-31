@@ -511,25 +511,6 @@
         };
       };
     };
-    television = {
-      enable = false;
-      enableBashIntegration = false;
-      enableFishIntegration = false;
-      package = pkgs.television.withPackages (p: [ p.bash ]);
-      settings = {
-        tick_rate = 100;
-        default_channel = "text";
-        history_size = 0;
-        ui = {
-          use_nerd_font_icons = false;
-          orientation = "portrait";
-          theme = "onedark";
-          input_bar.border_type = "none";
-          results_panel.border_type = "none";
-          preview_panel.border_type = "none";
-        };
-      };
-    };
   };
 
   manual.manpages.enable = false;
