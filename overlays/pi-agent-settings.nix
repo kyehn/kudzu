@@ -26,6 +26,9 @@ writeText "settings.json" (
       "npm:@juicesharp/rpiv-todo"
       "npm:pi-lens"
       "npm:@ff-labs/pi-fff"
+      "npm:@dietrichgebert/ponytail"
+      "npm:pi-simplify"
+      "npm:pi-memory"
     ];
     env.PI_LENS_STARTUP_MODE = "minimal";
     defaultProvider = "opencode";

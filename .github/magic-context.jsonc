@@ -1,9 +1,4 @@
 {
-    // Consumed by @cortexkit/pi-magic-context via ~/.config/cortexkit/magic-context.jsonc
-    // (see .github/workflows/paseo.yml). Only OpenCode/Pi harnesses read this file;
-    // reasonix does its own context maintenance (overlays/reasonix-config.nix).
-    // auto_drop_tool_age / nudge_interval_tokens were removed upstream in v0.23.0
-    // (tiered emergency drop + ctx_reduce replaced them); do not re-add.
     "$schema": "https://raw.githubusercontent.com/cortexkit/magic-context/master/assets/magic-context.schema.json",
     "enabled": true,
     "history_budget_percentage": 0.1,

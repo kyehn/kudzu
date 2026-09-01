@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index b5524a5..44ab937 100644
+index c6a7218..75dd44b 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -15,16 +15,16 @@ index b5524a5..44ab937 100644
  	github.com/joho/godotenv v1.5.1
  	github.com/kevinburke/ssh_config v1.6.0
 +	github.com/klauspost/compress v1.17.4
- 	github.com/larksuite/oapi-sdk-go/v3 v3.9.9
- 	github.com/mattn/go-runewidth v0.0.27
+ 	github.com/larksuite/oapi-sdk-go/v3 v3.10.0
+ 	github.com/mattn/go-runewidth v0.0.28
  	github.com/modelcontextprotocol/go-sdk v1.7.1-0.20260825122737-c68ad9a4e6e1
  	github.com/pkg/sftp v1.13.11
 +	github.com/refraction-networking/utls v1.8.2
  	github.com/rivo/uniseg v0.4.7
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
- 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+ 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index d736e36..93f60ad 100644
+index 7ed5d26..3d4e2bc 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -364,7 +364,7 @@ index 0000000..9cdfd71
 +	}
 +}
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index fcd3e23..df47d2f 100644
+index 4b1ba29..d0bc9f0 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
 @@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
@@ -395,16 +395,16 @@ index fcd3e23..df47d2f 100644
  	}()
  	defer trackPublishedHostStream(ctx, cancel)()
  	req := a.summaryRequest(region, instructions)
--	if err := a.applyAdmissionToRequest(&req); err != nil {
+-	if err := a.applySummaryAdmissionToRequest(&req); err != nil {
 +	if err := a.applyAdmissionToSummaryRequest(&req); err != nil {
  		return "", usage, err
  	}
- 	if req.MaxTokens > summaryOutputMaxTokens {
+ 	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
 diff --git a/internal/agent/compact_overflow_prefix_test.go b/internal/agent/compact_overflow_prefix_test.go
-index 27d310d..f988d19 100644
+index 55c5d93..c36cb60 100644
 --- a/internal/agent/compact_overflow_prefix_test.go
 +++ b/internal/agent/compact_overflow_prefix_test.go
-@@ -33,7 +33,7 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
+@@ -34,7 +34,7 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
  	prov := &overflowSummaryProvider{}
  	a := agentOverForceWindow(t, prov, sess, 60_000)
  	msgs := sess.Snapshot()
@@ -414,10 +414,10 @@ index 27d310d..f988d19 100644
  		t.Fatal("fixture has no foldable prefix")
  	}
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index 8117c0d..541dc02 100644
+index 37d1cea..37be94a 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
-@@ -419,7 +419,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+@@ -448,7 +448,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
  	a.sess.compactionMu.Unlock()
  	msgs, onProjection := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
  	viewInputHash := providerVisibleFingerprint(modelInputMessages(msgs))
@@ -426,7 +426,7 @@ index 8117c0d..541dc02 100644
  	if !ok {
  		return CompactionNoop, nil
  	}
-@@ -498,7 +498,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+@@ -536,7 +536,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
  	tele.ProjectionTokens = projTokens
  	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
  	a.emitCompactionTelemetry(tele)
@@ -435,7 +435,7 @@ index 8117c0d..541dc02 100644
  		a.emitCompactionAborted(trigger)
  		return CompactionNoop, err
  	}
-@@ -556,33 +556,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
+@@ -594,33 +594,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
  }
  
  // acceptCheckpointCandidate requires real savings and, for automatic
@@ -586,68 +586,6 @@ index 70e9c63..eb37fef 100644
 +		t.Fatal("must-free non-reducing candidate: want error")
 +	}
  }
-diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
-index 9dfc705..b7638bc 100644
---- a/internal/agent/context_manager.go
-+++ b/internal/agent/context_manager.go
-@@ -155,13 +155,23 @@ func (m ContextManager) prepareOnce(ctx context.Context, policy ContextPreparePo
- 
- func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContext, policy ContextPreparePolicy, inputHash string, est, fold, hard int, forceFold bool) (PreparedContext, error) {
- 	a := m.agent
--	maxSummaries := 1
-+	maxAttempts := 1
- 	if policy.Trigger == CompactionTriggerPressure {
--		maxSummaries = 2
-+		maxAttempts = 2
- 	}
- 	result := prepared
--	for range maxSummaries {
-+	attempts := 0
-+	for {
-+		attempts++
- 		mustFree := policy.Trigger != CompactionTriggerManual && (policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard)
-+		// Non-forced pressure maintenance caps its attempts. A must-free fold
-+		// (session already at or above the hard ceiling) iterates until the
-+		// projection converges below the ceiling: the session can dwarf a
-+		// conservative configured window, and each accepted checkpoint
-+		// strictly shrinks the view, so this terminates.
-+		if !mustFree && attempts > maxAttempts {
-+			break
-+		}
- 		outcome, err := a.compactToProjectionLocked(ctx, policy.Trigger, policy.Instructions, forceFold, mustFree)
- 		if err != nil {
- 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-@@ -201,8 +211,13 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
- 		}
- 
- 		result = m.currentPrepared()
--		if policy.Trigger == CompactionTriggerManual || result.InputTokens < fold ||
--			(policy.Trigger == CompactionTriggerOverflow && result.InputTokens < hard) {
-+		// Success requires the projection below the hard ceiling whenever the
-+		// session is at/above it (est >= hard or an active overflow recovery);
-+		// pressure convergence below the fold trigger only counts when the
-+		// view is already safely inside the window. Otherwise the request
-+		// would still exceed the configured window.
-+		if policy.Trigger == CompactionTriggerManual ||
-+			(result.InputTokens < hard && (policy.Trigger == CompactionTriggerOverflow || result.InputTokens < fold)) {
- 			a.sess.compaction.stuck = false
- 			a.sess.compaction.stuckInputHash = ""
- 			a.sess.compaction.consecutive = 0
-@@ -213,12 +228,12 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
- 		inputHash = a.contextMaintenanceInputHash(result.Messages)
- 	}
- 
--	reason := fmt.Sprintf("summary result remains above fold trigger after %d attempts (%d >= %d)", maxSummaries, result.InputTokens, fold)
-+	reason := fmt.Sprintf("summary result remains above fold trigger after %d attempts (%d >= %d)", attempts, result.InputTokens, fold)
- 	blockedInputHash := a.contextMaintenanceInputHash(result.Messages)
- 	a.recordContextMaintenanceBlocked(blockedInputHash, policy.Trigger, "summary", reason)
- 	a.sess.compaction.stuck = true
- 	a.sess.compaction.stuckInputHash = blockedInputHash
--	a.sess.compaction.consecutive += maxSummaries
-+	a.sess.compaction.consecutive += attempts
- 	if policy.Trigger == CompactionTriggerOverflow || result.InputTokens >= hard {
- 		return PreparedContext{}, fmt.Errorf("%w: %s", ErrCompactionRequired, reason)
- 	}
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
 index e3bf8bf..91adb8f 100644
 --- a/internal/agent/context_recovery.go
@@ -854,10 +792,10 @@ index 0000000..879c5bc
 +	}
 +}
 diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
-index ba1f814..1d18943 100644
+index c06b1ac..c1e8e9b 100644
 --- a/internal/agent/coordinator_test.go
 +++ b/internal/agent/coordinator_test.go
-@@ -639,10 +639,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
+@@ -642,10 +642,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
  	}
  }
  
@@ -885,7 +823,7 @@ index ba1f814..1d18943 100644
  	}}
  	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{
  		{Type: provider.ChunkText, Text: "Done."},
-@@ -650,7 +663,7 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+@@ -653,7 +666,7 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
  	}}
  
  	parentReg := tool.NewRegistry()
@@ -894,7 +832,7 @@ index ba1f814..1d18943 100644
  	sink := &recordSink{}
  	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, sink)
  	plannerSess := NewSession("planner-sys")
-@@ -661,27 +674,16 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+@@ -664,27 +677,16 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
  
  	err := coord.Run(withNoClosedLoop(context.Background()), "plan a change")
  	if err != nil {
@@ -928,7 +866,7 @@ index ba1f814..1d18943 100644
  	}
  }
  
-@@ -1397,9 +1399,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+@@ -1400,9 +1402,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
  func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing.T) {
  	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
  		t.Run(string(route), func(t *testing.T) {
@@ -944,7 +882,7 @@ index ba1f814..1d18943 100644
  			}}
  			exec := &mockProvider{name: "executor"}
  			plannerReg := tool.NewRegistry()
-@@ -1411,11 +1416,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
+@@ -1414,11 +1419,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
  			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
  			plannerSess := NewSession("planner-sys")
  			coord := NewCoordinatorWithPlannerPolicy(
@@ -1044,10 +982,10 @@ index 42ff84f..999052d 100644
  }
  
 diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
-index c1ae5b1..d5be56a 100644
+index 50bb355..f43a9d2 100644
 --- a/internal/agent/output_budget.go
 +++ b/internal/agent/output_budget.go
-@@ -366,14 +366,20 @@ func (a *Agent) effectiveContextWindow() int {
+@@ -369,14 +369,20 @@ func (a *Agent) effectiveContextWindow() int {
  	if snap := a.sess.output.learned.Load(); snap != nil {
  		learned = snap.windowTokens
  	}
@@ -1073,7 +1011,7 @@ index c1ae5b1..d5be56a 100644
  }
  
  func (a *Agent) learnedCompletionBudget() int {
-@@ -415,6 +421,34 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
+@@ -418,6 +424,34 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
  	a.sess.output.learned.Store(&next)
  }
  
@@ -1108,7 +1046,7 @@ index c1ae5b1..d5be56a 100644
  func (a *Agent) storeAdmission(adm contextAdmission) {
  	if a == nil {
  		return
-@@ -515,6 +549,10 @@ func (a *Agent) admitOutputBudget(req provider.Request) (contextAdmission, error
+@@ -545,6 +579,10 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
  	adm.MaxOutputTokens = policy.MaxOutputTokens
  	window := a.effectiveContextWindow()
  	adm.WindowTokens = window
@@ -1119,7 +1057,7 @@ index c1ae5b1..d5be56a 100644
  	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
  	adm.Source = admissionSource(req.MaxTokens, policy, learnedWindow)
  	if window <= 0 {
-@@ -591,6 +629,22 @@ func (a *Agent) applyAdmissionToRequest(req *provider.Request) error {
+@@ -635,6 +673,22 @@ func (a *Agent) applySummaryAdmissionToRequest(req *provider.Request) error {
  	return nil
  }
  
@@ -1191,19 +1129,19 @@ index 13f1e3d..d3c9691 100644
  	}
  	sawTruncation := false
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 837eaa4..9e55949 100644
+index 623b4e0..1164c83 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -242,7 +242,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
- // assistant turn into final-response or tool-round handling.
- func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+@@ -247,7 +247,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+ 		releaseMCPListObserver()
+ 	}()
  	ctx = a.withAgentContext(ctx)
 -	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ {
 +	for step := 0; ; step++ {
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -329,10 +329,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) error {
+@@ -339,10 +339,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1214,7 +1152,7 @@ index 837eaa4..9e55949 100644
  }
  
  // streamWithSamplingRecovery coordinates Codex-style original-request replay
-@@ -719,10 +715,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+@@ -729,10 +725,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
  		a.armFinalizationRound(ctx, state, landCause{kind: "task_budget", axis: axis, detail: detail})
  		return true, nil
  	}
@@ -1746,7 +1684,7 @@ index ec38555..6ebabc7 100644
 +	}
 +}
 diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
-index edfa2d6..4e363f7 100644
+index edfa2d6..28139c0 100644
 --- a/internal/provider/openai/host.go
 +++ b/internal/provider/openai/host.go
 @@ -65,6 +65,16 @@ func IsOpenAI(baseURL string) bool {
@@ -1847,7 +1785,7 @@ index 0000000..20c934c
 +	}
 +}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index fd25ded..2b07e56 100644
+index f68421b..16d5f3f 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
 @@ -225,10 +225,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
@@ -1923,7 +1861,7 @@ index fd25ded..2b07e56 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -859,6 +876,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+@@ -846,6 +863,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
  		// is left untouched for backends that also honour it.
  		out.Thinking = &thinkingMode{Type: c.thinkingType}
  	}
@@ -1942,7 +1880,7 @@ index fd25ded..2b07e56 100644
  	return out
  }
  
-@@ -880,6 +909,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -867,6 +896,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -1956,7 +1894,7 @@ index fd25ded..2b07e56 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1169,6 +1205,8 @@ type chatRequest struct {
+@@ -1156,6 +1192,8 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -1965,7 +1903,7 @@ index fd25ded..2b07e56 100644
  	ExtraBody           map[string]any `json:"-"`
  }
  
-@@ -1193,6 +1231,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
+@@ -1180,6 +1218,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
  }
  
  func (r chatRequest) MarshalJSON() ([]byte, error) {
@@ -2018,7 +1956,7 @@ index d85e06f..65e3675 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..feb474c
+index 0000000..8f48c4f
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
 @@ -0,0 +1,134 @@
