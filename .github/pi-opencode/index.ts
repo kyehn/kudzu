@@ -218,59 +218,7 @@ function loadModelIds(): string[] {
 	return Object.keys(OPENCODE_MODELS).filter(isFreeModel).sort(compareStrings);
 }
 
-// ─── thinking-level mapping ─────────────────────────────────────────────────
-
-// Models that always think; upstream rejects any other effort level.
-const ALWAYS_THINKS_PREFIXES = ["big-pickle"];
-const ALWAYS_THINKS_EFFORTS = ["low", "high", "max"];
-
-// pi built-in models already carry a typed `thinkingLevelMap`; for models
-// not in the catalog we fall back to a sensible default.
-function getThinkingLevelMap(
-	modelId: string,
-	model: Model<Api>,
-): Model<Api>["thinkingLevelMap"] {
-	const alwaysThinks = ALWAYS_THINKS_PREFIXES.some((prefix) =>
-		modelId.startsWith(prefix),
-	);
-	if (alwaysThinks) {
-		// Force the always-thinks efforts that upstream accepts.
-		const map: Record<string, string | null> = {};
-		for (const level of [
-			"off",
-			"minimal",
-			"low",
-			"medium",
-			"high",
-			"xhigh",
-			"max",
-		]) {
-			map[level] = ALWAYS_THINKS_EFFORTS.includes(level) ? level : null;
-		}
-		return map as Model<Api>["thinkingLevelMap"];
-	}
-	// Use the thinkingLevelMap from the pi catalog directly.
-	return model.thinkingLevelMap;
-}
-
 // ─── model catalog ──────────────────────────────────────────────────────────
-
-/**
- * Always-thinking 档位翻译 (纯函数, 供单测):
- * - 未指定档位 → "low" (上游接受的最低档);
- * - "max" → "max" (绝不能是 "xhigh": getThinkingLevelMap 把 xhigh 映为
- *   null, pi-ai 适配层的 null 档会被丢弃, big-pickle 遂以无 effort 发出并被
- *   上游 400; live pi.dev 证实 big-pickle 无 thinkingLevelMap,
- *   ALWAYS_THINKS 表中 max→"max" 为有值档);
- * - 其余档位原样透传 (含用户显式 xhigh: 上游适配层行为, 本扩展不改写用户选择)。
- */
-export function translateAlwaysThinksReasoning(
-	requested: string | undefined,
-): string {
-	if (!requested) return "low";
-	if (requested === "max") return "max";
-	return requested;
-}
 
 // Routing through streamSimple requires model.api === extension.api, so every
 // registered model carries the provider default ("openai-completions"); the
@@ -324,7 +272,12 @@ export function buildModelConfig(id: string): ProviderModelConfig {
 	}
 
 	endpoints.set(id, model.api as EndpointApi);
-	const thinkingLevelMap = getThinkingLevelMap(id, model as Model<Api>);
+	// thinkingLevelMap 永远原样透传目录值, 绝不按模型名伪造能力表:
+	// 目录无表的模型 (如 big-pickle, 下方单测钉死缺席), reasoning 缺省时适配器
+	// 不发任何 reasoning 字段 —— 与真实 CLI 抓包一致 (overlays/reasonix/opencode/
+	// chat-completions.json: 无 reasoning 字段且 200); 用户显式档位由适配器
+	// clamp, 上游拒收则大声 400, 不在本扩展改写选择。
+	const thinkingLevelMap = (model as Model<Api>).thinkingLevelMap;
 	return {
 		id,
 		name: model.name,
@@ -351,21 +304,6 @@ function streamOpencodeZen(
 		...options,
 		headers: { ...opencodeHeaders(), ...options?.headers },
 	};
-
-	// Always-thinking models reject requests without an accepted effort level
-	// (400: "cannot be disabled; please use low, high, or max"). The session
-	// default omits the option entirely and the host can emit "max"; translate
-	// both onto levels whose thinkingLevelMap entry lands on an accepted wire
-	// effort (see translateAlwaysThinksReasoning: "max" must stay "max",
-	// never "xhigh", whose map entry is null and gets dropped by the adapter).
-	const requested = wrappedOptions.reasoning as string | undefined;
-	if (
-		ALWAYS_THINKS_PREFIXES.some((prefix) => model.id.startsWith(prefix)) &&
-		(!requested || requested === "max")
-	) {
-		wrappedOptions.reasoning =
-			translateAlwaysThinksReasoning(requested) as SimpleStreamOptions["reasoning"];
-	}
 
 	const wrappedModel = { ...model, api, baseUrl: BASE_URL };
 	return streamSimple(wrappedModel as Model<Api>, context, wrappedOptions);
