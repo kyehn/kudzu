@@ -389,6 +389,8 @@
         ".serverless/"
         ".fusebox/"
         ".dynamodb/"
+        ".pi"
+        ".reasonix"
       ];
       attributes = [ "*.age diff=nodiff" ];
       settings = {

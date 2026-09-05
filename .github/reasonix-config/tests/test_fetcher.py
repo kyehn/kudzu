@@ -1,138 +1,169 @@
 from __future__ import annotations
 
-import time
-from unittest import mock
+import json
+from pathlib import Path
+from typing import ClassVar, Self
 
 import httpx
-import pytest  # type: ignore[importNotFound]
+import pytest
 
-from reasonix_config.fetcher import (
-    CACHE_TTL_SECONDS,
-    MODELS_DEV_API,
-    MODELS_DEV_USER_AGENT,
-    ZEN_API,
-    fetch_models_dev,
-    fetch_zen_models,
-)
+from reasonix_config import fetcher as fetcher_module
 
 
-def _no_cache(monkeypatch: pytest.MonkeyPatch, cache_attr: str) -> None:
-    """把缓存文件 mock 成不存在, 强制走网络路径 (环境里可能有真实 /tmp 缓存)."""
-    fake_cache = mock.Mock()
-    fake_cache.stat.side_effect = FileNotFoundError(cache_attr)
-    monkeypatch.setattr(f"reasonix_config.fetcher.{cache_attr}", fake_cache)
+def _fake_get_factory(payload: object, record: dict, exc: Exception | None = None):
+    def fake_get(url: str, timeout: float, headers: dict) -> object:
+        record["url"] = url
+        record["headers"] = headers
+        if exc is not None:
+            raise exc
 
+        class Resp:
+            def raise_for_status(self) -> None:
+                pass
 
-def _fresh_cache(payload: str) -> mock.Mock:
-    """存在且 mtime 在 TTL 内的缓存文件 mock."""
-    fake_cache = mock.Mock()
-    fake_cache.exists.return_value = True
-    fake_cache.read_text.return_value = payload
-    fake_cache.stat.return_value.st_mtime = time.time()
-    return fake_cache
+            def json(self) -> object:
+                return payload
 
+        return Resp()
 
-def _stale_cache(payload: str) -> mock.Mock:
-    """存在但 mtime 已超过 TTL 的缓存文件 mock."""
-    fake_cache = _fresh_cache(payload)
-    fake_cache.stat.return_value.st_mtime = time.time() - CACHE_TTL_SECONDS - 1
-    return fake_cache
-
-
-class TestFetchZenModels:
-    def test_uses_opencode_user_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """请求应携带与 opencode 一致的 UA (opencode/prod/<version>/cli)."""
-        assert MODELS_DEV_USER_AGENT.startswith("opencode/prod/")
-        assert MODELS_DEV_USER_AGENT.endswith("/cli")
-        _no_cache(monkeypatch, "ZEN_CACHE")
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.return_value = mock.Mock(
-                status_code=200,
-                raise_for_status=lambda: None,
-                json=lambda: {"object": "list", "data": []},
-            )
-            fetch_zen_models()
-            _, kwargs = mock_get.call_args
-            assert kwargs["headers"]["User-Agent"] == MODELS_DEV_USER_AGENT
-
-    def test_uses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """命中新鲜缓存(TTL 内)时不发网络请求, 直接返回缓存内容."""
-        monkeypatch.setattr("reasonix_config.fetcher.ZEN_CACHE", _fresh_cache('{"cached": true}'))
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            data = fetch_zen_models()
-            assert data == {"cached": True}
-            mock_get.assert_not_called()
-
-    def test_stale_cache_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """缓存超过 TTL 必须重新拉取: 旧快照会让 deprecated 过滤失效
-        (实例: deepseek-v4-flash-free 免费推广结束后 models.dev 才标 deprecated)."""
-        monkeypatch.setattr("reasonix_config.fetcher.ZEN_CACHE", _stale_cache('{"stale": true}'))
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.return_value = mock.Mock(
-                status_code=200,
-                raise_for_status=lambda: None,
-                json=lambda: {"object": "list", "data": [{"id": "x-preview-f-free"}]},
-            )
-            data = fetch_zen_models()
-            assert data == {"object": "list", "data": [{"id": "x-preview-f-free"}]}
-            mock_get.assert_called_once()
-
-    def test_http_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """网络错误必须向上抛, 不静默吞掉 (用户要求: 不隐藏错误)."""
-        _no_cache(monkeypatch, "ZEN_CACHE")
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
-                "500",
-                request=httpx.Request("GET", ZEN_API),
-                response=httpx.Response(500, request=httpx.Request("GET", ZEN_API)),
-            )
-            with pytest.raises(httpx.HTTPStatusError):
-                fetch_zen_models()
+    return fake_get
 
 
 class TestFetchModelsDev:
-    def test_uses_opencode_ua(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _no_cache(monkeypatch, "MODELS_DEV_CACHE")
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.return_value = mock.Mock(
-                status_code=200,
-                raise_for_status=lambda: None,
-                json=lambda: {"models": {}},
-            )
-            fetch_models_dev()
-            args, kwargs = mock_get.call_args
-            assert args[0] == MODELS_DEV_API
-            assert kwargs["headers"]["User-Agent"] == MODELS_DEV_USER_AGENT
+    def test_uses_opencode_ua(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        record: dict = {}
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"a": 1}, record))
+        monkeypatch.setattr(fetcher_module, "MODELS_DEV_CACHE", tmp_path / "md.json")
+        assert fetcher_module.fetch_models_dev() == {"a": 1}
+        assert record["headers"]["User-Agent"].startswith("opencode/")
 
-    def test_uses_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_uses_cache(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        cache = tmp_path / "md.json"
+        cache.write_text(json.dumps({"cached": True}))
+        monkeypatch.setattr(fetcher_module, "MODELS_DEV_CACHE", cache)
+        # 缓存新鲜时不触网 (httpx.get 被换成必炸函数)
         monkeypatch.setattr(
-            "reasonix_config.fetcher.MODELS_DEV_CACHE", _fresh_cache('{"cached": 1}')
+            fetcher_module.httpx,
+            "get",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("net")),
         )
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            assert fetch_models_dev() == {"cached": 1}
-            mock_get.assert_not_called()
+        assert fetcher_module.fetch_models_dev() == {"cached": True}
 
-    def test_stale_cache_refetches(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """models.dev 缓存过期同样必须重拉 (deprecated 状态依赖此数据)."""
+    def test_http_error_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(fetcher_module, "MODELS_DEV_CACHE", tmp_path / "md.json")
         monkeypatch.setattr(
-            "reasonix_config.fetcher.MODELS_DEV_CACHE", _stale_cache('{"stale": 1}')
+            fetcher_module.httpx,
+            "get",
+            _fake_get_factory({}, {}, httpx.ConnectError("down")),
         )
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.return_value = mock.Mock(
-                status_code=200,
-                raise_for_status=lambda: None,
-                json=lambda: {"fresh": True},
-            )
-            assert fetch_models_dev() == {"fresh": True}
-            mock_get.assert_called_once()
+        with pytest.raises(httpx.HTTPError):
+            fetcher_module.fetch_models_dev()
 
-    def test_http_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        _no_cache(monkeypatch, "MODELS_DEV_CACHE")
-        with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
-            mock_get.side_effect = httpx.HTTPStatusError(
-                "500",
-                request=httpx.Request("GET", MODELS_DEV_API),
-                response=httpx.Response(500, request=httpx.Request("GET", MODELS_DEV_API)),
-            )
-            with pytest.raises(httpx.HTTPStatusError):
-                fetch_models_dev()
+
+class TestFetchOfficialModels:
+    """官方名单 URL 必须由 provider 条目 api 派生 (零硬编码证明)."""
+
+    ENTRY: ClassVar[dict] = {
+        "id": "opencode",
+        "name": "Fake",
+        "npm": "@fake/compat",
+        "api": "https://fake.example/v9",
+        "env": ["FAKE_KEY"],
+        "models": {},
+    }
+
+    def test_url_derived_from_entry(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        record: dict = {}
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"data": []}, record))
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        out = fetcher_module.fetch_official_models(dict(self.ENTRY), "opencode")
+        assert out == {"data": []}
+        assert record["url"] == "https://fake.example/v9/models"
+        assert "Authorization" not in record["headers"]
+
+    def test_api_key_sent_when_given(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        record: dict = {}
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"data": []}, record))
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        fetcher_module.fetch_official_models(dict(self.ENTRY), "opencode", "secret")
+        assert record["headers"]["Authorization"] == "Bearer secret"
+
+    def test_bad_shape_fail_closed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"items": []}, {}))
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        with pytest.raises(SystemExit, match="unexpected shape"):
+            fetcher_module.fetch_official_models(dict(self.ENTRY), "opencode")
+
+    def test_http_error_fail_closed(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(
+            fetcher_module.httpx,
+            "get",
+            _fake_get_factory({}, {}, httpx.ConnectError("down")),
+        )
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        with pytest.raises(SystemExit, match="official model list unavailable"):
+            fetcher_module.fetch_official_models(dict(self.ENTRY), "opencode")
+
+    def test_missing_api_fail_closed(self) -> None:
+        with pytest.raises(SystemExit, match="no usable 'api'"):
+            fetcher_module.fetch_official_models({"id": "x"}, "x")
+
+    def test_cache_file_keyed_by_pid(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        # 不同 pid 落不同缓存文件 (entry.get("id") 恒 unknown 的旧 bug 会撞车)
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"data": []}, {}))
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        entry = dict(self.ENTRY)
+        fetcher_module.fetch_official_models(entry, "aaa")
+        fetcher_module.fetch_official_models(entry, "bbb")
+        assert (tmp_path / "official_aaa_models.json").exists()
+        assert (tmp_path / "official_bbb_models.json").exists()
+
+    def test_no_cache_read_when_disabled(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # use_cache=False 时即使有新鲜缓存也实时拉取
+        cache = tmp_path / "official_opencode_models.json"
+        cache.write_text(json.dumps({"data": [{"id": "stale"}]}))
+        record: dict = {}
+        monkeypatch.setattr(fetcher_module.httpx, "get", _fake_get_factory({"data": []}, record))
+        monkeypatch.setattr(
+            fetcher_module, "OFFICIAL_LIST_CACHE", tmp_path / "official_{pid}_models.json"
+        )
+        out = fetcher_module.fetch_official_models(dict(self.ENTRY), "opencode", use_cache=False)
+        assert out == {"data": []}
+        assert record["url"] == "https://fake.example/v9/models"
+
+
+class TestProbeNvidiaLive:
+    def test_only_404_marks_dead(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class FakeResp:
+            def __init__(self, status: int) -> None:
+                self.status_code = status
+
+        class FakeClient:
+            def __init__(self, *a: object, **k: object) -> None:
+                pass
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *a: object) -> None:
+                pass
+
+            def post(self, url: str, headers: dict[str, str], json: dict) -> FakeResp:
+                assert url == "https://fake.example/v9/chat/completions"
+                return FakeResp(404 if json["model"] == "gone" else 200)
+
+        monkeypatch.setattr(fetcher_module.httpx, "Client", FakeClient)
+        dead = fetcher_module.probe_nvidia_live(["gone", "ok"], "k", "https://fake.example/v9")
+        assert dead == {"gone"}

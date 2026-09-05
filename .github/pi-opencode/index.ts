@@ -1,13 +1,16 @@
 /**
  * pi extension that makes requests to OpenCode Zen indistinguishable from the
- * real opencode CLI on the wire: User-Agent, Accept/Accept-Encoding and the
- * x-opencode-* identifier headers.
+ * real opencode CLI on the wire: User-Agent plus the x-opencode and x-session
+ * identifier header families. (Body key order and TLS fingerprint are owned
+ * by the pi-ai adapters / fix.patch respectively, not by this extension.)
  *
- * Sources mirrored (opencode v1.18.28):
- *   - packages/schema/src/identifier.ts + packages/opencode/src/id/id.ts
- *     (ses_ descending, msg_ ascending, 12 hex time chars + 14 base62 chars)
- *   - packages/opencode/src/session/llm/request.ts (headers, per-provider UA)
- *   - packages/core/src/project.ts + util/hash.ts (x-opencode-project)
+ * Sources mirrored (opencode v2, opencode2 v0.0.0-beta-19151):
+ *   - packages/schema/src/identifier.ts
+ *     (ses_ descending, 12 hex time chars + 14 base62 chars)
+ *   - packages/core/src/session/model-request.ts (sessionHeaders, no
+ *     x-opencode-request; x-session-affinity + X-Session-Id added)
+ *   - packages/core/src/app.ts (App.useragent: opencode/{channel}/{version}/{name})
+ *   - packages/schema/src/project-id.ts (x-opencode-project, "global" fallback)
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -37,48 +40,21 @@ import type {
 
 const BASE_URL = "https://opencode.ai/zen/v1";
 const API_KEY = "public";
-const OPENCODE_VERSION = "1.18.28";
+// Matches the beta CLI our fix.patch mimics (overlays/reasonix/opencode/).
+const OPENCODE_VERSION = "0.0.0-beta-19151";
+const OPENCODE_CHANNEL = "beta";
 
 // ─── opencode wire identity ─────────────────────────────────────────────────
 
-// The CLI's request.ts sends `User-Agent: opencode/<version>`; the AI SDK's
-// withUserAgentSuffix appends `ai-sdk/provider-utils/<version>` plus the
-// runtime segment. The provider-utils version is the one resolved under each
-// @ai-sdk package in opencode v1.18.21's lockfile.
+// App.useragent(): `opencode/${channel}/${version}/${name}` — a single exact
+// string on every endpoint. v2 sends no ai-sdk/runtime suffix (v1 did).
+const USER_AGENT = `opencode/${OPENCODE_CHANNEL}/${OPENCODE_VERSION}/cli`;
+
 type EndpointApi =
 	| "anthropic-messages"
 	| "google-generative-ai"
 	| "openai-completions"
 	| "openai-responses";
-
-const PROVIDER_UTILS_VERSIONS: Record<EndpointApi, string> = {
-	"openai-completions": "4.0.23", // @ai-sdk/openai-compatible@2.0.41
-	"openai-responses": "4.0.38", // @ai-sdk/openai@3.0.84
-	"anthropic-messages": "4.0.27", // @ai-sdk/anthropic@3.0.82
-	"google-generative-ai": "4.0.27", // @ai-sdk/google@3.0.73
-};
-
-/** Mirrors the AI SDK's getRuntimeEnvironmentUserAgent(). */
-function runtimeSegment(): string {
-	const g = globalThis as {
-		window?: unknown;
-		navigator?: { userAgent?: string };
-		process?: { version?: string };
-	};
-	if (g.window) return "runtime/browser";
-	if (g.navigator?.userAgent)
-		return `runtime/${g.navigator.userAgent.toLowerCase()}`;
-	if (g.process?.version) return `runtime/node.js/${g.process.version}`;
-	return "runtime/unknown";
-}
-
-function userAgent(api: EndpointApi): string {
-	return [
-		`opencode/${OPENCODE_VERSION}`,
-		`ai-sdk/provider-utils/${PROVIDER_UTILS_VERSIONS[api]}`,
-		runtimeSegment(),
-	].join(" ");
-}
 
 // ─── opencode identifiers (packages/schema/src/identifier.ts) ───────────────
 
@@ -112,15 +88,13 @@ function identifier(descending: boolean): string {
 	return time + Array.from(bytes, (b) => RANDOM_CHARS[b % 62]).join("");
 }
 
-// Sessions use the descending encoding and are fixed per client instance;
-// message (request) IDs use the ascending encoding, fresh per request.
+// Sessions use the descending encoding and are fixed per client instance,
+// stamped on x-opencode-session/x-session-affinity/X-Session-Id and reused
+// as prompt_cache_key — exactly like the CLI reusing one ses_ ID per session.
+// (v2 dropped the per-request x-opencode-request header, so no msg_ IDs.)
 const SESSION_ID = `ses_${identifier(true)}`;
 
-function requestId(): string {
-	return `msg_${identifier(false)}`;
-}
-
-// ─── x-opencode-project (packages/core/src/project.ts) ──────────────────────
+// ─── x-opencode-project (packages/schema/src/project-id.ts) ─────────────────
 
 async function gitOut(cwd: string, args: string[]): Promise<string | null> {
 	try {
@@ -216,13 +190,14 @@ function getProjectId(): string {
 
 // ─── request headers ────────────────────────────────────────────────────────
 
-function opencodeHeaders(api: EndpointApi): Record<string, string> {
+function opencodeHeaders(): Record<string, string> {
 	return {
-		"User-Agent": userAgent(api),
+		"User-Agent": USER_AGENT,
 		"x-opencode-client": "cli",
 		"x-opencode-project": getProjectId(),
 		"x-opencode-session": SESSION_ID,
-		"x-opencode-request": requestId(),
+		"x-session-affinity": SESSION_ID,
+		"X-Session-Id": SESSION_ID,
 	};
 }
 
@@ -280,17 +255,60 @@ function getThinkingLevelMap(
 
 // ─── model catalog ──────────────────────────────────────────────────────────
 
+/**
+ * Always-thinking 档位翻译 (纯函数, 供单测):
+ * - 未指定档位 → "low" (上游接受的最低档);
+ * - "max" → "max" (绝不能是 "xhigh": getThinkingLevelMap 把 xhigh 映为
+ *   null, pi-ai 适配层的 null 档会被丢弃, big-pickle 遂以无 effort 发出并被
+ *   上游 400; live pi.dev 证实 big-pickle 无 thinkingLevelMap,
+ *   ALWAYS_THINKS 表中 max→"max" 为有值档);
+ * - 其余档位原样透传 (含用户显式 xhigh: 上游适配层行为, 本扩展不改写用户选择)。
+ */
+export function translateAlwaysThinksReasoning(
+	requested: string | undefined,
+): string {
+	if (!requested) return "low";
+	if (requested === "max") return "max";
+	return requested;
+}
+
 // Routing through streamSimple requires model.api === extension.api, so every
 // registered model carries the provider default ("openai-completions"); the
 // real per-model endpoint lives in this map instead.
 const endpoints = new Map<string, EndpointApi>();
 
-function resolveEndpoint(modelId: string): EndpointApi {
-	return endpoints.get(modelId) ?? "openai-completions";
+export function resolveEndpoint(modelId: string): EndpointApi {
+	const api = endpoints.get(modelId);
+	if (!api) {
+		// fail-closed: 未注册模型静默 default 会把请求送错 wire;
+		// 调用方只应传入 buildModelConfig 注册过的 id。
+		throw new Error(`opencode model ${modelId} was never registered; refusing to guess the endpoint`);
+	}
+	return api;
 }
 
-function buildModelConfig(id: string): ProviderModelConfig {
+const ZEN_BASE_URLS = [BASE_URL, "https://opencode.ai/zen"];
+
+/** pi 目录里出现过的合法 zen 根 (live pi.dev 实证: /zen/v1 49 族 + 裸 /zen 14 族, 后者当前全付费)。 */
+export function isKnownZenBaseUrl(url: string): boolean {
+	return ZEN_BASE_URLS.includes(url);
+}
+
+export function buildModelConfig(id: string): ProviderModelConfig {
 	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
+	// 各模型的权威 baseUrl 在 pi 目录里: anthropic-messages 族走裸 /zen
+	// (live 实证, 当前全为付费模型故不进免费集), 其余走 /zen/v1。
+	// 目录一旦漂移到未知根必须大声报错而非静默错路。
+	if (
+		model &&
+		"baseUrl" in model &&
+		typeof (model as { baseUrl?: unknown }).baseUrl === "string" &&
+		!isKnownZenBaseUrl((model as { baseUrl: string }).baseUrl)
+	) {
+		throw new Error(
+			`opencode model ${id} baseUrl drifted to ${(model as { baseUrl: string }).baseUrl}; update BASE_URL routing`,
+		);
+	}
 	if (!model) {
 		// Should never happen: callers only pass IDs present in OPENCODE_MODELS.
 		endpoints.set(id, "openai-completions");
@@ -331,22 +349,22 @@ function streamOpencodeZen(
 
 	const wrappedOptions: SimpleStreamOptions = {
 		...options,
-		headers: { ...opencodeHeaders(api), ...options?.headers },
+		headers: { ...opencodeHeaders(), ...options?.headers },
 	};
 
 	// Always-thinking models reject requests without an accepted effort level
 	// (400: "cannot be disabled; please use low, high, or max"). The session
-	// default omits the option entirely and the host can emit "max", which the
-	// pinned adapter's clamp does not know; translate both onto levels whose
-	// thinkingLevelMap entry lands on an accepted wire effort.
+	// default omits the option entirely and the host can emit "max"; translate
+	// both onto levels whose thinkingLevelMap entry lands on an accepted wire
+	// effort (see translateAlwaysThinksReasoning: "max" must stay "max",
+	// never "xhigh", whose map entry is null and gets dropped by the adapter).
 	const requested = wrappedOptions.reasoning as string | undefined;
 	if (
 		ALWAYS_THINKS_PREFIXES.some((prefix) => model.id.startsWith(prefix)) &&
 		(!requested || requested === "max")
 	) {
-		wrappedOptions.reasoning = (
-			requested ? "xhigh" : "low"
-		) as SimpleStreamOptions["reasoning"];
+		wrappedOptions.reasoning =
+			translateAlwaysThinksReasoning(requested) as SimpleStreamOptions["reasoning"];
 	}
 
 	const wrappedModel = { ...model, api, baseUrl: BASE_URL };

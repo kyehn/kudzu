@@ -1,25 +1,26 @@
 {
-  "name": "pi-opencode",
-  "version": "0.2.0",
-  "license": "MIT",
-  "files": [
-    "index.ts"
-  ],
-  "type": "module",
-  "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "devDependencies": {
-    "@types/node": "26.4.1",
-    "typescript": "^7.0.2"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  }
+	"name": "pi-opencode",
+	"version": "0.3.0",
+	"license": "MIT",
+	"files": [
+		"index.ts"
+	],
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@types/node": "26.4.1",
+		"typescript": "^7.0.2"
+	},
+	"scripts": {
+		"test": "node --test index.test.ts",
+		"typecheck": "tsc --noEmit"
+	}
 }

@@ -16,7 +16,7 @@
 
 (formats.toml { }).generate "config.toml" {
   config_version = 7;
-  default_model = "mimo-v2.5-free";
+  default_model = "muse-spark-1.3-contributor-free";
   language = "zh";
   ui.show_reasoning = true;
   environment.enabled = false;
@@ -27,10 +27,7 @@
     max_subagent_depth = 2;
     max_subagent_concurrency = 3;
     max_parallel_writers = 3;
-    soft_compact_ratio = 0.4;
-    tool_result_snip_ratio = 0.5;
     compact_ratio = 0.7;
-    compact_force_ratio = 0.8;
   };
   tools = {
     enabled = [ ];
@@ -165,11 +162,13 @@
       name = "context7-mcp";
       type = "stdio";
       command = lib.getExe context7-mcp;
+      concurrency = "serial";
     }
     {
       name = "mobile-mcp";
       type = "stdio";
       command = lib.getExe' nodejs-slim_latest "npx";
+      concurrency = "serial";
       args = [
         "--yes"
         "@mobilenext/mobile-mcp@latest"
@@ -179,6 +178,7 @@
       name = "open-websearch";
       type = "stdio";
       command = "open-websearch";
+      concurrency = "serial";
       env = {
         SEARCH_MODE = "request";
         DEFAULT_SEARCH_ENGINE = "duckduckgo";
@@ -189,6 +189,7 @@
       name = "grep-app";
       type = "http";
       url = "https://mcp.grep.app";
+      concurrency = "serial";
     }
   ];
 }

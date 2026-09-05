@@ -14,9 +14,14 @@ on:
           - ubuntu-latest
           - ubuntu-26.04-arm
           - macos-latest
+      pair-link:
+        description: 'Pairing link'
+        required: false
+        default: false
+        type: boolean
 jobs:
   paseo:
-    timeout-minutes: 317
+    timeout-minutes: 315
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
@@ -58,21 +63,23 @@ jobs:
         run: |
           set -euo pipefail
           rm -f "$HOME/.config/nix/nix.conf"
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix" "$HOME/.config/mcp"
+          mkdir -p ~/.config/git
+          nix build --verbose --print-build-logs --print-out-paths --impure '.#nixosConfigurations.default.config.home-manager.users.nix-on-droid.xdg.configFile."git/ignore".source' --out-link /tmp/git-ignore && install -m 0644 /tmp/git-ignore ~/.config/git/ignore && rm -f /tmp/git-ignore
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix"
+          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun nixpkgs#skills .#reasonix
+          npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
-          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
-          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun .#reasonix
-          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
-          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
+          bun add -g --ignore-scripts @earendil-works/pi-coding-agent
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm -f /tmp/pi-agent-mcp
           cp --recursive .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
           pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
-          npm install --global --yes @getpaseo/cli
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
+          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           npm install --global --yes open-websearch
-          bun add -g --ignore-scripts @earendil-works/pi-coding-agent
           npm install -g @tobilu/qmd
+          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
+          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -96,12 +103,14 @@ jobs:
           PI_TELEMETRY: "0"
         run: |
           set -euo pipefail
-          npx skills@latest add mattpocock/skills --agent pi  --global --yes
-          npx skills@latest add addyosmani/agent-skills --agent pi --global --yes
-          npx skills@latest add Fission-AI/OpenSpec --agent pi --global --yes
-          npx skills@latest add blader/humanizer --agent pi --global --yes
+          skills add mattpocock/skills --agent pi --global --yes
+          skills add addyosmani/agent-skills --agent pi --global --yes
+          skills add Fission-AI/OpenSpec --agent pi --global --yes
+          skills add blader/humanizer --agent pi --global --yes
           git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp -r /tmp/compose-skill/skills/compose-expert $HOME/.pi/agent/skills/ && rm -rf /tmp/compose-skill
-          npx skills@latest add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent pi --global --yes
+          skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent pi --global --yes
+          skills add getpaseo/paseo --agent pi --global --yes
+          skills add levi-qiao/longgraph-skill --full-depth --skill '*' --agent pi --global --yes
           export BUN_INSTALL="$HOME/.bun"
           export PATH="$BUN_INSTALL/bin:${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           pushd .github/reasonix-config
@@ -109,8 +118,11 @@ jobs:
           reasonix-config
           popd
           pi --help
-          paseo onboard --relay --voice disable
-          # paseo onboard --relay --voice disable > /dev/null
+          if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
+            paseo onboard --relay --voice disable
+          else
+            paseo onboard --relay --voice disable > /dev/null
+          fi
           tail -f "$HOME/.paseo/daemon.log"
       - if: always()
         run: |

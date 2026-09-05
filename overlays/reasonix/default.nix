@@ -23,7 +23,7 @@ buildGoModule (finalAttrs: {
 
   patches = [ ./fix.patch ];
 
-  vendorHash = "sha256-+0V+goT5XhpJcWteAuSjw8uslKcnzebT6UvgGPEaCE0=";
+  vendorHash = "sha256-Iy2De0dsXvcVS4UTcWK1gOFvAhk47ndBNwirdkFEQ8g=";
 
   subPackages = [ "cmd/reasonix" ];
 
@@ -36,8 +36,6 @@ buildGoModule (finalAttrs: {
     "-w"
     "-X main.version=v${finalAttrs.version}"
   ];
-
-  doCheck = true;
 
   doInstallCheck = true;
 

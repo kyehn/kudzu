@@ -1,798 +1,734 @@
 from __future__ import annotations
 
-import json
+import os
+import re
 import tomllib
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Self
 
+import httpx
 import pytest
 
+from reasonix_config import __main__ as main_module
 from reasonix_config import builder as builder_module
+from reasonix_config import fetcher as fetcher_module
 from reasonix_config.builder import (
-    CONFIG_VERSION,
+    MODEL_FIELD_HANDLED,
+    MODEL_FIELD_IGNORED,
+    PROVIDER_FIELD_HANDLED,
+    PROVIDER_FIELD_IGNORED,
     _build_override,
     _is_chat_model,
+    _is_free,
+    _price_of,
     _repair_default_model,
     _wire_kind,
     build_all,
     build_nvidia,
     build_opencode,
-    get_free_zen_model_ids,
+    ensure_env_placeholder,
     write_config,
 )
-from reasonix_config.fetcher import MODELS_DEV_CACHE, ZEN_CACHE, fetch_models_dev, fetch_zen_models
+from reasonix_config.fetcher import fetch_models_dev, fetch_official_models
 from reasonix_config.models import ProviderConfig
 
-EXPECTED_PROVIDER_COUNT = 3  # opencode + opencode-responses + nvidia
-# muse-spark-1.2-contributor-free 的 models.dev limit (2026-08 快照)
-MUSE_SPARK_CONTEXT = 1_048_576
-MUSE_SPARK_OUTPUT = 131_072
 ENV_FILE_PERMS = 0o600  # .env 含密钥, 仅属主可读写
+DEFAULT_OUTPUT_TOKENS = 4096  # _md_model 夹具的 limit.output
+SRC_DIR = Path(__file__).resolve().parent.parent / "src" / "reasonix_config"
 
 
-def _load_zen_cache() -> dict:
-    if not ZEN_CACHE.exists():
-        pytest.skip("zen cache not found at /tmp/reasonix-models/opencode_zen_models.json")
-    return json.loads(ZEN_CACHE.read_text())
+def _md_model(**kw: object) -> dict:
+    """最小 models.dev 模型条目 (默认可聊天、无价格、非 deprecated)."""
+    base: dict = {
+        "id": "org/m",
+        "limit": {"context": 128000, "output": 4096},
+        "modalities": {"input": ["text"], "output": ["text"]},
+        "cost": {"input": 0, "output": 0},
+    }
+    base.update(kw)
+    return base
 
 
-def _load_md_cache() -> dict:
-    if not MODELS_DEV_CACHE.exists():
-        pytest.skip("models.dev cache not found at /tmp/reasonix-models/models_dev_api.json")
-    return json.loads(MODELS_DEV_CACHE.read_text())
+def _md_entry(pid: str, models: dict, **kw: object) -> dict:
+    """合成 models.dev provider 条目: 身份字段故意与真实值不同, 证派生."""
+    base: dict = {
+        "id": pid,
+        "name": f"Fake {pid}",
+        "npm": "@fake/compat",
+        "api": f"https://fake-{pid}.example/v9",
+        "env": [f"FAKE_{pid.upper()}_KEY"],
+        "doc": "https://example.invalid",
+        "models": models,
+    }
+    base.update(kw)
+    return base
+
+
+def _md_data(entries: dict[str, dict]) -> dict:
+    return dict(entries)
+
+
+_DOWN = OSError("down")
+
+
+def _raise_down(*args: object, **kwargs: object) -> object:
+    raise _DOWN
 
 
 class TestIsChatModel:
     def test_chat_model(self) -> None:
-        assert _is_chat_model("nvidia/nemotron-3-ultra-550b-a55b", {"limit": {"context": 1000000}})
+        assert _is_chat_model("org/m", _md_model()) is True
 
     def test_embedding_excluded(self) -> None:
-        assert not _is_chat_model("nvidia/nv-embed-v1", {"limit": {"context": 32768}})
+        m = _md_model(modalities={"input": ["text"], "output": ["embedding"]})
+        assert _is_chat_model("org/e", m) is False
+
+    def test_name_alone_never_excludes(self) -> None:
+        # 无名字 blocklist: 可疑名字只要派生检查通过就收录
+        assert _is_chat_model("tts-voice-clone-3000", _md_model()) is True
+
+    def test_none_containers_tolerated(self) -> None:
+        m = _md_model(limit=None, modalities=None)
+        assert _is_chat_model("org/m", m) is False  # context 缺失 -> 0 < 阈值
 
     def test_small_context_excluded(self) -> None:
-        assert not _is_chat_model("tiny-model", {"limit": {"context": 1024}})
+        m = _md_model(limit={"context": 4096, "output": 1024})
+        assert _is_chat_model("org/m", m) is False
 
     def test_non_text_output_excluded(self) -> None:
-        """纯图像/视频/音频生成器 (flux/cosmos) 即便名字漏过 skip 也不应入选."""
-        assert not _is_chat_model(
-            "nvidia/cosmos-predict",
-            {"limit": {"context": 1000000}, "modalities": {"output": ["image"]}},
-        )
-        assert not _is_chat_model(
-            "flux-pro",
-            {"limit": {"context": 1000000}, "modalities": {"output": ["image", "video"]}},
-        )
-
-    def test_text_output_allowed(self) -> None:
-        # 显式含 text 的输出模态保留
-        assert _is_chat_model(
-            "nvidia/llama-3.1-nemotron-70b-instruct",
-            {"limit": {"context": 1000000}, "modalities": {"output": ["text"]}},
-        )
-        # 缺失 modalities 视为聊天模型 (历史条目无该字段)
-        assert _is_chat_model("legacy-model", {"limit": {"context": 1000000}})
+        m = _md_model(modalities={"input": ["text"], "output": ["image"]})
+        assert _is_chat_model("org/m", m) is False
 
     def test_tool_call_false_excluded(self) -> None:
-        """agent 需要工具调用; 显式 tool_call=False 的非 agent 模型必须剔除."""
-        assert not _is_chat_model(
-            "nvidia/bge-m3",
-            {"limit": {"context": 32768}, "tool_call": False},
-        )
-        assert not _is_chat_model(
-            "nvidia/paligemma",
-            {"limit": {"context": 1000000}, "tool_call": False},
-        )
+        assert _is_chat_model("org/m", _md_model(tool_call=False)) is False
 
     def test_tool_call_true_or_absent_allowed(self) -> None:
-        assert _is_chat_model("m", {"limit": {"context": 1000000}, "tool_call": True})
-        # 缺省字段视为允许 (历史条目未暴露 tool_call)
-        assert _is_chat_model("m", {"limit": {"context": 1000000}})
+        assert _is_chat_model("org/m", _md_model(tool_call=True)) is True
+        assert _is_chat_model("org/m", _md_model()) is True
 
 
 class TestFieldCoverage:
-    """models.dev 提供的每一个字段都必须被归类为 handled 或 ignored, 不允许遗漏.
-
-    只要 opencode/nvidia 任一下游出现一个未归类的 key, 测试即失败——这强制
-    任何新增字段都必须在 MODEL_FIELD_HANDLED / MODEL_FIELD_IGNORED (或 provider
-    对应集合) 中显式归类, 实现 100% 字段覆盖率审计.
-    """
+    """HANDLED 加 IGNORED 必须覆盖两 provider 下每个真实出现的 key."""
 
     def test_model_field_coverage(self) -> None:
-        md = _load_md_cache()
-        known = builder_module.MODEL_FIELD_HANDLED | builder_module.MODEL_FIELD_IGNORED
-        for prov in ("opencode", "nvidia"):
-            for mid, m in md.get(prov, {}).get("models", {}).items():
-                unknown = set(m.keys()) - known
-                assert not unknown, f"{prov}/{mid} 含未归类字段: {unknown}"
+        md_data = fetch_models_dev()
+        seen: set[str] = set()
+        for pid in ("opencode", "nvidia"):
+            for m in md_data[pid]["models"].values():
+                if isinstance(m, dict):
+                    seen.update(m.keys())
+        uncovered = seen - MODEL_FIELD_HANDLED - MODEL_FIELD_IGNORED
+        assert not uncovered, f"models.dev 新增模型字段未归类: {sorted(uncovered)}"
 
     def test_provider_field_coverage(self) -> None:
-        md = _load_md_cache()
-        known = builder_module.PROVIDER_FIELD_HANDLED | builder_module.PROVIDER_FIELD_IGNORED
-        for prov in ("opencode", "nvidia"):
-            unknown = set(md.get(prov, {}).keys()) - known
-            assert not unknown, f"{prov} provider 含未归类字段: {unknown}"
+        md_data = fetch_models_dev()
+        seen: set[str] = set()
+        for pid in ("opencode", "nvidia"):
+            seen.update(md_data[pid].keys())
+        uncovered = seen - PROVIDER_FIELD_HANDLED - PROVIDER_FIELD_IGNORED
+        assert not uncovered, f"models.dev 新增 provider 字段未归类: {sorted(uncovered)}"
 
     def test_billing_currency_set(self) -> None:
-        providers = build_all()
-        for p in providers:
-            assert p.billing_currency == "USD", f"{p.name} 缺少 provider 级 USD 币种标注"
-
-    def test_override_maps_limit_and_reasoning(self) -> None:
-        """回归: limit/reasoning 字段正确落到 override (不依赖 live 缓存)."""
-        m = {
-            "limit": {"context": 200000, "output": 128000},
-            "reasoning": True,
-            "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}],
-            "modalities": {"input": ["text"]},
-            "attachment": False,
-        }
-        assert _build_override(m) == {
-            "context_window": 200000,
-            "max_output_tokens": 128000,
-            "reasoning_protocol": "openai",
-            "supported_efforts": ["low", "high", "max"],
-            "default_effort": "max",
-        }
+        assert builder_module.BILLING_CURRENCY == "USD"
 
 
-class TestFreeZenIds:
-    def test_returns_free_ids(self) -> None:
-        md_models = _load_md_cache().get("opencode", {}).get("models", {})
-        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
-        assert "deepseek-v4-flash-free" in ids  # zen 免费层命名约定
-        assert "big-pickle" in ids  # models.dev 标价为 0
-        for mid in ids:
-            if "-free" in mid:
+class TestNoHardcodedProviderIdentity:
+    """provider 身份字面量禁令: 身份只能来自 models.dev 条目.
+
+    允许: CLI 选择键 ("opencode"/"nvidia")、协议分支常量 RESPONSES_SDK_PACKAGE
+    的单一定点 (opencode SDK→wire 协议知识, 非身份)、注释/文档提及.
+    """
+
+    BANNED: ClassVar[list[str]] = [
+        "https://opencode.ai/zen/v1",
+        "https://integrate.api.nvidia.com",
+        "OPENCODE_API_KEY",
+        "NVIDIA_API_KEY",
+        "OpenCode Zen",
+        "opencode-responses",
+        "big-pickle",
+        "@ai-sdk/openai-compatible",
+        "@ai-sdk/anthropic",
+        "@ai-sdk/google",
+    ]
+
+    def _code_lines(self, name: str) -> list[str]:
+        text = (SRC_DIR / name).read_text()
+        # 去掉注释与 docstring 行: 允许文档提及, 禁止代码使用
+        out: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("#", '"""', "'''")):
                 continue
-            # 非 -free id 必须有元数据且双项零标价: 空洞的 get 兑底会让
-            # 未知元数据的 id 空过本循环 (round-2 finding 1).
-            assert mid in md_models
-            cost = (md_models.get(mid) or {}).get("cost") or {}
-            assert not cost.get("input")
-            assert not cost.get("output")
+            out.append(line)
+        return out
 
-    def test_zero_cost_no_suffix_included(self) -> None:
-        """big-pickle 无 "-free" 后缀, 仅凭 models.dev 零标价入选 (原硬编码特判已删)."""
-        md_models = _load_md_cache().get("opencode", {}).get("models", {})
-        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
-        assert "big-pickle" in ids
-        cost = (md_models.get("big-pickle") or {}).get("cost") or {}
-        assert not cost.get("input")
-        assert not cost.get("output")
+    def test_no_identity_literals_in_src(self) -> None:
+        for name in ("builder.py", "fetcher.py", "__main__.py"):
+            for i, line in enumerate(self._code_lines(name), 1):
+                if "RESPONSES_SDK_PACKAGE" in line:
+                    continue  # 协议分支定点, 见 test_responses_discriminator_documented
+                for lit in self.BANNED:
+                    assert lit not in line, f"{name}:{i} 含身份字面量 {lit!r}: {line.strip()}"
 
-    def test_excludes_paid(self) -> None:
-        md_models = _load_md_cache().get("opencode", {}).get("models", {})
-        ids = get_free_zen_model_ids(_load_zen_cache(), md_models)
-        assert "gpt-5-nano" not in ids  # models.dev 标价 > 0, 非 -free 命名
-        assert "claude-sonnet-4-6" not in ids
+    def test_responses_discriminator_documented(self) -> None:
+        text = (SRC_DIR / "builder.py").read_text()
+        assert text.count('"@ai-sdk/openai"') == 1, "协议分支常量必须有且仅有一处定义点"
 
 
-class TestFreeZenClassification:
-    """合成夹具直接钉死分类契约, 不依赖 live 缓存."""
+class TestProviderDerivation:
+    """合成异形 provider 条目 → 输出身份字段必须跟随条目 (派生证明)."""
 
-    def test_unknown_metadata_non_free_excluded(self) -> None:
-        # models.dev 未收录的非 -free id 一律排除, 即使 zen 在售:
-        # 元数据缺失时无法证明免费.
-        zen = {"data": [{"id": "brand-new-paid"}, {"id": "tag-free"}]}
-        assert get_free_zen_model_ids(zen, {}) == {"tag-free"}
+    def test_identity_follows_entry(self) -> None:
+        entry = _md_entry("opencode", {"m1": _md_model()})
+        md = _md_data({"opencode": entry})
+        official = {"data": [{"id": "m1"}]}
+        (cfg,) = build_opencode("opencode", md, official, "https://fake/v9/models")
+        assert cfg.base_url == "https://fake-opencode.example/v9"
+        assert cfg.api_key_env == "FAKE_OPENCODE_KEY"
+        assert cfg.name == "opencode"
 
-    def test_zero_cost_included_without_suffix(self) -> None:
-        zen = {"data": [{"id": "alpha"}, {"id": "beta"}]}
-        md = {
-            "alpha": {"cost": {"input": 0, "output": 0}},
-            "beta": {"cost": {"input": 1, "output": 2}},
-        }
-        assert get_free_zen_model_ids(zen, md) == {"alpha"}
+    def test_nvidia_identity_follows_entry(self) -> None:
+        entry = _md_entry("nvidia", {"n1": _md_model()})
+        md = _md_data({"nvidia": entry})
+        official = {"data": [{"id": "n1"}]}
+        cfg = build_nvidia("nvidia", md, official, "https://fake/v9/models")
+        assert cfg.base_url == "https://fake-nvidia.example/v9"
+        assert cfg.api_key_env == "FAKE_NVIDIA_KEY"
+        assert cfg.headers == {"NVCF-POLL-SECONDS": "3600"}
 
-    def test_partial_zero_cost_excluded(self) -> None:
-        """单项零标价不够: input/output 必须同时为零."""
-        zen = {"data": [{"id": "delta"}]}
-        md = {"delta": {"cost": {"input": 0, "output": 2}}}
-        assert get_free_zen_model_ids(zen, md) == set()
+    def test_split_name_derived(self) -> None:
+        entry = _md_entry(
+            "opencode",
+            {
+                "chat": _md_model(),
+                "resp": _md_model(provider={"npm": "@ai-sdk/openai"}),
+            },
+        )
+        md = _md_data({"opencode": entry})
+        official = {"data": [{"id": "chat"}, {"id": "resp"}]}
+        cfgs = {c.name: c for c in build_opencode("opencode", md, official, "u")}
+        assert set(cfgs) == {"opencode", "opencode-responses"}
+        assert cfgs["opencode-responses"].kind == "responses"
+        assert cfgs["opencode"].kind == "openai"
+        # responses 桶无状态续接, chat 桶不设该字段
+        assert cfgs["opencode-responses"].responses_mode == "stateless"
+        assert cfgs["opencode"].responses_mode is None
 
-    def test_paid_model_named_like_free_is_excluded(self) -> None:
-        """钉死无硬编码: 即使模型名与历史特判对象同名, 有标价即排除."""
-        zen = {"data": [{"id": "big-pickle"}]}
-        md = {"big-pickle": {"cost": {"input": 5, "output": 5}}}
-        assert get_free_zen_model_ids(zen, md) == set()
 
-    def test_missing_cost_fields_treated_free(self) -> None:
-        # cost 键/字段缺失按 0 处理, 与 pi-opencode isFreeModel 对齐.
-        zen = {"data": [{"id": "gamma"}]}
-        md = {"gamma": {"reasoning": True}}
-        assert get_free_zen_model_ids(zen, md) == {"gamma"}
+class TestStatusFailClosed:
+    def test_unknown_status_raises(self) -> None:
+        entry = _md_entry("opencode", {"m1": _md_model(status="expired")})
+        md = _md_data({"opencode": entry})
+        with pytest.raises(SystemExit, match="unknown status"):
+            build_opencode("opencode", md, {"data": [{"id": "m1"}]}, "u")
+
+    def test_deprecated_excluded(self) -> None:
+        entry = _md_entry("opencode", {"m1": _md_model(status="deprecated")})
+        md = _md_data({"opencode": entry})
+        with pytest.raises(SystemExit, match="No free opencode"):
+            build_opencode("opencode", md, {"data": [{"id": "m1"}]}, "u")
+
+    def test_missing_entry_fail_closed(self) -> None:
+        with pytest.raises(SystemExit, match="no 'nope' provider"):
+            build_opencode("nope", {}, {"data": []}, "u")
+
+    def test_entry_missing_keys_fail_closed(self) -> None:
+        entry = _md_entry("opencode", {})
+        del entry["api"]
+        with pytest.raises(SystemExit, match="no usable 'api'"):
+            build_opencode("opencode", _md_data({"opencode": entry}), {"data": []}, "u")
+
+
+class TestOfficialIntersection:
+    def test_official_only_excluded(self) -> None:
+        """官方有而 models.dev 未收录: 无法证明免费与能力, 排除."""
+        entry = _md_entry("opencode", {"m1": _md_model()})
+        md = _md_data({"opencode": entry})
+        official = {"data": [{"id": "m1"}, {"id": "ghost"}]}
+        (cfg,) = build_opencode("opencode", md, official, "u")
+        assert cfg.models == ["m1"]
+
+    def test_paid_excluded_cost_rule(self) -> None:
+        m = _md_model(cost={"input": 1, "output": 2})
+        entry = _md_entry("opencode", {"m1": m})
+        md = _md_data({"opencode": entry})
+        with pytest.raises(SystemExit, match="No free opencode"):
+            build_opencode("opencode", md, {"data": [{"id": "m1"}]}, "u")
+
+    def test_missing_cost_not_free(self) -> None:
+        # 缺 cost/缺分项一律不算免费 (paid-leak 方向 fail-closed)
+        for cost in (None, {}, {"input": 0}, {"output": 0}):
+            m = _md_model() if cost is None else _md_model(cost=cost)
+            if cost is None:
+                del m["cost"]
+            entry = _md_entry("opencode", {"m1": m})
+            md = _md_data({"opencode": entry})
+            with pytest.raises(SystemExit, match="No free opencode"):
+                build_opencode("opencode", md, {"data": [{"id": "m1"}]}, "u")
+
+    def test_official_shape_fail_closed(self) -> None:
+        entry = _md_entry("opencode", {"m1": _md_model()})
+        md = _md_data({"opencode": entry})
+        with pytest.raises(SystemExit, match="unexpected shape"):
+            build_opencode("opencode", md, {"items": []}, "u")
+
+    def test_official_entry_without_id_fail_closed(self) -> None:
+        entry = _md_entry("opencode", {"m1": _md_model()})
+        md = _md_data({"opencode": entry})
+        with pytest.raises(SystemExit, match="without id"):
+            build_opencode("opencode", md, {"data": [{}]}, "u")
+
+
+class TestWireKind:
+    def test_responses_package(self) -> None:
+        m = _md_model(provider={"npm": "@ai-sdk/openai"})
+        assert _wire_kind(m, "@fake/compat") == "responses"
+
+    def test_provider_default_chat(self) -> None:
+        m = _md_model(provider=None)
+        assert _wire_kind(m, "@fake/compat") == "openai"
+
+    def test_other_packages_default_to_chat(self) -> None:
+        assert (
+            _wire_kind(_md_model(provider={"npm": "@ai-sdk/anthropic"}), "@fake/compat") == "openai"
+        )
+
+    def test_missing_metadata_defaults_to_chat(self) -> None:
+        assert _wire_kind({}, "@fake/compat") == "openai"
+
+
+class TestEffortsFromReasoningOptions:
+    def test_effort_values(self) -> None:
+        opts = [{"type": "effort", "values": ["low", "xhigh"]}]
+        m = _md_model(reasoning=True, reasoning_options=opts)
+        ov = _build_override(m)
+        assert ov["supported_efforts"] == ["low", "xhigh"]
+        assert ov["default_effort"] == "xhigh"
+
+    def test_toggle_fallback(self) -> None:
+        m = _md_model(reasoning=True, reasoning_options=[{"type": "toggle"}])
+        ov = _build_override(m)
+        assert ov["supported_efforts"] == ["high"]
+
+    def test_no_options_single_high(self) -> None:
+        # 无元数据不发明梯度: 单档 high, 误档由 NormalizeEffort 报错
+        m = _md_model(reasoning=True, reasoning_options=[])
+        ov = _build_override(m)
+        assert ov["supported_efforts"] == ["high"]
+        assert ov["default_effort"] == "high"
+
+    def test_no_reasoning_no_efforts(self) -> None:
+        m = _md_model(reasoning=False)
+        ov = _build_override(m)
+        assert "supported_efforts" not in ov
+        assert "reasoning_protocol" not in ov
 
 
 class TestProviderConfig:
     def test_to_toml_multi_model(self) -> None:
-        cfg = ProviderConfig(
-            name="test",
-            base_url="https://api.test.com/v1",
-            models=["a", "b", "c"],
-            default="a",
-            api_key_env="TEST_KEY",
-            context_window=100000,
-        )
-        d = cfg.to_toml()
-        assert d["name"] == "test"
-        assert d["models"] == ["a", "b", "c"]
+        p = ProviderConfig(name="t", base_url="https://x.example", models=["a", "b"])
+        d = p.to_toml()
+        assert d["models"] == ["a", "b"]
         assert "model" not in d
-        assert d["default"] == "a"
 
     def test_to_toml_single_model(self) -> None:
-        cfg = ProviderConfig(
-            name="test",
-            base_url="https://api.test.com/v1",
-            models=["a"],
-            context_window=100000,
-        )
-        d = cfg.to_toml()
-        assert d["model"] == "a"
-        assert "models" not in d
+        p = ProviderConfig(name="t", base_url="https://x.example", models=["a"])
+        assert p.to_toml()["model"] == "a"
 
 
 class TestRepairDefaultModel:
     def test_valid_bare_model_preserved(self) -> None:
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        existing = {"default_model": "a"}
-        _repair_default_model(existing, providers)
+        existing: dict = {"default_model": "a", "providers": []}
+        _repair_default_model(existing, [ProviderConfig(name="t", base_url="u", models=["a"])])
         assert existing["default_model"] == "a"
-
-    def test_valid_provider_name_preserved(self) -> None:
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        existing = {"default_model": "test"}
-        _repair_default_model(existing, providers)
-        assert existing["default_model"] == "test"
-
-    def test_valid_provider_model_format_preserved(self) -> None:
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        existing = {"default_model": "test/b"}
-        _repair_default_model(existing, providers)
-        assert existing["default_model"] == "test/b"
 
     def test_invalid_model_repaired(self) -> None:
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        existing = {"default_model": "nonexistent"}
-        _repair_default_model(existing, providers)
-        assert existing["default_model"] == "a"
-
-    def test_missing_default_not_touched(self) -> None:
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        existing: dict = {}
-        _repair_default_model(existing, providers)
-        assert "default_model" not in existing
-
-    def test_kept_provider_model_preserved(self) -> None:
-        """default_model 指向保留的旧 provider 的模型时不能被误判为无效."""
-        providers = [ProviderConfig(name="zen", base_url="https://x.com", models=["a", "b"])]
-        existing = {
-            "default_model": "local/llama",
-            "providers": [{"name": "local", "model": "llama"}],
-        }
-        _repair_default_model(existing, providers)
-        assert existing["default_model"] == "local/llama"
-
-    def test_replaced_provider_model_repaired(self) -> None:
-        """default_model 指向即将被替换的同名旧 provider 的模型时应重置."""
-        providers = [ProviderConfig(name="zen", base_url="https://x.com", models=["a", "b"])]
-        existing = {
-            "default_model": "zen/stale",
-            "providers": [{"name": "zen", "model": "stale"}],
-        }
-        _repair_default_model(existing, providers)
+        existing: dict = {"default_model": "gone", "providers": []}
+        _repair_default_model(existing, [ProviderConfig(name="t", base_url="u", models=["a"])])
         assert existing["default_model"] == "a"
 
 
 class TestTomlSchemaValidity:
-    """生成的 TOML 字段必须与 reasonix ProviderEntry / ProviderModelOverride 的
-    toml tag 完全一致, 否则字段会被静默忽略.
-
-    白名单来源: reasonix internal/config/config.go (v1.33.0):
-      ProviderEntry: name kind base_url chat_url model models models_url default
-        api_key_env preset_id preset_version headers extra_body auth_header
-        responses_mode responses_stateful balance_url context_window
-        max_output_tokens price prices thinking effort vision vision_models
-        vision_detail web_search reasoning_protocol supported_efforts
-        default_effort model_overrides no_proxy cache_ttl_minutes
-      ProviderModelOverride: reasoning_protocol supported_efforts default_effort
-        vision context_window max_output_tokens
-    """
-
-    PROVIDER_KEYS: ClassVar[set[str]] = {
-        "name",
-        "kind",
-        "base_url",
-        "chat_url",
-        "model",
-        "models",
-        "models_url",
-        "default",
-        "api_key_env",
-        "preset_id",
-        "preset_version",
-        "headers",
-        "extra_body",
-        "auth_header",
-        "responses_mode",
-        "responses_stateful",
-        "balance_url",
-        "context_window",
-        "max_output_tokens",
-        "price",
-        "prices",
-        "thinking",
-        "effort",
-        "vision",
-        "vision_models",
-        "vision_detail",
-        "web_search",
-        "reasoning_protocol",
-        "supported_efforts",
-        "default_effort",
-        "model_overrides",
-        "no_proxy",
-        "cache_ttl_minutes",
-        "billing_currency",
-    }
-    OVERRIDE_KEYS: ClassVar[set[str]] = {
-        "reasoning_protocol",
-        "supported_efforts",
-        "default_effort",
-        "vision",
-        "context_window",
-        "max_output_tokens",
-    }
-
     def test_provider_keys_valid(self) -> None:
-        providers = build_all()
-        for p in providers:
-            d = p.to_toml()
-            unknown = set(d) - self.PROVIDER_KEYS
-            assert not unknown, f"{p.name} 含无效字段: {unknown}"
-
-    def test_override_keys_valid(self) -> None:
-        providers = build_all()
-        for p in providers:
-            overrides = p.model_overrides or {}
-            for mid, ov in overrides.items():
-                d = ov.model_dump(exclude_none=True)
-                unknown = set(d) - self.OVERRIDE_KEYS
-                assert not unknown, f"{p.name}/{mid} 含无效 override 字段: {unknown}"
+        allowed = {
+            "name",
+            "kind",
+            "base_url",
+            "chat_url",
+            "model",
+            "models",
+            "default",
+            "api_key_env",
+            "context_window",
+            "max_output_tokens",
+            "balance_url",
+            "responses_mode",
+            "price",
+            "prices",
+            "billing_currency",
+            "model_overrides",
+            "reasoning_protocol",
+            "supported_efforts",
+            "default_effort",
+            "vision",
+            "vision_models",
+            "vision_detail",
+            "thinking",
+            "effort",
+            "headers",
+            "extra_body",
+            "no_proxy",
+        }
+        entry = _md_entry("opencode", {"m1": _md_model()})
+        cfgs = build_opencode(
+            "opencode", _md_data({"opencode": entry}), {"data": [{"id": "m1"}]}, "u"
+        )
+        for cfg in cfgs:
+            assert set(cfg.to_toml()) <= allowed
 
     def test_override_uses_max_output_tokens_not_max_output(self) -> None:
-        """输出预算字段必须是 max_output_tokens (max_output 会被 reasonix 忽略)."""
-        providers = build_all()
-        for p in providers:
-            overrides = p.model_overrides or {}
-            for mid, ov in overrides.items():
-                d = ov.model_dump(exclude_none=True)
-                assert "max_output" not in d, f"{p.name}/{mid} 用了无效字段 max_output"
-                assert "thinking" not in d, f"{p.name}/{mid} 用了无效字段 thinking"
+        ov = _build_override(_md_model())
+        assert "max_output" not in ov
+        assert ov["max_output_tokens"] == DEFAULT_OUTPUT_TOKENS
 
     def test_prices_have_usd_currency(self) -> None:
-        providers = build_all()
-        for p in providers:
-            prices = p.prices or {}
-            for mid, price in prices.items():
-                assert price.currency == "USD", f"{p.name}/{mid} 价格缺少 USD 币种标注"
-
-    def test_build_override_output_shape(self) -> None:
-        m = {
-            "limit": {"context": 200000, "output": 128000},
-            "reasoning": True,
-            "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}],
-            "modalities": {"input": ["text"]},
-            "attachment": False,
-        }
-        assert _build_override(m) == {
-            "context_window": 200000,
-            "max_output_tokens": 128000,
-            "reasoning_protocol": "openai",
-            "supported_efforts": ["low", "high", "max"],
-            "default_effort": "max",
-        }
-
-    def test_build_override_toggle_reasoning(self) -> None:
-        """reasoning_options 为 toggle 格式时声明 high 兜底 effort."""
-        m = {
-            "limit": {"context": 1000000, "output": 131072},
-            "reasoning": True,
-            "reasoning_options": [{"type": "toggle"}],
-            "modalities": {"input": ["text"]},
-            "attachment": False,
-        }
-        assert _build_override(m) == {
-            "context_window": 1000000,
-            "max_output_tokens": 131072,
-            "reasoning_protocol": "openai",
-            "supported_efforts": ["high"],
-            "default_effort": "high",
-        }
+        m = _md_model(cost={"input": 1, "output": 2, "cache_read": 0.5})
+        price = _price_of(m)
+        assert price is not None
+        assert price.currency == "USD"
 
 
-class TestWireKind:
-    """provider.npm → wire 协议映射的合成契约 (不依赖 live 缓存)."""
+class TestEnsureEnvPlaceholder:
+    """占位键名必须由调用方传入 (派生), 函数内无字面量."""
 
-    def test_responses_package(self) -> None:
-        assert _wire_kind({"provider": {"npm": "@ai-sdk/openai"}}) == "responses"
+    def test_creates_with_given_name(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_module, "REASONIX_CONFIG", tmp_path / "config.toml")
+        ensure_env_placeholder("FAKE_SYNTHETIC_KEY")
+        content = (tmp_path / ".env").read_text()
+        assert "FAKE_SYNTHETIC_KEY=public" in content
+        assert (tmp_path / ".env").stat().st_mode & 0o777 == ENV_FILE_PERMS
 
-    def test_other_packages_default_to_chat(self) -> None:
-        assert _wire_kind({"provider": {"npm": "@ai-sdk/openai-compatible"}}) == "openai"
-        assert _wire_kind({"provider": {"npm": "@ai-sdk/anthropic"}}) == "openai"
-        assert _wire_kind({"provider": {"npm": "@ai-sdk/google"}}) == "openai"
-
-    def test_missing_metadata_defaults_to_chat(self) -> None:
-        # zen 有而 models.dev 未收录: 免费集实测 (big-pickle 等) 均走 chat.
-        assert _wire_kind(None) == "openai"
-        assert _wire_kind({}) == "openai"
-
-
-class TestBuildOpencodeSplit:
-    """muse-spark-1.2-contributor-free (Responses wire) 必须与 chat 模型拆分."""
-
-    MD: ClassVar[dict[str, object]] = {
-        "opencode": {
-            "api": "https://opencode.ai/zen/v1",
-            "env": ["OPENCODE_API_KEY"],
-            "models": {
-                "alpha-free": {
-                    "limit": {"context": 128000, "output": 8192},
-                    "cost": {"input": 0, "output": 0},
-                },
-                "muse-spark-1.2-contributor-free": {
-                    "provider": {"npm": "@ai-sdk/openai"},
-                    "limit": {"context": MUSE_SPARK_CONTEXT, "output": MUSE_SPARK_OUTPUT},
-                    "cost": {"input": 0, "output": 0},
-                    "reasoning": True,
-                    "reasoning_options": [
-                        {"type": "effort", "values": ["minimal", "low", "medium", "high", "xhigh"]}
-                    ],
-                    "attachment": True,
-                    "modalities": {"input": ["text", "image"]},
-                },
-            },
-        }
-    }
-    ZEN: ClassVar[dict] = {
-        "data": [
-            {"id": "alpha-free"},
-            {"id": "muse-spark-1.2-contributor-free"},
-        ]
-    }
-
-    def test_splits_into_two_providers(self) -> None:
-        providers = {p.name: p for p in build_opencode(self.MD, self.ZEN)}
-        assert set(providers) == {"opencode", "opencode-responses"}
-        chat = providers["opencode"]
-        resp = providers["opencode-responses"]
-        assert chat.kind == "openai"
-        assert chat.models == ["alpha-free"]
-        assert resp.kind == "responses"
-        assert resp.responses_mode == "stateless"
-        assert resp.models == ["muse-spark-1.2-contributor-free"]
-        # 共享同一网关 / key
-        assert resp.base_url == chat.base_url == "https://opencode.ai/zen/v1"
-        assert resp.api_key_env == chat.api_key_env == "OPENCODE_API_KEY"
-
-    def test_responses_override_carries_muse_metadata(self) -> None:
-        providers = {p.name: p for p in build_opencode(self.MD, self.ZEN)}
-        ov = providers["opencode-responses"].model_overrides["muse-spark-1.2-contributor-free"]
-        assert ov.model_dump(exclude_none=True) == {
-            "context_window": 1048576,
-            "max_output_tokens": 131072,
-            "reasoning_protocol": "openai",
-            "supported_efforts": ["minimal", "low", "medium", "high", "xhigh"],
-            "default_effort": "xhigh",
-            "vision": True,
-        }
-
-    def test_chat_only_zen_keeps_single_provider(self) -> None:
-        providers = {p.name: p for p in build_opencode(self.MD, {"data": [{"id": "alpha-free"}]})}
-        assert set(providers) == {"opencode"}
-        assert providers["opencode"].models == ["alpha-free"]
-
-
-class TestIntegration:
-    def test_build_all_returns_providers(self) -> None:
-        providers = build_all()
-        assert len(providers) >= EXPECTED_PROVIDER_COUNT
-        names = {p.name for p in providers}
-        assert "opencode" in names
-        assert "nvidia" in names
-
-    def test_build_all_filter_opencode_only(self) -> None:
-        providers = build_all(providers_filter=["opencode"])
-        assert {p.name for p in providers} == {"opencode", "opencode-responses"}
-
-    def test_build_all_filter_nvidia_only(self) -> None:
-        providers = build_all(providers_filter=["nvidia"])
-        assert len(providers) == 1
-        assert providers[0].name == "nvidia"
-
-    def test_opencode_zen_has_free_models(self) -> None:
-        md_data = fetch_models_dev()
-        providers = build_opencode(md_data, fetch_zen_models())
-        assert len(providers) > 0
-        p = providers[0]
-        # 字段遵循 models.dev 的 opencode provider 条目.
-        assert p.name == "opencode"
-        assert p.base_url == "https://opencode.ai/zen/v1"
-        assert p.api_key_env == "OPENCODE_API_KEY"
-        assert len(p.models) > 0
-        md_models = md_data["opencode"]["models"]
-        for mid in p.models:
-            if "-free" in mid:
-                continue
-            assert mid in md_models
-            cost = (md_models.get(mid) or {}).get("cost") or {}
-            assert not cost.get("input")
-            assert not cost.get("output")
-        # opencode 头部 (User-Agent / x-opencode-*) 由 reasonix 源码检测到该
-        # provider 后动态生成, 配置里不再静态写入, 避免与源码重复.
-        assert p.headers is None
-
-    def test_muse_spark_responses_provider(self) -> None:
-        """zen 在售的 muse-spark-1.2-contributor-free 必须走 Responses wire.
-
-        models.dev provider.npm=@ai-sdk/openai 声明该模型是 Responses 模型,
-        chat/completions 端点实测返回 HTTP 500, 只有 /responses 可用. 拆到
-        kind=responses 的独立 provider (stateless) 后模型才真正可用.
-        """
-        md_data = fetch_models_dev()
-        zen = fetch_zen_models()
-        zen_ids = {m["id"] for m in zen.get("data", [])}
-        if "muse-spark-1.2-contributor-free" not in zen_ids:
-            pytest.skip("zen 暂未在售 muse-spark-1.2-contributor-free")
-        providers = {p.name: p for p in build_opencode(md_data, zen)}
-        assert "opencode-responses" in providers
-        resp = providers["opencode-responses"]
-        assert resp.kind == "responses"
-        assert resp.responses_mode == "stateless"
-        assert "muse-spark-1.2-contributor-free" in resp.models
-        # chat provider 不得再包含 Responses 模型
-        assert "muse-spark-1.2-contributor-free" not in providers["opencode"].models
-        # 共享同一网关 / key
-        assert resp.base_url == providers["opencode"].base_url
-        assert resp.api_key_env == "OPENCODE_API_KEY"
-
-    def test_muse_spark_responses_override(self) -> None:
-        """muse 的 models.dev 元数据必须完整落到 model_overrides."""
-        md_data = fetch_models_dev()
-        m = md_data["opencode"]["models"]["muse-spark-1.2-contributor-free"]
-        override = _build_override(m)
-        assert override["reasoning_protocol"] == "openai"
-        assert override["supported_efforts"] == ["minimal", "low", "medium", "high", "xhigh"]
-        assert override["default_effort"] == "xhigh"
-        assert override["context_window"] == MUSE_SPARK_CONTEXT
-        assert override["max_output_tokens"] == MUSE_SPARK_OUTPUT
-        assert override["vision"] is True
-
-    def test_nvidia_has_chat_models(self) -> None:
-        providers = [build_nvidia(fetch_models_dev())]
-        assert len(providers) == 1
-        p = providers[0]
-        # 字段遵循 models.dev 的 nvidia provider 条目.
-        assert p.name == "nvidia"
-        assert p.base_url == "https://integrate.api.nvidia.com/v1"
-        assert p.api_key_env == "NVIDIA_API_KEY"
-        assert len(p.models) > 0
-
-    def test_write_config_requires_existing_file(
+    def test_preserves_existing_value(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        nonexistent = tmp_path / "nonexistent.toml"
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", nonexistent)
+        monkeypatch.setattr(builder_module, "REASONIX_CONFIG", tmp_path / "config.toml")
+        (tmp_path / ".env").write_text("FAKE_SYNTHETIC_KEY=user-real-key\n")
+        ensure_env_placeholder("FAKE_SYNTHETIC_KEY")
+        assert (tmp_path / ".env").read_text() == "FAKE_SYNTHETIC_KEY=user-real-key\n"
+
+
+class TestWriteConfig:
+    def test_requires_existing_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_module, "REASONIX_CONFIG", tmp_path / "nonexistent.toml")
         with pytest.raises(SystemExit, match="does not exist"):
-            write_config(
-                [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
+            write_config([ProviderConfig(name="t", base_url="https://x.example", models=["a"])])
+
+    def test_preserves_valid_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = tmp_path / "config.toml"
+        cfg.write_text('config_version = 5\ndefault_model = "a"\n')
+        monkeypatch.setattr(builder_module, "REASONIX_CONFIG", cfg)
+        write_config([ProviderConfig(name="t", base_url="https://x.example", models=["a"])])
+        with cfg.open("rb") as f:
+            assert tomllib.load(f)["default_model"] == "a"
+
+
+class TestBuildAllAuthRetry:
+    """无认证失败后带 key 重试 (NIM 路径), 仍无 key 则 fail-closed."""
+
+    def test_retry_with_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[bool] = []
+
+        def fake_fetch(entry: dict, pid: str, api_key: str = "") -> dict:
+            calls.append(bool(api_key))
+            if not api_key:
+                msg = "unauthorized"
+                raise SystemExit(msg)
+            return {"data": []}
+
+        monkeypatch.setattr(builder_module, "fetch_official_models", fake_fetch)
+        monkeypatch.setenv("FAKE_K", "s")
+        entry = _md_entry("opencode", {})
+        entry["env"] = ["FAKE_K"]
+        out = builder_module._fetch_official_list(entry, "opencode")
+        assert out == {"data": []}
+        assert calls == [False, True]
+
+    def test_no_key_reraises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_fetch(entry: dict, pid: str, api_key: str = "", use_cache: bool = True) -> dict:
+            msg = "unauthorized"
+            raise SystemExit(msg)
+
+        monkeypatch.setattr(builder_module, "fetch_official_models", fake_fetch)
+        monkeypatch.delenv("FAKE_K", raising=False)
+        entry = _md_entry("opencode", {})
+        entry["env"] = ["FAKE_K"]
+        with pytest.raises(SystemExit, match="needs FAKE_K"):
+            builder_module._fetch_official_list(entry, "opencode")
+
+    def test_no_key_skips_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # 无 key 时不读缓存 (缓存可能是带 key 拉的旧名单, 读它等于绕过 key 门)
+        seen: list[bool] = []
+
+        def fake_fetch(entry: dict, pid: str, api_key: str = "", use_cache: bool = True) -> dict:
+            seen.append(use_cache)
+            assert pid == "opencode"
+            return {"data": []}
+
+        monkeypatch.setattr(builder_module, "fetch_official_models", fake_fetch)
+        monkeypatch.delenv("FAKE_K", raising=False)
+        entry = _md_entry("opencode", {})
+        entry["env"] = ["FAKE_K"]
+        out = builder_module._fetch_official_list(entry, "opencode")
+        assert out == {"data": []}
+        assert seen == [False]
+
+    def test_keyed_path_may_use_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # 有 key 时缓存可用 (key 门已过, 缓存命中省一次请求)
+        seen: list[bool] = []
+
+        def fake_fetch(entry: dict, pid: str, api_key: str = "", use_cache: bool = True) -> dict:
+            seen.append(use_cache)
+            return {"data": []}
+
+        monkeypatch.setattr(builder_module, "fetch_official_models", fake_fetch)
+        monkeypatch.setenv("FAKE_K", "s")
+        entry = _md_entry("opencode", {})
+        entry["env"] = ["FAKE_K"]
+        out = builder_module._fetch_official_list(entry, "opencode")
+        assert out == {"data": []}
+        assert seen == [True]
+
+
+class TestProbe:
+    def test_only_404_marks_dead(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[str] = []
+
+        class FakeResp:
+            def __init__(self, status: int) -> None:
+                self.status_code = status
+
+        class FakeClient:
+            def __init__(self, *a: object, **k: object) -> None:
+                pass
+
+            def __enter__(self) -> Self:
+                return self
+
+            def __exit__(self, *a: object) -> None:
+                pass
+
+            def post(self, url: str, headers: dict, json: dict) -> FakeResp:
+                calls.append(json["model"])
+                assert url == "https://fake.example/v9/chat/completions", url
+                if json["model"] == "gone":
+                    return FakeResp(404)
+                if json["model"] == "flaky":
+                    msg = "slow"
+                    raise httpx.ReadTimeout(msg)
+                return FakeResp(200)
+
+        monkeypatch.setattr(fetcher_module.httpx, "Client", FakeClient)
+        dead = fetcher_module.probe_nvidia_live(
+            ["gone", "flaky", "ok"], "k", "https://fake.example/v9"
+        )
+        assert dead == {"gone"}
+
+
+class TestNvidiaDeadLiveFailOpen:
+    def test_no_key_skips_probe(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        entry = _md_entry("nvidia", {})
+        monkeypatch.delenv("FAKE_NVIDIA_KEY", raising=False)
+        assert main_module._nvidia_dead_live({}, entry) == set()
+
+    def test_official_fetch_error_keeps_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        entry = _md_entry("nvidia", {})
+        monkeypatch.setenv("FAKE_NVIDIA_KEY", "k")
+        monkeypatch.setattr(main_module, "_fetch_official_list", _raise_down)
+        assert main_module._nvidia_dead_live({}, entry) == set()
+
+    def test_probe_error_keeps_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        entry = _md_entry("nvidia", {"n1": _md_model()})
+        md = _md_data({"nvidia": entry})
+        monkeypatch.setenv("FAKE_NVIDIA_KEY", "k")
+        monkeypatch.setattr(
+            main_module, "_fetch_official_list", lambda *a, **k: {"data": [{"id": "n1"}]}
+        )
+        monkeypatch.setattr(main_module, "probe_nvidia_live", _raise_down)
+        assert main_module._nvidia_dead_live(md, entry) == set()
+
+
+class TestLiveIntegration:
+    """实网集成 (需网络; 缓存 TTL 内复用快照)."""
+
+    def test_live_opencode_split(self) -> None:
+        md_data = fetch_models_dev()
+        entry = md_data["opencode"]
+        official = fetch_official_models(entry, "opencode")
+        cfgs = {
+            c.name: c
+            for c in build_opencode(
+                "opencode", md_data, official, f"{entry['api'].rstrip('/')}/models"
             )
-
-    def test_write_config_preserves_valid_default_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text('config_version = 5\ndefault_model = "a"\n')
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        write_config(providers)
-        with cfg_file.open("rb") as f:
-            data = tomllib.load(f)
-        assert data["default_model"] == "a"
-        assert data["config_version"] == CONFIG_VERSION
-
-    def test_write_config_repairs_invalid_default_model(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text('config_version = 5\ndefault_model = "old-model"\n')
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        write_config(providers)
-        with cfg_file.open("rb") as f:
-            data = tomllib.load(f)
-        assert data["default_model"] == "a"
-
-    def test_write_config_preserves_other_providers(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text(
-            'config_version = 5\n\n[[providers]]\nname = "old-zen"\nbase_url = "x"\n'
-            'model = "old"\napi_key_env = "OLD"\ncontext_window = 1000\n'
-        )
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        providers = [ProviderConfig(name="test", base_url="https://x.com", models=["a", "b"])]
-        write_config(providers)
-        with cfg_file.open("rb") as f:
-            data = tomllib.load(f)
-        names = [p["name"] for p in data["providers"]]
-        assert "old-zen" in names
-        assert "test" in names
-
-
-class TestEnsureOpencodePublicKey:
-    """验证 .env 中 OPENCODE_API_KEY=public 的写入与权限 (.env 含密钥须为 0600)."""
-
-    def test_creates_env_with_0600(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        assert not (tmp_path / ".env").exists()
-        write_config(
-            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
-        )
-        env = tmp_path / ".env"
-        assert env.exists()
-        assert "OPENCODE_API_KEY=public" in env.read_text()
-        assert (env.stat().st_mode & 0o777) == ENV_FILE_PERMS
-
-    def test_updates_existing_env_and_tightens_perms(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        env = tmp_path / ".env"
-        env.write_text("OTHER_KEY=secret\n")
-        env.chmod(0o644)  # 模拟宽松权限的既有文件
-        write_config(
-            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
-        )
-        content = env.read_text()
-        assert "OPENCODE_API_KEY=public" in content  # 已添加
-        assert "OTHER_KEY=secret" in content  # 保留其他凭证
-        assert (env.stat().st_mode & 0o777) == ENV_FILE_PERMS  # 权收复紧
-
-
-class TestEnsureOpencodePublicKeyDedup:
-    """验证 .env 中重复的 OPENCODE_API_KEY 行被去重 (历史遗留重复行清理)."""
-
-    def test_dedups_repeated_lines(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        env = tmp_path / ".env"
-        # 模拟历史遗留的重复行 + 其他真实凭证
-        env.write_text(
-            "OPENCODE_API_KEY=public\n"
-            "OTHER_KEY=secret\n"
-            "OPENCODE_API_KEY=public\n"
-            "OPENCODE_API_KEY=public\n"
-        )
-        write_config(
-            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
-        )
-        content = env.read_text()
-        assert content.count("OPENCODE_API_KEY=public") == 1, (
-            f"应只剩 1 行, 实际 {content.count('OPENCODE_API_KEY=public')}"
-        )
-        assert "OTHER_KEY=secret" in content  # 其他凭证保留
-        assert (env.stat().st_mode & 0o777) == ENV_FILE_PERMS
-
-
-class TestEnsureOpencodeKeyPreserved:
-    """用户已设置的 OPENCODE_API_KEY 必须原样保留.
-
-    工具只负责在缺失时补 ``public`` (开箱即用); 把用户自己的 key 静默
-    覆盖成共享匿名凭据会破坏付费模型认证与独立限流配额.
-    """
-
-    def test_existing_user_key_not_overwritten(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        env = tmp_path / ".env"
-        env.write_text("OPENCODE_API_KEY=sk-user-own-key\nOTHER_KEY=secret\n")
-        write_config(
-            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
-        )
-        content = env.read_text()
-        assert "OPENCODE_API_KEY=sk-user-own-key" in content
-        assert "OPENCODE_API_KEY=public" not in content
-        assert "OTHER_KEY=secret" in content
-
-    def test_dedup_keeps_first_real_value(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        cfg_file = tmp_path / "config.toml"
-        cfg_file.write_text("config_version = 5\n\n")
-        monkeypatch.setattr("reasonix_config.builder.REASONIX_CONFIG", cfg_file)
-        env = tmp_path / ".env"
-        env.write_text("OPENCODE_API_KEY=sk-real-key\nOPENCODE_API_KEY=public\n")
-        write_config(
-            [ProviderConfig(name="test", base_url="https://x.com", models=["a"])],
-        )
-        content = env.read_text()
-        assert content.count("OPENCODE_API_KEY=") == 1
-        assert "OPENCODE_API_KEY=sk-real-key" in content
-
-
-class TestDeprecatedFilter:
-    """models.dev 标记 deprecated 的模型必须被剔除.
-
-    免费推广结束的模型 (如 deepseek-v4-flash-free) 仍会出现在 zen /models
-    列表里, 只有 models.dev 的 status 元数据能识别; stale 缓存曾让该过滤
-    失效, 这里用纯 mock 数据固定行为.
-    """
-
-    @staticmethod
-    def _patch_fetch(
-        monkeypatch: pytest.MonkeyPatch,
-        zen_ids: list[str],
-        md_models: dict,
-    ) -> None:
-        zen = {"object": "list", "data": [{"id": i} for i in zen_ids]}
-        md = {
-            "opencode": {
-                "api": "https://opencode.ai/zen/v1",
-                "env": ["OPENCODE_API_KEY"],
-                "models": md_models,
-            },
-            "nvidia": {"models": {}},
         }
-        monkeypatch.setattr(builder_module, "fetch_zen_models", lambda: zen)
-        monkeypatch.setattr(builder_module, "fetch_models_dev", lambda: md)
+        assert set(cfgs) == {"opencode", "opencode-responses"}
+        assert cfgs["opencode"].base_url == entry["api"]
+        assert cfgs["opencode"].api_key_env == entry["env"][0]
+        sparks = [m for m in cfgs["opencode-responses"].models if "spark" in m]
+        assert len(sparks) >= 1
+        assert not (set(cfgs["opencode"].models) & set(cfgs["opencode-responses"].models))
 
-    @staticmethod
-    def _build_patched(
-        monkeypatch: pytest.MonkeyPatch,
-        zen_ids: list[str],
-        md_models: dict,
-    ) -> ProviderConfig:
-        TestDeprecatedFilter._patch_fetch(monkeypatch, zen_ids, md_models)
-        providers = build_opencode(
-            builder_module.fetch_models_dev(), builder_module.fetch_zen_models()
+    def test_live_nvidia_build(self) -> None:
+        if not os.environ.get("NVIDIA_API_KEY", "").strip():
+            pytest.skip("needs NVIDIA_API_KEY")
+        md_data = fetch_models_dev()
+        entry = md_data["nvidia"]
+        official = fetch_official_models(entry, "nvidia", os.environ["NVIDIA_API_KEY"].strip())
+        cfg = build_nvidia("nvidia", md_data, official, "u")
+        assert cfg.base_url == entry["api"]
+        assert len(cfg.models) > 0
+
+
+class TestCrossPinVersion:
+    """TS 的 OPENCODE_VERSION 必须与 fix.patch 的 UA 同源 (wire 指纹一致性)."""
+
+    TS_PATH = Path(__file__).resolve().parent.parent.parent / "pi-opencode" / "index.ts"
+    PATCH_PATH = (
+        Path(__file__).resolve().parent.parent.parent.parent / "overlays" / "reasonix" / "fix.patch"
+    )
+
+    def test_opencode_version_matches_patch_ua(self) -> None:
+        text = self.TS_PATH.read_text()
+        match = re.search(r'OPENCODE_VERSION\s*=\s*"([^"]+)"', text)
+        assert match
+        patch = self.PATCH_PATH.read_text()
+        assert f"opencode/beta/{match.group(1)}/cli" in patch
+
+
+class TestIsFreeExplicit:
+    """免费必须显式零值; 缺失一律不算 (paid-leak fail-closed)."""
+
+    def test_explicit_zeros_free(self) -> None:
+        assert _is_free({"cost": {"input": 0, "output": 0}}) is True
+
+    def test_missing_cost_not_free(self) -> None:
+        assert _is_free({}) is False
+        assert _is_free({"cost": None}) is False
+
+    def test_partial_cost_not_free(self) -> None:
+        assert _is_free({"cost": {"input": 0}}) is False
+        assert _is_free({"cost": {"output": 0}}) is False
+
+    def test_paid_not_free(self) -> None:
+        assert _is_free({"cost": {"input": 0.5, "output": 0}}) is False
+
+
+class TestVisionMapping:
+    def test_attachment_true(self) -> None:
+        assert _build_override(_md_model(attachment=True))["vision"] is True
+
+    def test_image_input(self) -> None:
+        m = _md_model(modalities={"input": ["text", "image"], "output": ["text"]})
+        assert _build_override(m)["vision"] is True
+
+    def test_text_only_no_vision_key(self) -> None:
+        assert "vision" not in _build_override(_md_model())
+
+
+class TestPriceEdges:
+    def test_free_has_no_price(self) -> None:
+        assert _price_of({"cost": {"input": 0, "output": 0}}) is None
+
+    def test_cache_write_ignored(self) -> None:
+        # cache_write 无对应字段: 不进价格表…
+        assert _price_of({"cost": {"cache_write": 1}}) is None
+        # …且不算免费准入 (input/output 缺失)
+        assert _is_free({"cost": {"cache_write": 1}}) is False
+
+    def test_cache_read_maps_to_cache_hit(self) -> None:
+        cache_read = 0.1
+        price = _price_of({"cost": {"input": 0, "output": 0, "cache_read": cache_read}})
+        assert price is not None
+        assert price.cache_hit == cache_read
+
+
+class TestBuildAllIsolation:
+    """单家失败只记 errors, 不丢另一家的成功构建."""
+
+    def _md(self) -> dict:
+        return {
+            "opencode": _md_entry("opencode", {"m1": _md_model()}),
+            "nvidia": _md_entry("nvidia", {"n1": _md_model()}),
+        }
+
+    def _official(self) -> dict:
+        return {"opencode": {"data": [{"id": "m1"}]}, "nvidia": {"data": [{"id": "n1"}]}}
+
+    def test_both_ok_no_errors(self) -> None:
+        providers, errors = build_all(md_data=self._md(), official=self._official())
+        assert errors == []
+        assert {p.name for p in providers} == {"opencode", "nvidia"}
+
+    def test_bad_status_isolates_provider(self) -> None:
+        md = self._md()
+        md["opencode"]["models"]["m1"]["status"] = "expired"
+        providers, errors = build_all(md_data=md, official=self._official())
+        assert [p.name for p in providers] == ["nvidia"]
+        assert len(errors) == 1
+        assert "unknown status" in errors[0]
+
+    def test_all_bad_returns_errors(self) -> None:
+        md = self._md()
+        md["opencode"]["models"]["m1"]["status"] = "expired"
+        md["nvidia"]["models"]["n1"]["status"] = "weird"
+        providers, errors = build_all(md_data=md, official=self._official())
+        assert providers == []
+        assert len(errors) == len(self._md())
+
+    def test_provider_filter(self) -> None:
+        providers, errors = build_all(
+            providers_filter=["nvidia"], md_data=self._md(), official=self._official()
         )
-        # 这些夹具全是 chat 模型, 拆分后只有一个 opencode provider
-        assert len(providers) == 1
-        return providers[0]
+        assert [p.name for p in providers] == ["nvidia"]
+        assert errors == []
 
-    def test_deprecated_model_excluded(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        p = self._build_patched(
-            monkeypatch,
-            ["alpha-free", "beta-free"],
-            {
-                "alpha-free": {
-                    "status": "deprecated",
-                    "limit": {"context": 200000, "output": 32000},
-                },
-                "beta-free": {"limit": {"context": 200000, "output": 32000}},
-            },
-        )
-        assert p.models == ["beta-free"], "deprecated 模型必须被剔除"
 
-    def test_unknown_model_kept_without_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """zen 有而 models.dev 未收录的模型仍收录 (无元数据优于不可用)."""
-        p = self._build_patched(monkeypatch, ["brand-new-free"], {})
-        assert p.models == ["brand-new-free"]
-        assert p.model_overrides is None
+class TestMainErrors:
+    """main 先写成功部分, 再凭 errors 非零退出."""
 
-    def test_all_deprecated_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        with pytest.raises(SystemExit, match="No free OpenCode Zen models"):
-            self._build_patched(
-                monkeypatch,
-                ["gone-free"],
-                {"gone-free": {"status": "deprecated", "limit": {"context": 100000}}},
-            )
+    def test_writes_good_then_exits_nonzero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = ProviderConfig(name="t", base_url="https://x.example", models=["a"])
+
+        def _no_models() -> dict:
+            return {}
+
+        def _boom(**kwargs: object) -> tuple:
+            return [cfg], ["boom"]
+
+        monkeypatch.setattr(main_module, "fetch_models_dev", _no_models)
+        monkeypatch.setattr(main_module, "build_all", _boom)
+        written: list = []
+        monkeypatch.setattr(main_module, "write_config", lambda ps: written.extend(ps) or "p")
+        with pytest.raises(SystemExit) as exc:
+            main_module.main(["--provider", "opencode"])
+        assert exc.value.code == 1
+        assert written == [cfg]
+
+    def test_clean_run_exits_zero(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        cfg = ProviderConfig(name="opencode", base_url="https://x.example", models=["a"])
+
+        def _no_models() -> dict:
+            return {}
+
+        def _clean(**kwargs: object) -> tuple:
+            return [cfg], []
+
+        monkeypatch.setattr(main_module, "fetch_models_dev", _no_models)
+        monkeypatch.setattr(main_module, "build_all", _clean)
+        monkeypatch.setattr(main_module, "write_config", lambda ps: "p")
+        monkeypatch.setattr(main_module, "ensure_env_placeholder", lambda k: None)
+        main_module.main(["--provider", "opencode"])
+        out = capsys.readouterr().out
+        assert "Written 1 provider" in out

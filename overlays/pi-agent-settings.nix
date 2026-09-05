@@ -24,14 +24,12 @@ writeText "settings.json" (
       "npm:pi-mcp-adapter"
       "npm:@juicesharp/rpiv-ask-user-question"
       "npm:@juicesharp/rpiv-todo"
-      "npm:pi-lens"
       "npm:@ff-labs/pi-fff"
-      "npm:@dietrichgebert/ponytail"
       "npm:pi-memory"
     ];
     env.PI_LENS_STARTUP_MODE = "minimal";
     defaultProvider = "opencode";
-    defaultModel = "mimo-v2.5-free";
+    defaultModel = "muse-spark-1.3-contributor-free";
     defaultThinkingLevel = "max";
   }
 )

@@ -1,29 +1,44 @@
-"""OpenCode Zen / NVIDIA NIM 免费模型 → reasonix config.toml 生成器.
+"""Zen / NIM 模型 → reasonix config.toml 生成器.
 
-models.dev 模型条目 (opencode/nvidia) 字段与 reasonix 配置的对应关系:
+唯一元数据源 = models.dev (https://models.dev/api.json); 名单来源 = 各官方
+``{api}/models`` (opencode zen / NIM). 收录规则: 官方在售 ∩ models.dev 已收录
+∩ status 非 deprecated ∩ 派生可聊天 ∩ (opencode 额外要求 cost 全零免费).
 
+models.dev 字段 → reasonix 配置映射 (provider 级 + 模型级, 两表并集须覆盖
+opencode/nvidia 下每一个真实出现的 key, 见 *_FIELD_* 集合与 TestFieldCoverage):
+
+  provider id (顶层 key)  → reasonix provider 名 (opencode 按 wire 拆分时
+                             后缀 "-responses", 见 build_opencode)
+  provider api           → base_url; 官方名单与 chat 探活 URL 均由此派生
+  provider env[0]        → api_key_env
+  provider npm           → wire 默认值 (模型级 provider.npm 优先);
+                           协议分支见 RESPONSES_SDK_PACKAGE
+  provider name/doc      → 展示/文档, reasonix 无对应字段
   id                     → models 列表 / model_overrides key / prices key
   limit.context          → context_window (model_overrides, provider 取组内最大值)
   limit.output           → max_output_tokens (model_overrides)
+  limit.input            → 忽略 (reasonix 无独立输入预算字段)
   reasoning (bool)       → reasoning_protocol="openai" (model_overrides)
-  reasoning_options      → effort 取 supported_efforts + default_effort
-                           (取最高档; toggle 兜底为 high, 空列表/仅 budget_tokens
-                           兜底为 low/medium/high 与 pi 保持一致)
+  reasoning_options      → effort 值 → supported_efforts + default_effort
+                           (取最高档; toggle→high; 无选项→单档high)
+  reasoning_options 中 budget_tokens (含 min/max) → 忽略 (reasoning 预算
+                           reasonix 不可设, 档位兜底已覆盖)
   attachment / modalities.input 含 "image" → vision=true (model_overrides)
-  provider.npm           → zen 网关 wire 协议: "@ai-sdk/openai" = Responses
-                           (kind="responses", responses_mode="stateless"),
-                           其他 = chat completions (kind="openai")
-  cost.input/output/cache_read → prices (per-model, USD; cache_write 与
-                           tiers/context_over_200k 分层定价 reasonix Pricing
-                           不支持, 不入配置)
-  status=deprecated      → 过滤
-  其余字段 (name/description/family/tool_call/structured_output/temperature/
-  knowledge/release_date/open_weights/interleaved) 为客户端/展示元数据,
-  reasonix 配置无对应项.
+  modalities.output 不含 "text" → 非聊天模型, 剔除
+  tool_call == False     → 非 agent 模型, 剔除
+  provider.npm (模型级)  → wire 协议判定 (chat / responses), 见 _wire_kind
+  cost.input/output/cache_read → prices (per-model, USD); cache_write /
+                           tiers / context_over_200k / input_audio 等
+                           reasonix Pricing 不支持, 不入配置
+  status 缺失            → 正常收录; ==deprecated → 剔除; 其他未知取值 →
+                           fail-closed 报错 (models.dev 新增状态语义时大声失败)
+  name/description/family/knowledge/release_date/last_updated/open_weights/
+  interleaved/structured_output/temperature → 展示或运行时自适应, 无对应字段
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -33,7 +48,7 @@ from typing import Any
 
 import tomli_w
 
-from reasonix_config.fetcher import fetch_models_dev, fetch_zen_models
+from reasonix_config.fetcher import fetch_models_dev, fetch_official_models
 from reasonix_config.models import ModelOverride, Pricing, ProviderConfig
 
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
@@ -44,39 +59,49 @@ MIN_CHAT_CONTEXT = 8000
 # 被钉回, 形成无谓的迁移循环。
 CONFIG_VERSION = 7
 
+# CLI 选择键 = models.dev 顶层 provider key (用户输入词汇, 非 provider 身份).
+# 缺失 fail-closed (见 _provider_entry).
 PROVIDER_NAMES = ("opencode", "nvidia")
 
-# models.dev cost 字段单位为美元 (USD); reasonix 未显式标注币种时按本地
+# models.dev cost 单位为美元 (USD); reasonix 未显式标注币种时按本地
 # display_currency 显示, 免费模型会被误读为 ¥0 的等值而非明确的 USD 0。
-# 因此在 provider 级固化为 USD, 保证价格语义正确。
 BILLING_CURRENCY = "USD"
 
-# models.dev 模型的 provider.npm 声明 opencode 客户端实际使用的 SDK 包, 由此
-# 推断 zen 网关 /zen/v1 上的 wire 协议:
-#   - "@ai-sdk/openai"           → OpenAI Responses   (POST {base_url}/responses)
-#   - 其他 / 缺省 (openai-compatible) → chat completions (POST {base_url}/chat/completions)
-# 实测 (2026-08): 免费集中 muse-spark-1.2-contributor-free 是唯一 Responses
-# 模型, chat/completions 对它返回 HTTP 500, /responses 正常。reasonix 里
-# 两种 wire 由 provider kind 区分: "openai" → /chat/completions, "responses"
-# → /responses (stateless, 与上游 opencode go responses 预设一致)。
+# 协议知识 (opencode 客户端 SDK 包 → wire 协议), 非 provider 身份配置:
+# opencode 按 models.dev provider.npm 选择 AI SDK 包: Responses SDK 包走
+# OpenAI Responses (POST {base_url}/responses), 其他 (含缺省) 走与 OpenAI
+# 兼容的 chat completions. provider 身份字段 (name/api/env/npm 取值) 一律
+# 从 models.dev provider 条目派生, 本常量只做协议分支.
 RESPONSES_SDK_PACKAGE = "@ai-sdk/openai"
 
-# models.dev 字段级覆盖率审计。reasonix/pi 只消费下列字段, 其余为展示或
-# 运行时自适应 (无对应可设字段)。两集合并集必须覆盖 opencode/nvidia provider
-# 下每一个真实出现的 key, 否则 TestFieldCoverage 会失败——新增字段须在此显式
-# 归类 (handled 或 ignored), 不允许静默遗漏。
+# NIM 长轮询优化头. models.dev 无 headers 字段, 无数据源可派生, 显式声明
+# (NIM 文档行为); 与 provider 身份无关.
+NIM_EXTRA_HEADERS = {"NVCF-POLL-SECONDS": "3600"}
+
+# Zen 匿名凭据 (opencode 文档行为, 无 key 即可用免费层; reasonix 仍需发送
+# Authorization 头, 故以 "public" 占位). 占位键名从 provider env[0] 派生,
+# 只给 opencode 补 (见 __main__); nvidia 缺 key 必须 fail-closed, 永不写假值.
+ZEN_ANONYMOUS_CREDENTIAL = "public"
+
+# models.dev 现实中出现的 status 取值 (实测 2026-09: 仅 missing/deprecated).
+# 未知取值 fail-closed, 见 _check_status.
+KNOWN_STATUSES: frozenset[str | None] = frozenset({None, "deprecated"})
+
+# models.dev 字段级覆盖率审计. 两集合并集必须覆盖 opencode/nvidia 下每一个
+# 真实出现的 key, 否则 TestFieldCoverage 会失败——新增字段须在此显式归类
+# (handled 或 ignored), 不允许静默遗漏.
 MODEL_FIELD_HANDLED: frozenset[str] = frozenset(
     {
         "id",  # 用作模型 key, 不参与覆盖映射
-        "limit",  # context/output -> context_window/max_output_tokens
-        "cost",  # input/output/cache_read -> Pricing
+        "limit",  # context/output -> context_window/max_output_tokens (input 忽略)
+        "cost",  # input/output/cache_read -> Pricing (其余分项忽略)
         "modalities",  # output 含 text 决定可否作聊天模型; input 含 image -> vision
         "attachment",  # True -> vision
         "reasoning",  # True -> reasoning_protocol
-        "reasoning_options",  # effort 类型 -> supported_efforts/default_effort
-        "status",  # deprecated -> 剔除
+        "reasoning_options",  # effort -> supported_efforts/default_effort (budget_tokens 忽略)
+        "status",  # deprecated -> 剔除, 未知 -> fail-closed
         "tool_call",  # False -> 非 agent 模型, 剔除
-        "provider",  # npm -> 模型 wire 协议 (chat / responses), 见 _wire_kind
+        "provider",  # 模型级 npm -> wire 协议判定, 见 _wire_kind
     }
 )
 MODEL_FIELD_IGNORED: frozenset[str] = frozenset(
@@ -95,90 +120,115 @@ MODEL_FIELD_IGNORED: frozenset[str] = frozenset(
 )
 PROVIDER_FIELD_HANDLED: frozenset[str] = frozenset(
     {
-        "api",  # -> base_url
+        "id",  # 顶层 key 即 reasonix provider 名 (按 wire 拆分时加后缀)
+        "api",  # -> base_url; 官方名单 / 探活用 URL 均由此派生
         "env",  # env[0] -> api_key_env
         "models",  # -> models / model_overrides / prices
+        "npm",  # wire 默认值 (模型级 provider.npm 优先), 见 _wire_kind
     }
 )
 PROVIDER_FIELD_IGNORED: frozenset[str] = frozenset(
     {
-        "id",  # 我们固定 provider name (opencode/nvidia)
-        "npm",  # 内部 SDK 包名, provider 级无 wire 判定用途
-        "name",  # 展示名
+        "name",  # 展示名, reasonix 无展示字段
         "doc",  # 文档链接
     }
 )
 
 
-ALWAYS_THINKS_PREFIXES = ("big-pickle",)
-ALWAYS_THINKS_EFFORTS = ["low", "high", "max"]
+def _provider_entry(md_data: dict[str, Any], pid: str) -> dict[str, Any]:
+    """取 models.dev provider 条目并校验必需字段 (缺失 fail-closed).
+
+    必需: api / env(非空) / models. name/npm 缺失仅告警? 不——同样
+    fail-closed: provider 条目形态漂移时静默生成等于编造配置.
+    """
+    entry = md_data.get(pid)
+    if not isinstance(entry, dict):
+        msg = f"models.dev has no {pid!r} provider; refusing to guess provider identity"
+        raise SystemExit(msg)
+    for key in ("api", "env", "models", "name", "npm"):
+        if not entry.get(key):
+            msg = f"models.dev provider {pid!r} has no usable {key!r}; refusing to guess"
+            raise SystemExit(msg)
+    return entry
 
 
-def _build_override(m: dict[str, Any], mid: str | None = None) -> dict[str, Any]:
+def _check_status(mid: str, m: dict[str, Any]) -> bool:
+    """True=收录, False=剔除 (deprecated); 未知 status 取值 fail-closed."""
+    status = m.get("status")
+    if status not in KNOWN_STATUSES:
+        msg = f"models.dev model {mid!r} has unknown status {status!r}; refusing to guess"
+        raise SystemExit(msg)
+    return status != "deprecated"
+
+
+def _is_free(m: dict[str, Any]) -> bool:
+    """免费判定: cost.input/output 必须显式为零.
+
+    缺 cost 字段或缺分项一律不算免费 (paid-leak 方向 fail-closed:
+    models.dev 新增付费模型若漏标 cost, 误收进免费配置比漏收更糟).
+    """
+    cost = m.get("cost")
+    if not isinstance(cost, dict):
+        return False
+    return cost.get("input") == 0 and cost.get("output") == 0
+
+
+def _wire_kind(m: dict[str, Any], default_npm: str) -> str:
+    """models.dev npm → reasonix kind (openai | responses).
+
+    模型级 provider.npm 优先, 缺失用 provider 级 npm; 等于 RESPONSES_SDK_PACKAGE
+    走 Responses, 其余 (含 openai-compatible 与 anthropic/google 族) 走与
+    OpenAI 兼容的 chat completions (zen 网关负责翻译; 免费集实测无
+    anthropic/google 族, 该分支天然休眠).
+    """
+    npm = ((m.get("provider") or {}).get("npm")) or default_npm
+    return "responses" if npm == RESPONSES_SDK_PACKAGE else "openai"
+
+
+def _resolve_efforts(m: dict[str, Any]) -> tuple[list[str], str]:
+    """reasoning_options → (supported_efforts, default_effort).
+
+    reasoning=True 的模型必须声明 supported_efforts, 否则 reasonix 将其视为
+    不可调努力等级. effort 取 values 全集, 默认取末个非 none 值; toggle 兜底
+    high; 无选项只声明 ["high"] (注: 无元数据不发明梯度——误档由 reasonix
+    NormalizeEffort 及时报错而非静默接受; 未来若有 responses 路径且无
+    options 的免费新模型,需显式复核 high 是否合法,不可默认沿用本兜底;
+    opencode chat wire 根本不发送
+    reasoning 字段, 该元数据对 chat 模型仅信息性; responses 模型如 spark 在
+    models.dev 均有完整 effort 表, high 单档只是从未命中的安全缺省.)
+    """
+    for opt in m.get("reasoning_options", []):
+        if isinstance(opt, dict) and opt.get("type") == "effort":
+            values = [v for v in opt.get("values", []) if v is not None]
+            if values:
+                non_none = [v for v in values if v != "none"]
+                return values, (non_none[-1] if non_none else values[-1])
+    if any(
+        isinstance(o, dict) and o.get("type") == "toggle" for o in m.get("reasoning_options", [])
+    ):
+        return ["high"], "high"
+    return ["high"], "high"
+
+
+def _build_override(m: dict[str, Any]) -> dict[str, Any]:
     """从 models.dev 元数据构建 model_overrides 条目.
 
     输出字段名与 reasonix ProviderModelOverride 的 toml tag 严格一致:
     context_window / max_output_tokens / reasoning_protocol / supported_efforts /
     default_effort / vision. (thinking 仅存在于 ProviderEntry 级, 不放这里.)
-
-    models.dev 字段映射审计 (见 MODEL_FIELD_HANDLED / MODEL_FIELD_IGNORED):
-      limit.context         -> context_window        (缺失/0 不写, 继承 provider 级)
-      limit.output          -> max_output_tokens      (缺失/0 不写)
-      limit.input           -> (忽略, reasonix 无独立输入预算字段)
-      reasoning == True     -> reasoning_protocol="openai"
-      reasoning_options[].type=="effort"
-                            -> supported_efforts / default_effort (取末个非 none 值)
-      reasoning_options[].type=="toggle" 或空列表/仅 budget_tokens
-                            -> 兜底: toggle→high, 否则 low/medium/high (与 pi 一致)
-      attachment / modalities.input 含 image
-                            -> vision=True
-      cost                 -> 见 _price_of (落到 provider.prices[mid], 非 override)
-      modalities.output     -> _is_chat_model 用其含 text 决定收录
-      tool_call            -> _is_chat_model 用其 False 决定剔除
-      status               -> build_* 用 deprecated 决定剔除
     """
     override: dict[str, Any] = {}
-    ctx = m.get("limit", {}).get("context", 0)
-    if ctx:
-        override["context_window"] = ctx
-    max_output = m.get("limit", {}).get("output", 0)
-    if max_output:
-        override["max_output_tokens"] = max_output
-    reasoning_options = m.get("reasoning_options", [])
-    # 与 pi-opencode 的 info?.reasoning ?? true 对齐: 字段缺失时默认 True.
+    limit = m.get("limit") or {}
+    if limit.get("context"):
+        override["context_window"] = limit["context"]
+    if limit.get("output"):
+        override["max_output_tokens"] = limit["output"]
     if m.get("reasoning", True):
         override["reasoning_protocol"] = "openai"
-        # big-pickle 等始终思考的模型在 models.dev 中 reasoning_options 为空,
-        # 但上游要求 low/high/max 三档 (与 pi-opencode ALWAYS_THINKS 保持一致).
-        is_always_thinks = bool(mid and any(mid.startswith(p) for p in ALWAYS_THINKS_PREFIXES))
-        if is_always_thinks:
-            override["supported_efforts"] = ALWAYS_THINKS_EFFORTS.copy()
-            override["default_effort"] = "high"
-        else:
-            for opt in reasoning_options:
-                if isinstance(opt, dict) and opt.get("type") == "effort":
-                    values = [v for v in opt.get("values", []) if v is not None]
-                    if values:
-                        override["supported_efforts"] = values
-                        # 取最高级别: 最后一个非 "none" 的值
-                        non_none = [v for v in values if v != "none"]
-                        override["default_effort"] = non_none[-1] if non_none else values[-1]
-                        break
-            # reasoning=True 但无 effort 选项时, 仍需声明 supported_efforts 以免 reasonix
-            # 将模型视为不可调努力等级: toggle 兜底为 high, 无选项时按 pi 的低/中/高梯度
-            # 兜底 (与 pi 的 buildThinkingLevelMap fallback 一致). 覆盖所有 94 个 opencode
-            # 模型中空 reasoning_options / 仅 toggle / 仅 budget_tokens 的 38 例.
-            if "supported_efforts" not in override:
-                has_toggle = any(
-                    isinstance(o, dict) and o.get("type") == "toggle" for o in reasoning_options
-                )
-                if has_toggle:
-                    override["supported_efforts"] = ["high"]
-                    override["default_effort"] = "high"
-                else:
-                    override["supported_efforts"] = ["low", "medium", "high"]
-                    override["default_effort"] = "high"
-    modalities_input = m.get("modalities", {}).get("input", [])
+        supported, default = _resolve_efforts(m)
+        override["supported_efforts"] = supported
+        override["default_effort"] = default
+    modalities_input = (m.get("modalities") or {}).get("input", [])
     if m.get("attachment") or ("image" in (modalities_input or [])):
         override["vision"] = True
     return override
@@ -188,11 +238,11 @@ def _price_of(m: dict[str, Any]) -> Pricing | None:
     """从 models.dev cost 字段解析单模型价格 (落到 provider.prices[mid]).
 
     映射: cost.input -> input, cost.output -> output, cost.cache_read -> cache_hit;
-    cost.cache_write 等其余分项 reasonix Pricing 无对应字段, 忽略。单位美元,
-    显式标 USD (见 Pricing.currency)。数值合法性交由 pydantic 校验, 非法输入
-    直接抛 ValidationError. 三项全零视为免费, 返回 None 不入表。
+    cache_write / tiers / context_over_200k / input_audio 等其余分项 reasonix
+    Pricing 无对应字段, 忽略. 单位美元, 显式标 USD (见 Pricing.currency).
+    数值合法性交由 pydantic 校验. 三项全零视为免费, 返回 None 不入表.
     """
-    cost = m.get("cost", {})
+    cost = m.get("cost") or {}
     price = Pricing(
         input=cost.get("input", 0),
         output=cost.get("output", 0),
@@ -206,99 +256,50 @@ def _price_of(m: dict[str, Any]) -> Pricing | None:
 def _is_chat_model(mid: str, mdata: dict[str, Any]) -> bool:
     """Whether a models.dev entry is usable as an agentic chat model.
 
-    Covers every models.dev field reasonix/pi need to decide inclusion:
+    纯派生检查, 无名字硬编码:
     - limit.context >= MIN_CHAT_CONTEXT (token budget large enough to converse)
     - modalities.output must contain "text": pure image/video/audio generators
-      (flux, cosmos, whisper, tts) slip past the name filter but cannot answer
-      in text, so they must be pruned here.
+      cannot answer in text, so they must be pruned here.
     - tool_call must not be False: an agent requires tool calling; entries with
       tool_call=True or a missing key stay (legacy entries omit the field), only
-      an explicit False is pruned (e.g. bge-m3 / phi-4-multimodal / paligemma).
-    - name skip_patterns exclude embedding/guard/tts/rerank/... special models.
+      an explicit False is pruned.
     """
-    limit = mdata.get("limit", {})
-    if limit.get("context", 0) < MIN_CHAT_CONTEXT:
+    limit = mdata.get("limit") or {}
+    if (limit.get("context", 0) or 0) < MIN_CHAT_CONTEXT:
         return False
     modalities = mdata.get("modalities", {}) or {}
     if (modalities.get("output") or []) and "text" not in modalities["output"]:
         return False
-    if mdata.get("tool_call") == False:  # noqa: E712  # explicit False check, not falsy
-        return False
-    name_lower = mid.lower()
-    skip_patterns = [
-        "embed",
-        "guard",
-        "safety",
-        "tts",
-        "voice",
-        "audio",
-        "cosmos-predict",
-        "cosmos-transfer",
-        "flux",
-        "image",
-        "edit",
-        "rerank",
-        "esm",
-        "detection",
-        "synthetic",
-        "validate",
-        "whisper",
-        "bevformer",
-        "streampetr",
-        "studiovoice",
-        "sparsedrive",
-        "usd",
-        "riva",
-        "magpie",
-        "active-speaker",
-        "gliner",
-    ]
-    return all(pat not in name_lower for pat in skip_patterns)
+    # 仅显式 False 剔除 (None/缺失/True 保留): agent 可执行性判定.
+    return mdata.get("tool_call") is not False
 
 
-def get_free_zen_model_ids(zen_data: dict[str, Any], md_models: dict[str, Any]) -> set[str]:
-    """Zen 在售模型中的免费集.
-
-    判定与 pi-opencode 同规则: 名字带 "-free" (zen 免费层命名约定), 或
-    models.dev 已收录且标价 input/output 均为零 (缺 cost 字段视同零,
-    big-pickle 等无后缀免费模型由此收录, 不再逐个硬编码). models.dev
-    未收录的非 -free id 一律排除: 条目缺失与标价缺失不同, 前者无法证明
-    免费, 误收会导致无标价模型进入配置甚至成为排序最前的 default.
-    """
+def _official_ids(official_data: dict[str, Any], api_url: str) -> set[str]:
+    """官方名单 {"data": [{"id"}]} → id 集合 (形态不符 fail-closed)."""
+    data = official_data.get("data")
+    if not isinstance(data, list):
+        msg = f"official model list at {api_url} has unexpected shape (want {{'data': [...]}})"
+        raise SystemExit(msg)
     ids: set[str] = set()
-    for m in zen_data.get("data", []):
-        mid = m["id"]
-        if "-free" in mid:
-            ids.add(mid)
-            continue
-        mdata = md_models.get(mid)
-        if mdata is None:
-            continue
-        cost = mdata.get("cost") or {}
-        if not cost.get("input") and not cost.get("output"):
-            ids.add(mid)
+    for entry in data:
+        mid = entry.get("id") if isinstance(entry, dict) else None
+        if not mid:
+            msg = f"official model list at {api_url} has entry without id: {entry!r}"
+            raise SystemExit(msg)
+        ids.add(mid)
     return ids
 
 
-def _wire_kind(m: dict[str, Any] | None) -> str:
-    """models.dev 元数据 → reasonix provider kind (openai | responses).
-
-    provider.npm 缺失 (zen 有而 models.dev 未收录) 时按 chat completions
-    处理: 免费集实测所有此类模型 (big-pickle 等) 均走 chat 端点.
-    """
-    if m is None:
-        return "openai"
-    npm = (m.get("provider") or {}).get("npm")
-    return "responses" if npm == RESPONSES_SDK_PACKAGE else "openai"
-
-
-def _build_opencode_wire_provider(
+def _build_wire_provider(
     name: str,
     kind: str,
-    entries: list[tuple[str, dict[str, Any] | None]],
-    provider: dict[str, Any],
+    entries: list[tuple[str, dict[str, Any]]],
+    entry: dict[str, Any],
 ) -> ProviderConfig | None:
-    """组装单个 wire 协议的 opencode provider (models/overrides/价格/default)."""
+    """组装单个 wire 协议的 provider (models/overrides/价格/default).
+
+    身份字段全部取自 models.dev provider 条目: base_url=api, api_key_env=env[0].
+    """
     if not entries:
         return None
 
@@ -309,23 +310,21 @@ def _build_opencode_wire_provider(
 
     for mid, m in entries:
         models_list.append(mid)
-        if m is None:
-            continue
-        max_context = max(max_context, m.get("limit", {}).get("context", 0))
+        max_context = max(max_context, (m.get("limit") or {}).get("context", 0))
         price = _price_of(m)
         if price:
             model_prices[mid] = price
-        override = _build_override(m, mid)
+        override = _build_override(m)
         if override:
             model_overrides[mid] = ModelOverride(**override)
 
     return ProviderConfig(
         name=name,
         kind=kind,
-        base_url=provider["api"],
+        base_url=entry["api"],
         models=models_list,
         default=models_list[0],
-        api_key_env=provider["env"][0],
+        api_key_env=entry["env"][0],
         context_window=max_context,
         prices=model_prices or None,
         model_overrides=model_overrides or None,
@@ -336,72 +335,90 @@ def _build_opencode_wire_provider(
     )
 
 
-def build_opencode(md_data: dict, zen_data: dict) -> list[ProviderConfig]:
-    """OpenCode Zen 免费模型, 按 wire 协议拆分为 provider 列表.
+def build_opencode(
+    pid: str,
+    md_data: dict[str, Any],
+    official_data: dict[str, Any],
+    api_url: str,
+) -> list[ProviderConfig]:
+    """Zen 免费模型, 按 wire 协议拆分为 provider 列表.
 
-    zen /zen/v1 是单网关, 但模型族没有通用的 chat completions 端点; 每个
-    模型在 models.dev 的 provider.npm 声明其真实协议. 主 provider "opencode"
-    承载 chat completions 模型, Responses 模型 (当前为
-    muse-spark-1.2-contributor-free) 拆分到 "opencode-responses", 否则
-    chat/completions 对它返回 HTTP 500 导致模型不可用.
-
-    api_key_env 取 models.dev env 首项; reasonix 从 .env 读 key 并发送
-    Authorization: Bearer public (匹配 opencode 客户端默认行为), 每次
-    reasonix-config 运行自动确保 ~/.reasonix/.env 中有该条目.
-
-    opencode 头部 (User-Agent / x-opencode-* / utls TLS 指纹) 由 reasonix
-    源码检测到该 provider 后动态生成, 因此这里不写静态 headers, 避免与
-    源码重复; X-Opencode-Session / X-Opencode-Request 为动态 ID, 静态
-    配置本就无法表达.
+    收录 = 官方在售 ∩ models.dev 已收录 ∩ 非 deprecated ∩ cost 全零 ∩ 可聊天.
+    官方有而 models.dev 未收录的 id 一律排除: 条目缺失无法证明免费与能力,
+    误收会导致无元数据模型进入配置甚至成为 default. wire 拆分见 _wire_kind
+    (Responses 模型走 /responses, chat/completions 对它返回 HTTP 500).
     """
-    provider = md_data["opencode"]
-    models_raw = provider["models"]
+    entry = _provider_entry(md_data, pid)
+    models_raw = entry["models"]
+    default_npm = entry["npm"]
+    wanted = _official_ids(official_data, api_url)
 
-    by_wire: dict[str, list[tuple[str, dict[str, Any] | None]]] = {
-        "openai": [],
-        "responses": [],
-    }
-    for mid in sorted(get_free_zen_model_ids(zen_data, models_raw)):
+    by_wire: dict[str, list[tuple[str, dict[str, Any]]]] = {"openai": [], "responses": []}
+    for mid in sorted(wanted):
         m = models_raw.get(mid)
-        if m is not None and m.get("status") == "deprecated":
+        if m is None:
+            continue  # 官方有而 models.dev 未收录: 无法证明免费与能力, 排除
+        if not _check_status(mid, m):
             continue
-        # zen 有而 models.dev 未收录的模型仍收录 (无元数据优于不可用).
-        by_wire[_wire_kind(m)].append((mid, m))
+        if not _is_free(m):
+            continue
+        if not _is_chat_model(mid, m):
+            continue
+        by_wire[_wire_kind(m, default_npm)].append((mid, m))
 
     providers: list[ProviderConfig] = []
     for kind in ("openai", "responses"):
-        name = "opencode" if kind == "openai" else "opencode-responses"
-        cfg = _build_opencode_wire_provider(name, kind, by_wire[kind], provider)
+        # 拆分名由 key 派生 (无字面量): 主 provider 保持原 key.
+        name = pid if kind == "openai" else f"{pid}-responses"
+        cfg = _build_wire_provider(name, kind, by_wire[kind], entry)
         if cfg is not None:
             providers.append(cfg)
 
     if not providers:
-        msg = "No free OpenCode Zen models found"
+        msg = f"No free {pid} models found"
         raise SystemExit(msg)
     return providers
 
 
-def build_nvidia(md_data: dict) -> ProviderConfig:
-    """NVIDIA NIM 聊天模型, 字段遵循 models.dev 的 nvidia provider 条目."""
-    provider = md_data["nvidia"]
-    models_raw = provider["models"]
+def build_nvidia(
+    pid: str,
+    md_data: dict[str, Any],
+    official_data: dict[str, Any],
+    api_url: str,
+    dead: set[str] | None = None,
+) -> ProviderConfig:
+    """NVIDIA NIM 聊天模型: 官方在售 ∩ models.dev 非 deprecated ∩ 可聊天.
+
+    dead: 探活确认不可用 (NIM 404) 的模型 id, 剔除 (见 probe_nvidia_live;
+    超时等含混结果永不进入 dead, 宁可保留).
+    headers: NIM 长轮询优化头, models.dev 无对应字段, 见 NIM_EXTRA_HEADERS.
+    """
+    entry = _provider_entry(md_data, pid)
+    models_raw = entry["models"]
+    wanted = _official_ids(official_data, api_url)
+    dead = dead or set()
 
     models_list: list[str] = []
     model_prices: dict[str, Pricing] = {}
     model_overrides: dict[str, ModelOverride] = {}
     max_context = 0
 
-    for mid, m in sorted(models_raw.items()):
-        if m.get("status") == "deprecated":
+    for mid in sorted(wanted):
+        m = models_raw.get(mid)
+        if m is None:
+            continue  # 官方有而 models.dev 未收录: 无元数据, 排除
+        if not _check_status(mid, m):
             continue
+        if mid in dead:
+            continue  # 探活 404: NIM 侧已下架
         if not _is_chat_model(mid, m):
             continue
         models_list.append(mid)
-        max_context = max(max_context, m.get("limit", {}).get("context", 0))
+        max_context = max(max_context, (m.get("limit") or {}).get("context", 0))
         price = _price_of(m)
         if price:
             model_prices[mid] = price
-        override = _build_override(m, mid)
+        override = _build_override(m)
         if override:
             model_overrides[mid] = ModelOverride(**override)
 
@@ -410,41 +427,112 @@ def build_nvidia(md_data: dict) -> ProviderConfig:
         raise SystemExit(msg)
 
     return ProviderConfig(
-        name="nvidia",
+        name=pid,
         kind="openai",
-        base_url=provider["api"],
+        base_url=entry["api"],
         models=models_list,
         default=models_list[0],
-        api_key_env=provider["env"][0],
+        api_key_env=entry["env"][0],
         context_window=max_context,
         prices=model_prices or None,
         model_overrides=model_overrides or None,
         billing_currency=BILLING_CURRENCY,
+        headers=dict(NIM_EXTRA_HEADERS),
     )
 
 
-def build_all(providers_filter: list[str] | None = None) -> list[ProviderConfig]:
+def _fetch_official_list(entry: dict[str, Any], pid: str) -> dict[str, Any]:
+    """官方名单, 无认证优先, 401/403 类失败时带 key 重试一次.
+
+    哪家要认证不写死: zen 公开名单直接成功; NIM 无 key 请求被拒后
+    取 entry env[0] 的环境变量重试, 仍无 key 则 fail-closed (不猜名单,
+    报错点名缺的键).
+    无 key 时禁用缓存读取: 缓存可能是之前带 key 拉的 NIM 名单,
+    读它等于绕过 key 门 (keyless 运行必须走公益网关实时名单).
+    """
+    env_name = entry["env"][0]
+    key = os.environ.get(env_name, "").strip()
+    if not key:
+        # 无 key: 缓存不可信 (可能是带 key 拉的旧名单), 直接实时拉匿名名单;
+        # 失败即 fail-closed, 报错点名缺的键.
+        try:
+            return fetch_official_models(entry, pid, use_cache=False)
+        except SystemExit:
+            msg = f"official model list for {pid!r} needs {env_name}; refusing to guess"
+            raise SystemExit(msg) from None
+    try:
+        return fetch_official_models(entry, pid)
+    except SystemExit:
+        return fetch_official_models(entry, pid, key)
+
+
+def build_all(
+    providers_filter: list[str] | None = None,
+    dead: dict[str, set[str]] | None = None,
+    md_data: dict[str, Any] | None = None,
+    official: dict[str, dict[str, Any]] | None = None,
+) -> tuple[list[ProviderConfig], list[str]]:
+    """dead: 按 provider 名索引的探活证伪名单 (只删探活 404 的).
+
+    md_data / official 为空时实时拉取 (测试可注入 hermetic 夹具).
+    官方名单缺失且无法拉取时 fail-closed (fetch_official_models 抛 SystemExit):
+    名单是收录交集的一边, 猜名单等于编造配置.
+    返回 (providers, errors): 单家失败只记 errors, 不丢另一家的成功构建;
+    调用方先写成功部分, 再凭 errors 非零退出 (见 __main__.main).
+    """
     wanted = set(providers_filter) if providers_filter is not None else set(PROVIDER_NAMES)
-    md_data = fetch_models_dev()
+    unknown = wanted - set(PROVIDER_NAMES)
+    if unknown:
+        msg = f"unknown provider(s) {sorted(unknown)}; want one of {list(PROVIDER_NAMES)}"
+        raise SystemExit(msg)
+    md_data = fetch_models_dev() if md_data is None else md_data
+    official = {} if official is None else official
     providers: list[ProviderConfig] = []
+    errors: list[str] = []
     if "opencode" in wanted:
-        providers.extend(build_opencode(md_data, fetch_zen_models()))
+        try:
+            entry = _provider_entry(md_data, "opencode")
+            official_data = official.get("opencode")
+            if official_data is None:
+                official_data = _fetch_official_list(entry, "opencode")
+            providers.extend(
+                build_opencode(
+                    "opencode", md_data, official_data, f"{entry['api'].rstrip('/')}/models"
+                )
+            )
+        except SystemExit as exc:
+            # 按 provider 隔离: 一家元数据/名单出问题, 不丢另一家的更新;
+            # 错误汇总后由调用方先写成功部分再非零退出 (见 __main__).
+            errors.append(str(exc))
     if "nvidia" in wanted:
-        providers.append(build_nvidia(md_data))
-    return providers
+        try:
+            entry = _provider_entry(md_data, "nvidia")
+            official_data = official.get("nvidia")
+            if official_data is None:
+                official_data = _fetch_official_list(entry, "nvidia")
+            providers.append(
+                build_nvidia(
+                    "nvidia",
+                    md_data,
+                    official_data,
+                    f"{entry['api'].rstrip('/')}/models",
+                    (dead or {}).get("nvidia"),
+                )
+            )
+        except SystemExit as exc:
+            errors.append(str(exc))
+    return providers, errors
 
 
-def _ensure_opencode_public_key() -> None:
-    """Ensure ``OPENCODE_API_KEY`` exists in ``~/.reasonix/.env``.
+def ensure_env_placeholder(api_key_env: str) -> None:
+    """确保 ``<api_key_env>=public`` 存在于 ``~/.reasonix/.env`` (zen 匿名凭据).
 
-    opencode Zen 接受 ``Bearer public`` 作为匿名凭据, 缺失时补上 ``public``
-    保证开箱即用. 已有值必须原样保留: 用户可能用自己的 key 走付费模型或
-    独立配额, 静默降级成共享匿名凭据会破坏认证与限流. 重复行折叠为第一行
-    的原值.
+    键名由调用方从 models.dev provider env[0] 传入 (本函数内无字面量);
+    值 "public" 为 zen 文档化的匿名凭据, 见 ZEN_ANONYMOUS_CREDENTIAL.
+    已有值原样保留 (用户 key 走付费/独立配额, 不可静默降级); 重复行折叠.
     """
     env_path = REASONIX_CONFIG.parent / ".env"
-    key = "OPENCODE_API_KEY"
-    prefix = f"{key}="
+    prefix = f"{api_key_env}="
 
     if env_path.exists():
         existing_lines = env_path.read_text().splitlines()
@@ -461,13 +549,12 @@ def _ensure_opencode_public_key() -> None:
             else:
                 new_lines.append(old_line)
         if not seen:
-            new_lines.append(f"{prefix}public")
+            new_lines.append(f"{prefix}{ZEN_ANONYMOUS_CREDENTIAL}")
             new_lines.append("")
         env_path.write_text("\n".join(new_lines) + "\n")
-        # .env 含 API 密钥, 统一收紧为仅属主可读写 (新建与更新一致)
         env_path.chmod(0o600)
     else:
-        env_path.write_text(f"{prefix}public\n")
+        env_path.write_text(f"{prefix}{ZEN_ANONYMOUS_CREDENTIAL}\n")
         env_path.chmod(0o600)
 
 
@@ -505,7 +592,6 @@ def write_config(providers: list[ProviderConfig]) -> Path:
     - If ``default_model`` existed but is no longer valid, picks the first
       model of the first provider as replacement.
     - Validates via ``reasonix doctor``.
-    - Ensures ``OPENCODE_API_KEY=public`` in reasonix ``.env``.
     """
     config_path = REASONIX_CONFIG
     if not config_path.exists():
@@ -528,7 +614,6 @@ def write_config(providers: list[ProviderConfig]) -> Path:
 
     config_path.write_text(tomli_w.dumps(existing))
 
-    _ensure_opencode_public_key()
     _run_reasonix_doctor()
 
     return config_path
@@ -538,13 +623,20 @@ def _repair_default_model(
     existing: dict[str, Any],
     providers: list[ProviderConfig],
 ) -> None:
-    """If ``default_model`` exists but isn't valid, reset to first available model.
+    """Own ``default_model``: write it when missing, reset when invalid.
 
+    生成器拥有该字段的派生权 (nix 只留初始兜底): 缺失时写入首个新
+    provider 的首个模型; 已有值仅在非法时修正, 永不覆盖用户选择.
     有效引用集合 = 新 provider 的模型/名字 + 保留的旧 provider 的模型/名字
     (default_model 可能指向未参与本次更新的其他 provider, 不能误判为无效).
     """
+    if not providers or not providers[0].models:
+        return
+    first = providers[0].models[0]
     ref = existing.get("default_model")
     if ref is None:
+        sys.stderr.write(f"warning: default_model missing; setting to {first!r}\n")
+        existing["default_model"] = first
         return
 
     valid_bare: set[str] = set()
@@ -578,7 +670,6 @@ def _repair_default_model(
         if prov_name in valid_names and model_id in valid_bare:
             return
 
-    # 不合法 → 自动修正为第一个可用的模型 (优先新 provider)
-    first = next(iter(p.models for p in providers if p.models))[0]
+    # 不合法 → 自动修正为第一个可用的模型 (优先新 provider, 复用函数入口的 first)
     sys.stderr.write(f"warning: default_model {ref!r} no longer valid; resetting to {first!r}\n")
     existing["default_model"] = first
