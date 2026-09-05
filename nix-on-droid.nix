@@ -79,7 +79,7 @@
     extraOptions = lib.mkForce ''
       always-allow-substitutes = true
       builders-use-substitutes = true
-      # lazy-trees = true
+      lazy-trees = true
       show-trace = true
       warn-dirty = false
       flake-registry = ${
@@ -103,12 +103,7 @@
     '';
   };
 
-  users.users.nix-on-droid = {
-    home = "/data/data/com.termux.nix/files/home";
-    shell = lib.getExe pkgs.fish;
-  };
-
-  system.build.installationDir = "/data/data/com.termux.nix/files/usr";
+  users.users.nix-on-droid.shell = lib.getExe pkgs.fish;
 
   time.timeZone = "Etc/GMT-8";
 }

@@ -36,7 +36,7 @@
         };
       in
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        install -D --mode=0644 ${font} ${config.home.homeDirectory}/.termux/termux.properties
+        install -D --mode=0644 ${font} ${config.home.homeDirectory}/.termux/font.ttf
         install -D --mode=0644 ${pkgs.writeText "termux.properties" termux-properties} ${config.home.homeDirectory}/.termux/termux.properties
       '';
   };
@@ -64,15 +64,6 @@
       enable = true;
       arguments = [ "--ignore-case" ];
     };
-    bun = {
-      enable = false;
-      settings = {
-        smol = true;
-        telemetry = false;
-        install.registry = "https://npmreg.proxy.ustclug.org";
-        run.bun = true;
-      };
-    };
     fish = {
       enable = true;
       interactiveShellInit = ''
@@ -92,10 +83,6 @@
       };
     };
     nix-your-shell.enable = true;
-    broot = {
-      enable = false;
-      settings.default_flags = "-ih";
-    };
     htop = {
       enable = true;
       settings = {

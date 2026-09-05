@@ -126,9 +126,16 @@
       "use_capability"
     ];
     deny = [
-      "Bash(*find /nix/store *)"
-      "Bash(*ls /nix/store *)"
-      "Bash(*find / *)"
+      "Bash(find /nix/store:*)"
+      "Bash(ls /nix/store:*)"
+      "Bash(find /*:*)"
+      "Bash(rm -rf /*:*)"
+      "Bash(rm -rf /:*)"
+      "Bash(dd if=:*)"
+      "Bash(mkfs:*)"
+      "Bash(shutdown:*)"
+      "Bash(reboot:*)"
+      "Bash(poweroff:*)"
     ];
     ask = [
       "Edit(.github/workflows/**)"

@@ -193,7 +193,7 @@ index 3af50cb..11cfdb2 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index 002802d..df8f13e 100644
+index 60785f6..8b139a0 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
 @@ -659,7 +659,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -364,7 +364,7 @@ index 0000000..9cdfd71
 +	}
 +}
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index 4b1ba29..d0bc9f0 100644
+index d215858..1611973 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
 @@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
@@ -414,10 +414,10 @@ index 55c5d93..c36cb60 100644
  		t.Fatal("fixture has no foldable prefix")
  	}
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index 37d1cea..37be94a 100644
+index dab3b3b..906f3d1 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
-@@ -448,7 +448,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+@@ -471,7 +471,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
  	a.sess.compactionMu.Unlock()
  	msgs, onProjection := a.visibleInputForFold(stateSnapshot, canonical, transcriptVersion)
  	viewInputHash := providerVisibleFingerprint(modelInputMessages(msgs))
@@ -426,16 +426,33 @@ index 37d1cea..37be94a 100644
  	if !ok {
  		return CompactionNoop, nil
  	}
-@@ -536,7 +536,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
- 	tele.ProjectionTokens = projTokens
+@@ -558,7 +558,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+ 		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(bodySuffix)...)
+ 	}
  	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
- 	a.emitCompactionTelemetry(tele)
--	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens); err != nil {
-+	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projTokens, mustFree); err != nil {
+-	projMsgs, spliced, projTokens, err := a.preparePinnedCheckpointCandidate(trigger, projMsgs, canonical, covered, sourceTokens, &tele)
++	projMsgs, spliced, projTokens, err := a.preparePinnedCheckpointCandidate(trigger, projMsgs, canonical, covered, sourceTokens, &tele, mustFree)
+ 	if err != nil {
  		a.emitCompactionAborted(trigger)
  		return CompactionNoop, err
- 	}
-@@ -594,33 +594,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
+@@ -586,6 +586,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+ 	projection, canonical []provider.Message,
+ 	covered, sourceTokens int,
+ 	tele *CompactionTelemetry,
++	mustFree bool,
+ ) ([]provider.Message, []provider.Message, int, error) {
+ 	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, canonical, covered)
+ 	if err != nil {
+@@ -595,7 +596,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+ 	projectionTokens := a.estimatedVisibleRequestTokens(spliced)
+ 	tele.ProjectionTokens = projectionTokens
+ 	a.emitCompactionTelemetry(*tele)
+-	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projectionTokens); err != nil {
++	if err := a.acceptCheckpointCandidate(trigger, sourceTokens, projectionTokens, mustFree); err != nil {
+ 		if pinnedCheckpoint {
+ 			return nil, nil, 0, fmt.Errorf("pinned-context-too-large: checkpoint prevents compaction acceptance: %w", err)
+ 		}
+@@ -640,33 +641,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
  }
  
  // acceptCheckpointCandidate requires real savings and, for automatic
@@ -1129,19 +1146,19 @@ index 13f1e3d..d3c9691 100644
  	}
  	sawTruncation := false
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 623b4e0..1164c83 100644
+index 8c30b47..2738f7e 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -247,7 +247,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -248,7 +248,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  		releaseMCPListObserver()
  	}()
  	ctx = a.withAgentContext(ctx)
--	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound; step++ {
+-	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound || state.incompleteReads.hasPending(); step++ {
 +	for step := 0; ; step++ {
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -339,10 +339,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -343,10 +343,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1152,8 +1169,8 @@ index 623b4e0..1164c83 100644
  }
  
  // streamWithSamplingRecovery coordinates Codex-style original-request replay
-@@ -729,10 +725,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
- 		a.armFinalizationRound(ctx, state, landCause{kind: "task_budget", axis: axis, detail: detail})
+@@ -759,10 +755,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+ 	if state.incompleteReads.hasPending() {
  		return true, nil
  	}
 -	if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {
@@ -1956,10 +1973,10 @@ index d85e06f..65e3675 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..8f48c4f
+index 0000000..a910087
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,135 @@
 +package openai
 +
 +import (
@@ -1975,10 +1992,10 @@ index 0000000..8f48c4f
 +	"github.com/klauspost/compress/zstd"
 +)
 +
-+// Wire constants captured from the real opencode CLI (v1.18.21) so a reasonix
++// Wire constants captured from the real opencode CLI (v1.18.26) so a reasonix
 +// request against an opencode Zen endpoint is indistinguishable from the CLI's.
 +const (
-+	opencodeUserAgent      = "opencode/1.18.21 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++	opencodeUserAgent      = "opencode/1.18.26 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 +	opencodeAcceptEncoding = "gzip, deflate, br, zstd"
 +)
 +
@@ -2089,7 +2106,8 @@ index 0000000..8f48c4f
 +			raw.Close()
 +			return nil, err
 +		}
-+		return &decodedBody{Reader: zr.IOReadCloser(), decoder: io.Closer(zr.IOReadCloser()), raw: raw}, nil // IOReadCloser.Close frees the decoder
++		rc := zr.IOReadCloser()
++		return &decodedBody{Reader: rc, decoder: rc, raw: raw}, nil
 +	default:
 +		return raw, nil
 +	}

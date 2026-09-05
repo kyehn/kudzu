@@ -61,7 +61,7 @@ jobs:
           mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix" "$HOME/.config/mcp"
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
-          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#nixd nixpkgs#ruff nixpkgs#bun .#reasonix
+          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun .#reasonix
           nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
@@ -72,7 +72,7 @@ jobs:
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           npm install --global --yes open-websearch
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
-          bun install -g https://github.com/tobi/qmd
+          npm install -g @tobilu/qmd
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {

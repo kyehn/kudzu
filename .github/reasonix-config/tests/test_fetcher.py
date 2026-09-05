@@ -4,7 +4,7 @@ import time
 from unittest import mock
 
 import httpx
-import pytest
+import pytest  # type: ignore[importNotFound]
 
 from reasonix_config.fetcher import (
     CACHE_TTL_SECONDS,
@@ -42,7 +42,8 @@ def _stale_cache(payload: str) -> mock.Mock:
 class TestFetchZenModels:
     def test_uses_opencode_user_agent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """请求应携带与 opencode 一致的 UA (opencode/prod/<version>/cli)."""
-        assert MODELS_DEV_USER_AGENT == "opencode/prod/1.18.21/cli"
+        assert MODELS_DEV_USER_AGENT.startswith("opencode/prod/")
+        assert MODELS_DEV_USER_AGENT.endswith("/cli")
         _no_cache(monkeypatch, "ZEN_CACHE")
         with mock.patch("reasonix_config.fetcher.httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(

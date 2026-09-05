@@ -3,7 +3,7 @@
  * real opencode CLI on the wire: User-Agent, Accept/Accept-Encoding and the
  * x-opencode-* identifier headers.
  *
- * Sources mirrored (opencode v1.18.21):
+ * Sources mirrored (opencode v1.18.26):
  *   - packages/schema/src/identifier.ts + packages/opencode/src/id/id.ts
  *     (ses_ descending, msg_ ascending, 12 hex time chars + 14 base62 chars)
  *   - packages/opencode/src/session/llm/request.ts (headers, per-provider UA)
@@ -38,7 +38,7 @@ import type {
 const BASE_URL = "https://opencode.ai/zen/v1";
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const API_KEY = "public";
-const OPENCODE_VERSION = "1.18.21";
+const OPENCODE_VERSION = "1.18.26";
 const MAX_BOOTSTRAP_ATTEMPTS = 3;
 
 // ─── opencode wire identity ─────────────────────────────────────────────────
@@ -292,10 +292,10 @@ async function fetchModelsDevInfo(): Promise<
 }
 
 function isFreeModel(id: string, info?: ModelsDevModelInfo): boolean {
-	if (info?.cost) {
-		return (info.cost.input ?? 0) === 0 && (info.cost.output ?? 0) === 0;
-	}
-	return id.toLowerCase().includes("free");
+	if (id.toLowerCase().includes("-free")) return true;
+	if (!info) return false;
+	const cost = info.cost ?? {};
+	return (cost.input ?? 0) === 0 && (cost.output ?? 0) === 0;
 }
 
 let bootstrapPromise: Promise<BootstrapState> | undefined;

@@ -110,7 +110,11 @@ PROVIDER_FIELD_IGNORED: frozenset[str] = frozenset(
 )
 
 
-def _build_override(m: dict[str, Any]) -> dict[str, Any]:
+ALWAYS_THINKS_PREFIXES = ("big-pickle",)
+ALWAYS_THINKS_EFFORTS = ["low", "high", "max"]
+
+
+def _build_override(m: dict[str, Any], mid: str | None = None) -> dict[str, Any]:
     """从 models.dev 元数据构建 model_overrides 条目.
 
     输出字段名与 reasonix ProviderModelOverride 的 toml tag 严格一致:
@@ -141,33 +145,39 @@ def _build_override(m: dict[str, Any]) -> dict[str, Any]:
     if max_output:
         override["max_output_tokens"] = max_output
     reasoning_options = m.get("reasoning_options", [])
-    if m.get("reasoning", False):
+    # 与 pi-opencode 的 info?.reasoning ?? true 对齐: 字段缺失时默认 True.
+    if m.get("reasoning", True):
         override["reasoning_protocol"] = "openai"
-        for opt in reasoning_options:
-            if isinstance(opt, dict) and opt.get("type") == "effort":
-                values = [v for v in opt.get("values", []) if v is not None]
-                if values:
-                    override["supported_efforts"] = values
-                    # 取最高级别: 最后一个非 "none" 的值
-                    non_none = [v for v in values if v != "none"]
-                    override["default_effort"] = non_none[-1] if non_none else values[-1]
-                    break
-        # reasoning=True 但无 effort 选项时, 仍需声明 supported_efforts 以免 reasonix
-        # 将模型视为不可调努力等级: toggle 兜底为 high, 无选项时按 pi 的低/中/高梯度
-        # 兜底 (与 pi 的 buildThinkingLevelMap fallback 一致). 覆盖所有 94 个 opencode
-        # 模型中空 reasoning_options / 仅 toggle / 仅 budget_tokens 的 38 例.
-        if "supported_efforts" not in override:
-            has_toggle = any(
-                isinstance(o, dict) and o.get("type") == "toggle" for o in reasoning_options
-            )
-            if has_toggle:
-                override["supported_efforts"] = ["high"]
-                override["default_effort"] = "high"
-            else:
-                # 与 pi 的 fallback 一致: low/medium/high (pi 的 alwaysThinks 特例外, 由
-                # 上游元数据真实 effort 值覆盖, 此处统一兜底不做特殊前缀匹配).
-                override["supported_efforts"] = ["low", "medium", "high"]
-                override["default_effort"] = "high"
+        # big-pickle 等始终思考的模型在 models.dev 中 reasoning_options 为空,
+        # 但上游要求 low/high/max 三档 (与 pi-opencode ALWAYS_THINKS 保持一致).
+        is_always_thinks = bool(mid and any(mid.startswith(p) for p in ALWAYS_THINKS_PREFIXES))
+        if is_always_thinks:
+            override["supported_efforts"] = ALWAYS_THINKS_EFFORTS.copy()
+            override["default_effort"] = "high"
+        else:
+            for opt in reasoning_options:
+                if isinstance(opt, dict) and opt.get("type") == "effort":
+                    values = [v for v in opt.get("values", []) if v is not None]
+                    if values:
+                        override["supported_efforts"] = values
+                        # 取最高级别: 最后一个非 "none" 的值
+                        non_none = [v for v in values if v != "none"]
+                        override["default_effort"] = non_none[-1] if non_none else values[-1]
+                        break
+            # reasoning=True 但无 effort 选项时, 仍需声明 supported_efforts 以免 reasonix
+            # 将模型视为不可调努力等级: toggle 兜底为 high, 无选项时按 pi 的低/中/高梯度
+            # 兜底 (与 pi 的 buildThinkingLevelMap fallback 一致). 覆盖所有 94 个 opencode
+            # 模型中空 reasoning_options / 仅 toggle / 仅 budget_tokens 的 38 例.
+            if "supported_efforts" not in override:
+                has_toggle = any(
+                    isinstance(o, dict) and o.get("type") == "toggle" for o in reasoning_options
+                )
+                if has_toggle:
+                    override["supported_efforts"] = ["high"]
+                    override["default_effort"] = "high"
+                else:
+                    override["supported_efforts"] = ["low", "medium", "high"]
+                    override["default_effort"] = "high"
     modalities_input = m.get("modalities", {}).get("input", [])
     if m.get("attachment") or ("image" in (modalities_input or [])):
         override["vision"] = True
@@ -212,7 +222,7 @@ def _is_chat_model(mid: str, mdata: dict[str, Any]) -> bool:
     modalities = mdata.get("modalities", {}) or {}
     if (modalities.get("output") or []) and "text" not in modalities["output"]:
         return False
-    if mdata.get("tool_call") is False:
+    if mdata.get("tool_call") == False:  # noqa: E712  # explicit False check, not falsy
         return False
     name_lower = mid.lower()
     skip_patterns = [
@@ -305,7 +315,7 @@ def _build_opencode_wire_provider(
         price = _price_of(m)
         if price:
             model_prices[mid] = price
-        override = _build_override(m)
+        override = _build_override(m, mid)
         if override:
             model_overrides[mid] = ModelOverride(**override)
 
@@ -391,7 +401,7 @@ def build_nvidia(md_data: dict) -> ProviderConfig:
         price = _price_of(m)
         if price:
             model_prices[mid] = price
-        override = _build_override(m)
+        override = _build_override(m, mid)
         if override:
             model_overrides[mid] = ModelOverride(**override)
 
