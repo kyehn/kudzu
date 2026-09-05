@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index c6a7218..75dd44b 100644
+index 4915ce6ca..264dfeaee 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -24,7 +24,7 @@ index c6a7218..75dd44b 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 7ed5d26..3d4e2bc 100644
+index f2afe48fe..ecacbc5a5 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -55,7 +55,7 @@ index 7ed5d26..3d4e2bc 100644
  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
  github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 diff --git a/internal/acp/e2e_test.go b/internal/acp/e2e_test.go
-index 8ff2d16..c0ded2a 100644
+index 8ff2d1626..c0ded2afe 100644
 --- a/internal/acp/e2e_test.go
 +++ b/internal/acp/e2e_test.go
 @@ -102,7 +102,10 @@ func (f *e2eFactory) NewSession(_ context.Context, p SessionParams) (*control.Co
@@ -135,7 +135,7 @@ index 8ff2d16..c0ded2a 100644
  		SessionID: sid,
  		Prompt:    []ContentBlock{{Type: "text", Text: "write README.md"}},
 diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
-index 3af50cb..11cfdb2 100644
+index 3af50cb8d..11cfdb2f1 100644
 --- a/internal/acp/server_test.go
 +++ b/internal/acp/server_test.go
 @@ -978,8 +978,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
@@ -193,7 +193,7 @@ index 3af50cb..11cfdb2 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index 60785f6..8b139a0 100644
+index 60785f620..8b139a04c 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
 @@ -659,7 +659,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -241,7 +241,7 @@ index 60785f6..8b139a0 100644
  	goalDraftMode := false
 diff --git a/internal/agent/active_oversize_fold_test.go b/internal/agent/active_oversize_fold_test.go
 new file mode 100644
-index 0000000..9cdfd71
+index 000000000..45dd41b4a
 --- /dev/null
 +++ b/internal/agent/active_oversize_fold_test.go
 @@ -0,0 +1,118 @@
@@ -275,9 +275,9 @@ index 0000000..9cdfd71
 +			provider.Message{Role: provider.RoleAssistant, Content: "回答 " + strings.Repeat("y", 1600)},
 +		)
 +	}
-+	// Large but individually foldable active paste: ~135k tokens, so history
-+	// + active together cross the 191552 shared ceiling.
-+	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: "大粘贴 " + strings.Repeat("z", 540_000), CreatedAt: 222})
++	// Large but individually foldable active paste: ~140k tokens, so history
++	// + active together cross the shared ceiling (window minus reserve).
++	msgs = append(msgs, provider.Message{Role: provider.RoleUser, Content: "大粘贴 " + strings.Repeat("z", 580_000), CreatedAt: 222})
 +	sess := &Session{Messages: append([]provider.Message(nil), msgs...)}
 +	a := New(prov, tool.NewRegistry(), sess, Options{
 +		ContextWindow: 200_000, CompactRatio: 0.7, MaxOutputTokens: 128_000,
@@ -288,7 +288,7 @@ index 0000000..9cdfd71
 +	if src < hard {
 +		t.Fatalf("probe setup: source %d below shared ceiling %d", src, hard)
 +	}
-+	outcome, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true)
++	outcome, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true, false)
 +	if err != nil {
 +		t.Fatalf("must-free fold with oversized active turn failed: %v", err)
 +	}
@@ -322,7 +322,7 @@ index 0000000..9cdfd71
 +	if src < a.hardInputCeiling() {
 +		t.Fatalf("probe setup: source %d below shared ceiling", src)
 +	}
-+	_, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true)
++	_, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true, false)
 +	if err == nil {
 +		t.Fatal("indivisible oversized active turn must fail, not no-op")
 +	}
@@ -364,34 +364,10 @@ index 0000000..9cdfd71
 +	}
 +}
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index d215858..1611973 100644
+index 343411357..f9936735f 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
-@@ -87,14 +87,21 @@ func (a *Agent) compactTrigger() int {
- 	return max(1, int(float64(window)*ratio))
- }
- 
--// hardInputCeiling is a physical input-safety boundary, not another user
-+// hardInputCeiling is the physical input-safety boundary, not another user
- // compaction threshold. Reply budgets are resolved independently at send time.
-+// On a shared prompt+completion window (DeepSeek-style) the ceiling must leave
-+// the reply reserve out of the input so the session never wedges one token
-+// away from the provider limit with nowhere to put an answer.
- func (a *Agent) hardInputCeiling() int {
- 	window := a.effectiveContextWindow()
- 	if a == nil || window <= 0 {
- 		return 0
- 	}
--	return max(1, window-protocolReserveTokens)
-+	ceiling := window - protocolReserveTokens
-+	if sharesContextWindow(a.svc.prov) {
-+		ceiling = window - outputBudgetReserve - protocolReserveTokens
-+	}
-+	return max(1, ceiling)
- }
- 
- // recentTailBudget is the content-construction budget for the recent verbatim
-@@ -400,7 +407,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
+@@ -416,7 +416,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
  	}()
  	defer trackPublishedHostStream(ctx, cancel)()
  	req := a.summaryRequest(region, instructions)
@@ -401,7 +377,7 @@ index d215858..1611973 100644
  	}
  	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
 diff --git a/internal/agent/compact_overflow_prefix_test.go b/internal/agent/compact_overflow_prefix_test.go
-index 55c5d93..c36cb60 100644
+index 55c5d939c..1a221bcc6 100644
 --- a/internal/agent/compact_overflow_prefix_test.go
 +++ b/internal/agent/compact_overflow_prefix_test.go
 @@ -34,7 +34,7 @@ func TestOverflowSummarizesLargestAdmissibleContiguousPrefix(t *testing.T) {
@@ -413,8 +389,17 @@ index 55c5d93..c36cb60 100644
  	if !ok {
  		t.Fatal("fixture has no foldable prefix")
  	}
+@@ -130,7 +130,7 @@ func TestPressureSummaryCappedByLearnedWindowAfterSessionReset(t *testing.T) {
+ 	}
+ 
+ 	msgs := sess.Snapshot()
+-	head, plannedEnd, ok := a.planFoldRegion(msgs, true)
++	head, plannedEnd, ok := a.planFoldRegion(msgs, true, false)
+ 	if !ok {
+ 		t.Fatal("fixture has no foldable prefix")
+ 	}
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index dab3b3b..906f3d1 100644
+index f9f99f9f7..fcd4d31cd 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
 @@ -471,7 +471,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
@@ -426,7 +411,7 @@ index dab3b3b..906f3d1 100644
  	if !ok {
  		return CompactionNoop, nil
  	}
-@@ -558,7 +558,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+@@ -559,7 +559,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
  		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(bodySuffix)...)
  	}
  	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
@@ -435,7 +420,7 @@ index dab3b3b..906f3d1 100644
  	if err != nil {
  		a.emitCompactionAborted(trigger)
  		return CompactionNoop, err
-@@ -586,6 +586,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+@@ -587,6 +587,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
  	projection, canonical []provider.Message,
  	covered, sourceTokens int,
  	tele *CompactionTelemetry,
@@ -443,7 +428,7 @@ index dab3b3b..906f3d1 100644
  ) ([]provider.Message, []provider.Message, int, error) {
  	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, canonical, covered)
  	if err != nil {
-@@ -595,7 +596,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+@@ -596,7 +597,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
  	projectionTokens := a.estimatedVisibleRequestTokens(spliced)
  	tele.ProjectionTokens = projectionTokens
  	a.emitCompactionTelemetry(*tele)
@@ -452,7 +437,7 @@ index dab3b3b..906f3d1 100644
  		if pinnedCheckpoint {
  			return nil, nil, 0, fmt.Errorf("pinned-context-too-large: checkpoint prevents compaction acceptance: %w", err)
  		}
-@@ -640,33 +641,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
+@@ -641,33 +642,69 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
  }
  
  // acceptCheckpointCandidate requires real savings and, for automatic
@@ -531,7 +516,7 @@ index dab3b3b..906f3d1 100644
  // whose exact summary request leaves the collector's minimum output budget.
  // The remaining middle and tail stay verbatim in the projection.
 diff --git a/internal/agent/compact_summary_failure_test.go b/internal/agent/compact_summary_failure_test.go
-index e6b52ff..8d685c5 100644
+index e6b52ff5c..8d685c5c0 100644
 --- a/internal/agent/compact_summary_failure_test.go
 +++ b/internal/agent/compact_summary_failure_test.go
 @@ -67,7 +67,7 @@ func prepareContext(ctx context.Context, a *Agent, trigger string) error {
@@ -544,17 +529,15 @@ index e6b52ff..8d685c5 100644
  		return nil
  	}
 diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
-index 70e9c63..eb37fef 100644
+index 70e9c6308..10615254d 100644
 --- a/internal/agent/compact_threshold_test.go
 +++ b/internal/agent/compact_threshold_test.go
-@@ -21,8 +21,8 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
- 		t.Fatalf("trigger after larger output budget = %d, want %d", got, want)
+@@ -22,7 +22,7 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
  	}
  	hard := a.hardInputCeiling()
--	if hard != 128_000-protocolReserveTokens {
+ 	if hard != 128_000-protocolReserveTokens {
 -		t.Fatalf("hard ceiling = %d, want window-protocolReserve", hard)
-+	if hard != 128_000-outputBudgetReserve-protocolReserveTokens {
-+		t.Fatalf("hard ceiling = %d, want window-output-reserve (%d)", hard, 128_000-outputBudgetReserve-protocolReserveTokens)
++		t.Fatalf("hard ceiling = %d, want window-protocol-reserve (%d)", hard, 128_000-protocolReserveTokens)
  	}
  }
  
@@ -603,11 +586,27 @@ index 70e9c63..eb37fef 100644
 +		t.Fatal("must-free non-reducing candidate: want error")
 +	}
  }
+diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
+index fe7bd107e..5d3b3488e 100644
+--- a/internal/agent/context_manager.go
++++ b/internal/agent/context_manager.go
+@@ -179,7 +179,10 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
+ 	a := m.agent
+ 	maxSummaries := 1
+ 	if policy.Trigger == CompactionTriggerPressure {
+-		maxSummaries = 2
++		// Must-free pressure folds converge iteratively: each fold only covers
++		// the largest admissible prefix, so a session several times the window
++		// needs a third attempt to land below the trigger.
++		maxSummaries = 3
+ 	}
+ 	if policy.Trigger == CompactionTriggerManual && est >= hard {
+ 		maxSummaries = manualRecoverySummaries
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
-index e3bf8bf..91adb8f 100644
+index 7008826ea..ad8552c7a 100644
 --- a/internal/agent/context_recovery.go
 +++ b/internal/agent/context_recovery.go
-@@ -21,7 +21,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
+@@ -22,7 +22,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
  	if limit.PromptTokens > 0 {
  		a.setPromptTokenCalibrationFromActive(limit.PromptTokens)
  	}
@@ -618,7 +617,7 @@ index e3bf8bf..91adb8f 100644
  	adm.ObservedPrompt = limit.PromptTokens
 diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
 new file mode 100644
-index 0000000..879c5bc
+index 000000000..14b5a7dd3
 --- /dev/null
 +++ b/internal/agent/context_summary_admission_test.go
 @@ -0,0 +1,186 @@
@@ -666,9 +665,9 @@ index 0000000..879c5bc
 +		svc:         agentServices{prov: prov, sink: event.Discard},
 +		sess:        sessionRuntime{output: outputBudgetState{outputBudget: prov.budget}},
 +	}
-+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 95_000)}}
-+	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 95_000})
-+	a.setPromptTokenCalibration(95_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
++	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("字", 101_000)}}
++	a.sess.output.lastUsage.Store(&provider.Usage{PromptTokens: 101_000})
++	a.setPromptTokenCalibration(101_000, requestCalibrationShapeOf(provider.Request{Messages: msgs}))
 +	req := provider.Request{Messages: msgs, MaxTokens: summaryOutputMaxTokens}
 +	if err := a.applyAdmissionToSummaryRequest(&req); !errors.Is(err, ErrCompactionRequired) {
 +		t.Fatalf("summary admission err = %v, want ErrCompactionRequired", err)
@@ -697,7 +696,7 @@ index 0000000..879c5bc
 +	if adm.PromptTokens < 99_000 || adm.PromptTokens > 101_000 {
 +		t.Fatalf("calibrated prompt = %d, want ~100000", adm.PromptTokens)
 +	}
-+	wantPhysical := 200_000 - adm.PromptTokens - outputBudgetReserve
++	wantPhysical := 200_000 - adm.PromptTokens - outputBudgetReserveForWindow(200_000)
 +	if adm.PhysicalRemaining != wantPhysical {
 +		t.Fatalf("physical = %d, want %d (configured window, not observed 1M)", adm.PhysicalRemaining, wantPhysical)
 +	}
@@ -707,8 +706,8 @@ index 0000000..879c5bc
 +	if got := a.effectiveContextWindow(); got != 200_000 {
 +		t.Fatalf("effective window = %d, want configured 200000 (observed 1M clamped)", got)
 +	}
-+	if got := a.hardInputCeiling(); got != 200_000-outputBudgetReserve-protocolReserveTokens {
-+		t.Fatalf("hard ceiling = %d, want configured-based %d", got, 200_000-outputBudgetReserve-protocolReserveTokens)
++	if got := a.hardInputCeiling(); got != 200_000-protocolReserveTokens {
++		t.Fatalf("hard ceiling = %d, want configured-based %d", got, 200_000-protocolReserveTokens)
 +	}
 +	// The provider's 131072 output cap cannot fit the configured 200k window
 +	// with a 100k prompt: it must clip to the physical remaining budget.
@@ -809,10 +808,10 @@ index 0000000..879c5bc
 +	}
 +}
 diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
-index c06b1ac..c1e8e9b 100644
+index 98e879b98..6d89f59e7 100644
 --- a/internal/agent/coordinator_test.go
 +++ b/internal/agent/coordinator_test.go
-@@ -642,10 +642,23 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
+@@ -660,10 +660,20 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
  	}
  }
  
@@ -821,8 +820,8 @@ index c06b1ac..c1e8e9b 100644
 -		{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"REASONIX.md"}`}},
 -		{Type: provider.ChunkDone},
 +// The overlay removes the max-steps budget from the run loop: an explicit
-+// MaxSteps must not truncate the planner, which runs until the provider ends
-+// the turn and then hands the plan to the executor.
++// MaxSteps must not truncate the planner. A 3-round planner turn with
++// MaxSteps 2 still runs to submit_plan and hands the plan to the executor.
 +func TestCoordinatorPlannerMaxStepsIgnored(t *testing.T) {
 +	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
 +		{
@@ -833,57 +832,48 @@ index c06b1ac..c1e8e9b 100644
 +			{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-2", Name: "read_file", Arguments: `{"path":"internal"}`}},
 +			{Type: provider.ChunkDone},
 +		},
-+		{
-+			{Type: provider.ChunkText, Text: "1. read REASONIX.md"},
-+			{Type: provider.ChunkDone},
-+		},
++		submitPlanChunk(`{"objective":"both files","steps":[{"title":"use both files"}]}`),
  	}}
  	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{
  		{Type: provider.ChunkText, Text: "Done."},
-@@ -653,7 +666,7 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
+@@ -671,26 +681,21 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
  	}}
  
  	parentReg := tool.NewRegistry()
 -	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "keep reading"})
+-	sink := &recordSink{}
+-	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, sink)
+-	plannerSess := NewSession("planner-sys")
+-	coord := NewCoordinator(planner, plannerSess, nil, PlannerToolRegistry(parentReg), Options{
 +	parentReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "ok"})
- 	sink := &recordSink{}
- 	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, sink)
- 	plannerSess := NewSession("planner-sys")
-@@ -664,27 +677,16 @@ func TestCoordinatorPlannerMaxStepsUsesExplicitRuntimeKey(t *testing.T) {
++	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
++	coord := NewCoordinator(planner, NewSession("planner-sys"), nil, PlannerToolRegistry(parentReg), Options{
+ 		MaxSteps:    2,
+ 		MaxStepsKey: "planner max_steps",
+-	}, executor, 0, sink, nil)
++	}, executor, 0, event.Discard, nil)
  
- 	err := coord.Run(withNoClosedLoop(context.Background()), "plan a change")
- 	if err != nil {
--		t.Fatalf("Run should fall back to the executor when the planner cannot finalize: %v", err)
-+		t.Fatalf("Run: %v", err)
+-	err := coord.Run(withNoClosedLoop(context.Background()), "plan a change")
+-	// The planner never finalized before its own round budget: the turn fails
+-	// closed instead of degrading to an unplanned executor run.
+-	if err == nil || err.Error() != plannerSafetyBoundaryError {
+-		t.Fatalf("Run = %v, want the planner safety boundary error", err)
++	if err := coord.Run(withNoClosedLoop(context.Background()), "plan a change"); err != nil {
++		t.Fatalf("Run with explicit planner max steps should not pause: %v", err)
  	}
- 	if got := len(planner.requests); got != 3 {
--		t.Fatalf("planner requests = %d, want 2 research rounds plus finalization", got)
--	}
--	if got := len(exec.requests); got != 1 {
--		t.Fatalf("executor requests = %d, want one fallback run", got)
--	}
--	if got := lastUser(exec.requests[0]); !strings.Contains(got, "plan a change") || strings.Contains(got, executorHandoffMarker) {
--		t.Fatalf("executor fallback input = %q, want the original task without a fabricated handoff", got)
-+		t.Fatalf("planner requests = %d, want all 3 scripted planner turns (max-steps budget removed)", got)
+-	if got := len(exec.requests); got != 0 {
+-		t.Fatalf("executor requests = %d, want none after the planner boundary", got)
++	if got := len(planner.requests); got != 3 {
++		t.Fatalf("planner requests = %d, want all 3 scripted planner turns", got)
  	}
 -	if got := len(plannerSess.Messages); got != 1 {
 -		t.Fatalf("planner session messages = %d, want the incomplete turn rolled back", got)
--	}
--	notices := sink.kinds(event.Notice)
--	if len(notices) == 0 || notices[len(notices)-1].Text != plannerSafetyFallbackNotice {
--		t.Fatalf("notices = %+v, want planner safety fallback notice", notices)
-+	if got := len(exec.requests); got == 0 {
-+		t.Fatalf("executor never ran: %d requests", got)
- 	}
--	if detail := notices[len(notices)-1].Detail; !strings.Contains(detail, "planner max_steps") ||
--		strings.Contains(detail, "set planner max_steps") {
--		t.Fatalf("fallback detail = %q, want the bounded diagnostic without configuration advice", detail)
-+	if got := lastUser(exec.requests[0]); !strings.Contains(got, "read REASONIX.md") {
-+		t.Fatalf("executor did not receive the planner output: %q", got)
++	if got := lastUser(exec.requests[0]); !strings.Contains(got, "use both files") {
++		t.Fatalf("executor did not receive planner output: %q", got)
  	}
  }
  
-@@ -1400,9 +1402,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+@@ -1170,9 +1175,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
  func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing.T) {
  	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
  		t.Run(string(route), func(t *testing.T) {
@@ -899,7 +889,7 @@ index c06b1ac..c1e8e9b 100644
  			}}
  			exec := &mockProvider{name: "executor"}
  			plannerReg := tool.NewRegistry()
-@@ -1414,11 +1419,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
+@@ -1184,11 +1192,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
  			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
  			plannerSess := NewSession("planner-sys")
  			coord := NewCoordinatorWithPlannerPolicy(
@@ -918,7 +908,7 @@ index c06b1ac..c1e8e9b 100644
  				t.Fatalf("Run = %v, want the safe planner boundary error", err)
  			}
 diff --git a/internal/agent/dispatch_test.go b/internal/agent/dispatch_test.go
-index 1871dd5..88c72fa 100644
+index 1871dd560..88c72fad4 100644
 --- a/internal/agent/dispatch_test.go
 +++ b/internal/agent/dispatch_test.go
 @@ -13,20 +13,29 @@ import (
@@ -970,7 +960,7 @@ index 1871dd5..88c72fa 100644
  	if full != 1 {
  		t.Errorf("want 1 full dispatch, got %d", full)
 diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
-index 42ff84f..999052d 100644
+index 42ff84f20..999052dcf 100644
 --- a/internal/agent/goal_boundaries_test.go
 +++ b/internal/agent/goal_boundaries_test.go
 @@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
@@ -999,7 +989,7 @@ index 42ff84f..999052d 100644
  }
  
 diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
-index 50bb355..f43a9d2 100644
+index 50bb35577..f43a9d2d1 100644
 --- a/internal/agent/output_budget.go
 +++ b/internal/agent/output_budget.go
 @@ -369,14 +369,20 @@ func (a *Agent) effectiveContextWindow() int {
@@ -1098,7 +1088,7 @@ index 50bb355..f43a9d2 100644
  	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
  		adm.ApplyMaxTokens = false
 diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
-index 13f1e3d..d3c9691 100644
+index 496e2d2a0..93eecb308 100644
 --- a/internal/agent/planner_adaptive_research_test.go
 +++ b/internal/agent/planner_adaptive_research_test.go
 @@ -43,10 +43,15 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
@@ -1145,11 +1135,47 @@ index 13f1e3d..d3c9691 100644
  		t.Fatalf("planner finalization nudge conflicts with submit_plan: %q", got)
  	}
  	sawTruncation := false
+diff --git a/internal/agent/projection_valid_test.go b/internal/agent/projection_valid_test.go
+index 69764bce4..6d7a9f47d 100644
+--- a/internal/agent/projection_valid_test.go
++++ b/internal/agent/projection_valid_test.go
+@@ -302,9 +302,10 @@ func TestLoadProjectionSidecarDropsForeignCacheKey(t *testing.T) {
+ 	}
+ }
+ 
+-func TestForceThresholdNoopReturnsCompactionRequired(t *testing.T) {
+-	// Huge tool result is entirely in the recent tail → no fold region, but
+-	// estimate exceeds force; preflight must refuse (not mid-turn).
++func TestForceThresholdMustFreeConvergesBelowTrigger(t *testing.T) {
++	// Huge tool result dwarfs a tiny window: the estimate sits above the hard
++	// input ceiling, so the must-free fold is exempt from the one-shot ceiling
++	// and Prepare converges below the fold trigger instead of refusing.
+ 	huge := strings.Repeat("word ", 5000)
+ 	sess := &Session{Messages: []provider.Message{
+ 		{Role: provider.RoleSystem, Content: "sys"},
+@@ -319,12 +320,12 @@ func TestForceThresholdNoopReturnsCompactionRequired(t *testing.T) {
+ 		RecentKeep:        2,
+ 	}, event.Discard)
+ 
+-	_, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
+-	if err == nil {
+-		t.Fatal("expected ErrCompactionRequired when force threshold has no fold region")
++	prepared, err := a.contextManager().Prepare(context.Background(), ContextPreparePolicy{Trigger: CompactionTriggerPressure})
++	if err != nil {
++		t.Fatalf("must-free fold must converge below the trigger, got: %v", err)
+ 	}
+-	if !errors.Is(err, ErrCompactionRequired) {
+-		t.Fatalf("err = %v, want ErrCompactionRequired", err)
++	if fold := a.compactTrigger(); prepared.InputTokens >= fold {
++		t.Fatalf("fold did not reclaim below trigger: %d >= %d", prepared.InputTokens, fold)
+ 	}
+ }
+ 
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 8c30b47..2738f7e 100644
+index c839bba2e..de0794c38 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -248,7 +248,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -171,7 +171,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  		releaseMCPListObserver()
  	}()
  	ctx = a.withAgentContext(ctx)
@@ -1158,7 +1184,7 @@ index 8c30b47..2738f7e 100644
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -343,10 +343,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -266,10 +266,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1169,7 +1195,7 @@ index 8c30b47..2738f7e 100644
  }
  
  // streamWithSamplingRecovery coordinates Codex-style original-request replay
-@@ -759,10 +755,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+@@ -660,10 +656,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
  	if state.incompleteReads.hasPending() {
  		return true, nil
  	}
@@ -1182,10 +1208,10 @@ index 8c30b47..2738f7e 100644
  
 diff --git a/internal/agent/shared_ceiling_test.go b/internal/agent/shared_ceiling_test.go
 new file mode 100644
-index 0000000..4744791
+index 000000000..609c6bb6e
 --- /dev/null
 +++ b/internal/agent/shared_ceiling_test.go
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,111 @@
 +package agent
 +
 +import (
@@ -1198,14 +1224,15 @@ index 0000000..4744791
 +	"reasonix/internal/tool"
 +)
 +
-+// The physical input ceiling on a shared prompt+completion window must reserve
-+// the reply budget; an independent window keeps the old one-token margin.
++// The physical input ceiling is window minus protocol reserve on every window
++// mode; reply budgets are resolved independently at send time by the output
++// admission step, so shared and independent windows share the same ceiling.
 +func TestHardInputCeilingSharedWindow(t *testing.T) {
 +	shared := &sharedWindowTestProvider{shared: true, budget: 128 * 1024}
 +	a := New(shared, tool.NewRegistry(), &Session{Messages: []provider.Message{{Role: provider.RoleUser, Content: "x"}}}, Options{
 +		ContextWindow: 200_000,
 +	}, event.Discard)
-+	const want = 200_000 - outputBudgetReserve - protocolReserveTokens
++	const want = 200_000 - protocolReserveTokens
 +	if got := a.hardInputCeiling(); got != want {
 +		t.Fatalf("shared ceiling = %d, want %d", got, want)
 +	}
@@ -1239,7 +1266,7 @@ index 0000000..4744791
 +	if src < hard {
 +		t.Fatalf("probe setup: source %d did not exceed shared ceiling %d", src, hard)
 +	}
-+	if _, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true); err != nil {
++	if _, err := a.compactToProjectionLocked(context.Background(), CompactionTriggerOverflow, "", true, true, false); err != nil {
 +		t.Fatalf("overflow compaction failed at source %d: %v", src, err)
 +	}
 +	visible := a.modelVisibleMessages()
@@ -1297,7 +1324,7 @@ index 0000000..4744791
 +	}
 +}
 diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
-index 7a5042f..d0c5686 100644
+index 7a5042f05..d0c5686c9 100644
 --- a/internal/agent/task_budget_gate_test.go
 +++ b/internal/agent/task_budget_gate_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1342,7 +1369,7 @@ index 7a5042f..d0c5686 100644
  	}
  }
 diff --git a/internal/agent/todo_progress_guard_test.go b/internal/agent/todo_progress_guard_test.go
-index a301af5..94cfb00 100644
+index 978f7914c..b1f7998da 100644
 --- a/internal/agent/todo_progress_guard_test.go
 +++ b/internal/agent/todo_progress_guard_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1353,7 +1380,7 @@ index a301af5..94cfb00 100644
  	"fmt"
  	"testing"
  
-@@ -166,7 +165,10 @@ func TestCanonicalTodoProgressIgnoresTitleAndPendingListChurn(t *testing.T) {
+@@ -172,7 +171,10 @@ func TestCanonicalTodoProgressIgnoresTitleAndPendingListChurn(t *testing.T) {
  	}
  }
  
@@ -1365,7 +1392,7 @@ index a301af5..94cfb00 100644
  	reg := tool.NewRegistry()
  	reg.Add(mustBuiltinTool(t, "todo_write"))
  	reg.Add(fakeTool{name: "write_file", readOnly: false})
-@@ -180,12 +182,11 @@ func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
+@@ -186,12 +188,11 @@ func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
  	a := New(mp, reg, NewSession(""), Options{MaxSteps: 1}, event.Discard)
  
  	err := a.Run(context.Background(), "start a long task")
@@ -1382,7 +1409,7 @@ index a301af5..94cfb00 100644
  }
  
 diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
-index f565bbd..a64c855 100644
+index f565bbdc6..a64c85530 100644
 --- a/internal/control/chat_run_budget_test.go
 +++ b/internal/control/chat_run_budget_test.go
 @@ -100,8 +100,11 @@ func TestOrdinaryChatTurnStopsOnItsTimeBudget(t *testing.T) {
@@ -1410,15 +1437,14 @@ index f565bbd..a64c855 100644
  	}
  }
 diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
-index a466fa9..5fbc4bf 100644
+index a466fa960..0880c6369 100644
 --- a/internal/netclient/netclient.go
 +++ b/internal/netclient/netclient.go
-@@ -44,12 +44,15 @@ type ProxySpec struct {
+@@ -44,12 +44,14 @@ type ProxySpec struct {
  // TransportOptions lets callers keep their existing network timeouts while
  // sharing proxy behavior. ForceIPv4 pins the dialer to tcp4 — the desktop updater
  // uses it to retry over IPv4 when an IPv6 route (CN → Cloudflare) resets mid-transfer.
-+// DialTLSContext overrides the TLS dial (e.g. for a custom ClientHello fingerprint);
-+// when set, HTTP/2 is disabled because the connection is no longer a *tls.Conn.
++// DialTLSContext overrides the TLS dial (e.g. for a custom ClientHello fingerprint).
  type TransportOptions struct {
  	DialTimeout           time.Duration
  	KeepAlive             time.Duration
@@ -1429,31 +1455,34 @@ index a466fa9..5fbc4bf 100644
  }
  
  // NormalizeMode maps empty and unknown modes to auto, preserving a fail-open
-@@ -122,6 +125,12 @@ func NewTransport(spec ProxySpec, opts TransportOptions) (*http.Transport, error
+@@ -122,6 +124,13 @@ func NewTransport(spec ProxySpec, opts TransportOptions) (*http.Transport, error
  	if opts.ResponseHeaderTimeout != 0 {
  		tr.ResponseHeaderTimeout = opts.ResponseHeaderTimeout
  	}
 +	if opts.DialTLSContext != nil {
 +		tr.DialTLSContext = opts.DialTLSContext
-+		// A custom TLS dialer may return a non-*tls.Conn (utls.UConn), for which
-+		// net/http cannot negotiate HTTP/2; pin HTTP/1.1.
-+		tr.ForceAttemptHTTP2 = false
++		// A custom TLS dialer returns a non-*tls.Conn (utls.UConn), over which
++		// net/http only speaks HTTP/1.1; callers needing another version must
++		// negotiate it inside the dialer (the opencode dialer offers
++		// http/1.1-only ALPN for exactly this reason).
 +	}
  	return tr, nil
  }
  
 diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
 new file mode 100644
-index 0000000..535728e
+index 000000000..c2c6cb832
 --- /dev/null
 +++ b/internal/netclient/opencode_spec_test.go
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,110 @@
 +package netclient
 +
 +import (
++	"net/http"
 +	"testing"
 +
 +	utls "github.com/refraction-networking/utls"
++	"golang.org/x/net/http2"
 +)
 +
 +// TestOpenCodeClientHelloSpecFresh: ApplyPreset writes the generated X25519 key
@@ -1501,20 +1530,79 @@ index 0000000..535728e
 +		}
 +	}
 +}
++
++// TestOpenCodeClientHelloSpecOffersH2First pins the ALPN offer: h2 first so
++// Cloudflare negotiates it (spoken through x/net/http2), http/1.1 kept for
++// the plaintext/proxy leg. Dropping h2 regresses direct-https requests to
++// HTTP/1.1-only; dropping http/1.1 strands plaintext users.
++func TestOpenCodeClientHelloSpecOffersH2First(t *testing.T) {
++	var alpns []string
++	for _, e := range OpenCodeClientHelloSpec.Extensions {
++		if alpn, ok := e.(*utls.ALPNExtension); ok {
++			alpns = alpn.AlpnProtocols
++		}
++	}
++	if len(alpns) != 2 || alpns[0] != "h2" || alpns[1] != "http/1.1" {
++		t.Fatalf("ClientHello ALPN = %q, want [h2 http/1.1]", alpns)
++	}
++	if got := openCodeClientHelloSpec(); len(got.Extensions) == 0 {
++		t.Fatal("cloned spec lost extensions")
++	}
++}
++
++// TestNewOpenCodeHTTPClientRoutesBySchemeAndProxy pins the transport split:
++// direct https rides h2, plaintext and CONNECT-proxied requests stay on the
++// HTTP/1.1 leg (the h2 stack supports neither). No network is touched.
++func TestNewOpenCodeHTTPClientRoutesBySchemeAndProxy(t *testing.T) {
++	direct, err := NewOpenCodeHTTPClient(ProxySpec{Mode: ModeOff}, TransportOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	dt, ok := direct.Transport.(*openCodeTransport)
++	if !ok {
++		t.Fatalf("transport = %T, want *openCodeTransport", direct.Transport)
++	}
++	if _, ok := dt.h2.(*http2.Transport); !ok {
++		t.Fatalf("h2 leg = %T, want *http2.Transport", dt.h2)
++	}
++	if _, ok := dt.h1.(*http.Transport); !ok {
++		t.Fatalf("h1 leg = %T, want *http.Transport", dt.h1)
++	}
++
++	proxied, err := NewOpenCodeHTTPClient(ProxySpec{
++		Mode: ModeCustom, Type: "http", Server: "127.0.0.1", Port: 8080,
++	}, TransportOptions{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	pt := proxied.Transport.(*openCodeTransport)
++	req, _ := http.NewRequest(http.MethodPost, "https://opencode.ai/zen/v1/chat/completions", nil)
++	if u, err := pt.proxy(req); err != nil || u == nil {
++		t.Fatalf("proxy(%v) = %v, %v; custom proxy must match", req.URL, u, err)
++	}
++	plain, _ := http.NewRequest(http.MethodPost, "http://192.0.2.1:9/x", nil)
++	if u, err := pt.proxy(plain); err != nil || u == nil {
++		t.Fatalf("proxy(plaintext) = %v, %v; custom proxy must match", u, err)
++	}
++}
 diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
 new file mode 100644
-index 0000000..7d91d96
+index 000000000..18d9804e6
 --- /dev/null
 +++ b/internal/netclient/opencode_tls.go
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,202 @@
 +package netclient
 +
 +import (
 +	"context"
++	"crypto/tls"
 +	"net"
++	"net/http"
++	"net/url"
 +	"time"
 +
 +	utls "github.com/refraction-networking/utls"
++	"golang.org/x/net/http2"
 +)
 +
 +// OpenCodeClientHelloSpec reproduces the TLS ClientHello emitted by the opencode
@@ -1525,7 +1613,9 @@ index 0000000..7d91d96
 +//
 +// The extension order matches BoringSSL's fixed layout (server_name first —
 +// omitted for IP literals, exactly like the capture against 127.0.0.1) with no
-+// GREASE values, ALPN limited to http/1.1, and X25519-only key share.
++// GREASE values and X25519-only key share. ALPN offers h2 first (Cloudflare
++// negotiates it): h2 is spoken through x/net/http2 with this same spec, while
++// plaintext (tests, local capture proxies) stays on HTTP/1.1.
 +// OpenCodeClientHelloSpec is the template for the opencode ClientHello. It is
 +// mutable: ApplyPreset fills in the generated X25519 key share, so a fresh copy
 +// (openCodeClientHelloSpec) must be used for every connection instead of this
@@ -1558,7 +1648,7 @@ index 0000000..7d91d96
 +		&utls.SupportedCurvesExtension{Curves: []utls.CurveID{utls.CurveX25519, utls.CurveP256, utls.CurveP384}},
 +		&utls.SupportedPointsExtension{SupportedPoints: []uint8{0}},
 +		&utls.SessionTicketExtension{},
-+		&utls.ALPNExtension{AlpnProtocols: []string{"http/1.1"}},
++		&utls.ALPNExtension{AlpnProtocols: []string{"h2", "http/1.1"}},
 +		&utls.StatusRequestExtension{},
 +		&utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: []utls.SignatureScheme{
 +			utls.ECDSAWithP256AndSHA256, // 0x0403
@@ -1602,46 +1692,109 @@ index 0000000..7d91d96
 +	return &spec
 +}
 +
-+// OpenCodeDialTLS returns a DialTLSContext hook that handshakes with the
-+// opencode ClientHello spec. It is used by the openai provider when it detects
-+// an opencode endpoint, so the transport speaks the exact BoringSSL shape the
-+// real CLI presents instead of Go's default ClientHello.
-+func OpenCodeDialTLS(dialTimeout, keepAlive, handshakeTimeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
++// openCodeDialConn dials and handshakes with the opencode ClientHello spec,
++// so the transport speaks the exact BoringSSL shape the real CLI presents
++// instead of Go's default ClientHello. The negotiated protocol is left to the
++// server (h2 when offered); callers pick the HTTP stack to match.
++func openCodeDialConn(ctx context.Context, network, addr string, dialTimeout, keepAlive, handshakeTimeout time.Duration, forceIPv4 bool) (net.Conn, error) {
 +	d := &net.Dialer{Timeout: dialTimeout, KeepAlive: keepAlive}
++	if forceIPv4 {
++		network = "tcp4"
++	}
++	raw, err := d.DialContext(ctx, network, addr)
++	if err != nil {
++		return nil, err
++	}
++	host, _, err := net.SplitHostPort(addr)
++	if err != nil {
++		host = addr
++	}
++	tlsCfg := &utls.Config{
++		ServerName: host,
++		NextProtos: []string{"h2", "http/1.1"},
++	}
++	uconn := utls.UClient(raw, tlsCfg, utls.HelloCustom)
++	if err := uconn.ApplyPreset(openCodeClientHelloSpec()); err != nil {
++		raw.Close()
++		return nil, err
++	}
++	handshakeCtx := ctx
++	cancel := func() {}
++	if handshakeTimeout > 0 {
++		handshakeCtx, cancel = context.WithTimeout(ctx, handshakeTimeout)
++	}
++	err = uconn.HandshakeContext(handshakeCtx)
++	cancel()
++	if err != nil {
++		raw.Close()
++		return nil, err
++	}
++	return uconn, nil
++}
++
++// OpenCodeDialTLS returns a DialTLSContext hook for the HTTP/1.1 leg
++// (plaintext tests, local capture proxies, proxied requests).
++func OpenCodeDialTLS(dialTimeout, keepAlive, handshakeTimeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
 +	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-+		raw, err := d.DialContext(ctx, network, addr)
-+		if err != nil {
-+			return nil, err
-+		}
-+		host, _, err := net.SplitHostPort(addr)
-+		if err != nil {
-+			host = addr
-+		}
-+		tlsCfg := &utls.Config{
-+			ServerName: host,
-+			NextProtos: []string{"http/1.1"},
-+		}
-+		uconn := utls.UClient(raw, tlsCfg, utls.HelloCustom)
-+		if err := uconn.ApplyPreset(openCodeClientHelloSpec()); err != nil {
-+			raw.Close()
-+			return nil, err
-+		}
-+		handshakeCtx := ctx
-+		cancel := func() {}
-+		if handshakeTimeout > 0 {
-+			handshakeCtx, cancel = context.WithTimeout(ctx, handshakeTimeout)
-+		}
-+		err = uconn.HandshakeContext(handshakeCtx)
-+		cancel()
-+		if err != nil {
-+			raw.Close()
-+			return nil, err
-+		}
-+		return uconn, nil
++		return openCodeDialConn(ctx, network, addr, dialTimeout, keepAlive, handshakeTimeout, false)
 +	}
 +}
++
++// openCodeH2DialTLS adapts the dialer to x/net/http2's hook shape. The h2
++// transport trusts a custom dialer and skips its own ALPN check, so the
++// utls-handshaked connection is used as-is.
++func openCodeH2DialTLS(dialTimeout, keepAlive, handshakeTimeout time.Duration, forceIPv4 bool) func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
++	return func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
++		return openCodeDialConn(ctx, network, addr, dialTimeout, keepAlive, handshakeTimeout, forceIPv4)
++	}
++}
++
++// openCodeTransport routes each request to the HTTP stack matching its URL:
++// direct https goes over h2 (what Cloudflare negotiates for this spec),
++// while plaintext (tests, local capture proxies) and proxied requests stay
++// on the HTTP/1.1 leg — the h2 stack supports neither.
++type openCodeTransport struct {
++	h1    http.RoundTripper
++	h2    http.RoundTripper
++	proxy func(*http.Request) (*url.URL, error)
++}
++
++func (t *openCodeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
++	if t.h2 != nil && req.URL.Scheme == "https" {
++		proxied := false
++		if t.proxy != nil {
++			if u, err := t.proxy(req); err == nil && u != nil {
++				proxied = true
++			}
++		}
++		if !proxied {
++			return t.h2.RoundTrip(req)
++		}
++	}
++	return t.h1.RoundTrip(req)
++}
++
++// NewOpenCodeHTTPClient returns an HTTP client for opencode endpoints: h2
++// over the BoringSSL-shape ClientHello for direct https, HTTP/1.1 for
++// everything else (plaintext tests/proxies, CONNECT-proxied requests).
++func NewOpenCodeHTTPClient(spec ProxySpec, opts TransportOptions) (*http.Client, error) {
++	h1opts := opts
++	h1opts.DialTLSContext = OpenCodeDialTLS(opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
++	h1, err := NewTransport(spec, h1opts)
++	if err != nil {
++		return nil, err
++	}
++	proxy, err := proxyFunc(spec)
++	if err != nil {
++		return nil, err
++	}
++	h2 := &http2.Transport{
++		DialTLSContext: openCodeH2DialTLS(opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout, opts.ForceIPv4),
++	}
++	return &http.Client{Transport: &openCodeTransport{h1: h1, h2: h2, proxy: proxy}}, nil
++}
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
-index 26e44e5..b91cb5e 100644
+index 26e44e5e8..b91cb5e2f 100644
 --- a/internal/provider/context_limit.go
 +++ b/internal/provider/context_limit.go
 @@ -67,7 +67,12 @@ var (
@@ -1674,7 +1827,7 @@ index 26e44e5..b91cb5e 100644
  }
  
 diff --git a/internal/provider/context_limit_test.go b/internal/provider/context_limit_test.go
-index ec38555..6ebabc7 100644
+index ec3855522..6ebabc750 100644
 --- a/internal/provider/context_limit_test.go
 +++ b/internal/provider/context_limit_test.go
 @@ -59,3 +59,22 @@ func TestParseOutputLimitError(t *testing.T) {
@@ -1701,21 +1854,32 @@ index ec38555..6ebabc7 100644
 +	}
 +}
 diff --git a/internal/provider/openai/host.go b/internal/provider/openai/host.go
-index edfa2d6..28139c0 100644
+index edfa2d656..624483dd5 100644
 --- a/internal/provider/openai/host.go
 +++ b/internal/provider/openai/host.go
-@@ -65,6 +65,16 @@ func IsOpenAI(baseURL string) bool {
+@@ -65,6 +65,27 @@ func IsOpenAI(baseURL string) bool {
  	return strings.EqualFold(u.Hostname(), "api.openai.com")
  }
  
-+// IsOpenCode reports whether a provider speaks the opencode Zen wire shape.
-+// reasonix-config names the provider after its models.dev id ("opencode";
-+// "opencode-zen" kept for configs generated before the rename), so the name
-+// alone stays a reliable, option-free signal even when a local capture proxy
-+// rewrites base_url to an IP.
++// IsOpenCode reports whether a provider speaks the opencode CLI Zen wire shape
++// (CLI TLS fingerprint, x-opencode-* headers, fixed body key order, no
++// reasoning fields). It matches the generated config's models.dev names
++// ("opencode", plus "opencode-zen"/"opencode-responses" kept for older
++// configs) and the CLI gateway path (/zen/v1, which also survives a local
++// capture proxy that rewrites base_url to an IP). The OpenCode Go relay
++// (names "opencode-go*", paths /zen/go*) is deliberately excluded: it is a
++// plain OpenAI-compatible endpoint with per-model reasoning contracts (e.g.
++// kimi-k3 reasoning_effort) that the CLI wire shape would strip.
 +func IsOpenCode(name, baseURL string) bool {
-+	name = strings.ToLower(strings.TrimSpace(name))
-+	return name == "opencode" || name == "opencode-zen" || name == "opencode-responses" || strings.HasPrefix(name, "opencode-")
++	switch strings.ToLower(strings.TrimSpace(name)) {
++	case "opencode", "opencode-zen", "opencode-responses":
++		return true
++	}
++	u, err := url.Parse(baseURL)
++	if err != nil {
++		return false
++	}
++	return strings.Contains(u.EscapedPath(), "/zen/v1")
 +}
 +
  // deepSeekPrefixChatURL returns the official Beta chat endpoint that enables
@@ -1723,10 +1887,10 @@ index edfa2d6..28139c0 100644
  // DeepSeek: custom gateways may opt into the DeepSeek reasoning wire shape, but
 diff --git a/internal/provider/openai/oczen_shared_window_test.go b/internal/provider/openai/oczen_shared_window_test.go
 new file mode 100644
-index 0000000..20c934c
+index 000000000..80c05486e
 --- /dev/null
 +++ b/internal/provider/openai/oczen_shared_window_test.go
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,102 @@
 +package openai
 +
 +import (
@@ -1801,11 +1965,39 @@ index 0000000..20c934c
 +		t.Fatal("opencode DeepSeek must share the context window")
 +	}
 +}
++
++// The OpenCode Go relay is a plain OpenAI-compatible endpoint with per-model
++// reasoning contracts: it must never take the CLI mimic path, even though its
++// names share the "opencode-" prefix. The CLI path is the models.dev names
++// plus the /zen/v1 gateway path (which also covers renames and IP proxies).
++func TestIsOpenCodeScope(t *testing.T) {
++	cases := []struct {
++		name, baseURL string
++		want          bool
++	}{
++		{"opencode", "https://opencode.ai/zen/v1", true},
++		{"opencode-zen", "https://opencode.ai/zen/v1", true},
++		{"opencode-responses", "https://opencode.ai/zen/v1", true},
++		{"custom-name", "https://opencode.ai/zen/v1/chat/completions", true},
++		{"custom-name", "http://127.0.0.1:8080/zen/v1/chat/completions", true},
++		{"opencode-go", "https://opencode.ai/zen/go/v1", false},
++		{"opencode-go", "http://127.0.0.1:8080", false},
++		{"opencode-go-deepseek", "https://opencode.ai/zen/go/v1", false},
++		{"opencode-go-responses", "https://opencode.ai/zen/go/v1", false},
++		{"opencode-zen-anthropic", "https://opencode.ai/zen", false},
++		{"other", "https://api.deepseek.com", false},
++	}
++	for _, tc := range cases {
++		if got := IsOpenCode(tc.name, tc.baseURL); got != tc.want {
++			t.Errorf("IsOpenCode(%q, %q) = %v, want %v", tc.name, tc.baseURL, got, tc.want)
++		}
++	}
++}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index f68421b..16d5f3f 100644
+index fa820063b..19db81267 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
-@@ -225,10 +225,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -236,10 +236,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
  	// max_output_tokens=0 on official DeepSeek omits the wire field so the
  	// server uses its 384K ceiling. Effort only selects thinking depth.
  	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
@@ -1822,7 +2014,7 @@ index f68421b..16d5f3f 100644
  	return &client{
  		name:            name,
  		apiKey:          cfg.APIKey,
-@@ -254,17 +259,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -266,17 +271,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		requestEfforts:  requestEfforts,
  		http:            httpClient,
  		idleTimeout:     defaultStreamIdleTimeout,
@@ -1844,15 +2036,15 @@ index f68421b..16d5f3f 100644
 +	}
 +	if opencode {
 +		// Reproduce the opencode CLI's BoringSSL ClientHello (JA3/JA4) so the
-+		// endpoint sees the same TLS fingerprint as the real client.
-+		opts.DialTLSContext = netclient.OpenCodeDialTLS(
-+			opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
++		// endpoint sees the same TLS fingerprint as the real client, with h2
++		// for direct https (HTTP/1.1 for plaintext/proxied requests).
++		return netclient.NewOpenCodeHTTPClient(spec, opts)
 +	}
 +	return netclient.NewHTTPClient(spec, opts)
  }
  
  type client struct {
-@@ -293,6 +307,8 @@ type client struct {
+@@ -306,6 +320,8 @@ type client struct {
  	requestEfforts  []string      // depth levels a per-request EffortOverride may take; empty = overrides ignored
  	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -1861,7 +2053,7 @@ index f68421b..16d5f3f 100644
  }
  
  func (c *client) Name() string { return c.name }
-@@ -301,7 +317,7 @@ func (c *client) RequiresToolCallReasoning() bool {
+@@ -323,7 +339,7 @@ func (c *client) RequiresToolCallReasoning() bool {
  	if c == nil || c.thinkingType == "disabled" {
  		return false
  	}
@@ -1870,7 +2062,7 @@ index f68421b..16d5f3f 100644
  		return true
  	}
  	// Generic OpenAI-compatible gateways can explicitly opt into the
-@@ -494,6 +510,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+@@ -516,6 +532,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
  		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
  		httpReq.Header.Set("Accept", "text/event-stream")
  		applyCustomHeaders(httpReq.Header, c.headers)
@@ -1878,18 +2070,14 @@ index f68421b..16d5f3f 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -846,6 +863,18 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
+@@ -861,6 +878,14 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
  		// is left untouched for backends that also honour it.
  		out.Thinking = &thinkingMode{Type: c.thinkingType}
  	}
 +	if c.opencode {
-+		// The opencode CLI sends a fixed wire shape regardless of reasoning
-+		// config: no temperature, no reasoning_effort/thinking, and
-+		// tool_choice: "auto" whenever tools are present.
++		// The opencode CLI sends a fixed wire shape: no reasoning_effort/thinking,
++		// and tool_choice: "auto" whenever tools are present.
 +		out.Opencode = true
-+		out.Temperature = nil
-+		out.ReasoningEffort = ""
-+		out.Thinking = nil
 +		if len(tools) > 0 {
 +			out.ToolChoice = "auto"
 +		}
@@ -1897,7 +2085,7 @@ index f68421b..16d5f3f 100644
  	return out
  }
  
-@@ -867,6 +896,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -882,6 +907,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -1911,7 +2099,7 @@ index f68421b..16d5f3f 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1156,6 +1192,8 @@ type chatRequest struct {
+@@ -1171,6 +1203,8 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -1920,7 +2108,7 @@ index f68421b..16d5f3f 100644
  	ExtraBody           map[string]any `json:"-"`
  }
  
-@@ -1180,6 +1218,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
+@@ -1195,6 +1229,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
  }
  
  func (r chatRequest) MarshalJSON() ([]byte, error) {
@@ -1931,10 +2119,10 @@ index f68421b..16d5f3f 100644
  	baseReq := wire(r)
  	baseReq.ExtraBody = nil
 diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
-index d85e06f..65e3675 100644
+index 9c8762143..9171bc2d1 100644
 --- a/internal/provider/openai/openai_test.go
 +++ b/internal/provider/openai/openai_test.go
-@@ -1045,6 +1045,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
+@@ -1043,6 +1043,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
  	}
  }
  
@@ -1973,10 +2161,10 @@ index d85e06f..65e3675 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..a910087
+index 000000000..0fc4e6579
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,131 @@
 +package openai
 +
 +import (
@@ -1995,8 +2183,7 @@ index 0000000..a910087
 +// Wire constants captured from the real opencode CLI (v1.18.26) so a reasonix
 +// request against an opencode Zen endpoint is indistinguishable from the CLI's.
 +const (
-+	opencodeUserAgent      = "opencode/1.18.26 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
-+	opencodeAcceptEncoding = "gzip, deflate, br, zstd"
++	opencodeUserAgent = "opencode/1.18.28"
 +)
 +
 +// applyOpenCodeHeaders stamps the opencode-specific headers onto a request.
@@ -2015,9 +2202,7 @@ index 0000000..a910087
 +	h.Del("X-Opencode-Session")
 +	h.Del("X-Opencode-Request")
 +	h.Del("X-Opencode-Project")
-+	h.Set("Accept", "*/*")
 +	h.Set("User-Agent", opencodeUserAgent)
-+	h.Set("Accept-Encoding", opencodeAcceptEncoding)
 +	h["x-opencode-client"] = []string{"cli"}
 +	h["x-opencode-project"] = []string{"global"}
 +	h["x-opencode-request"] = []string{opencodeCreate("msg", false)}
@@ -2083,8 +2268,7 @@ index 0000000..a910087
 +}
 +
 +// decompressBody unwraps the response body according to Content-Encoding.
-+// The opencode header Accept-Encoding: gzip, deflate, br, zstd disables Go's
-+// transparent gzip handling, so the SSE parser must decode manually.
++// Server may compress responses, so the SSE parser must decode manually.
 +func decompressBody(resp *http.Response) (io.ReadCloser, error) {
 +	raw := resp.Body
 +	switch strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding"))) {
@@ -2114,7 +2298,7 @@ index 0000000..a910087
 +}
 diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
 new file mode 100644
-index 0000000..a0d9f1d
+index 000000000..a0d9f1d34
 --- /dev/null
 +++ b/internal/provider/openai/opencode_concurrency_test.go
 @@ -0,0 +1,36 @@
@@ -2156,7 +2340,7 @@ index 0000000..a0d9f1d
 +}
 diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
 new file mode 100644
-index 0000000..eca549e
+index 000000000..eca549e2e
 --- /dev/null
 +++ b/internal/provider/openai/opencode_decompress_test.go
 @@ -0,0 +1,72 @@
@@ -2234,7 +2418,7 @@ index 0000000..eca549e
 +}
 diff --git a/internal/provider/openai/opencode_id.go b/internal/provider/openai/opencode_id.go
 new file mode 100644
-index 0000000..a611047
+index 000000000..a61104722
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id.go
 @@ -0,0 +1,76 @@
@@ -2316,7 +2500,7 @@ index 0000000..a611047
 +}
 diff --git a/internal/provider/openai/opencode_id_test.go b/internal/provider/openai/opencode_id_test.go
 new file mode 100644
-index 0000000..d7ac21d
+index 000000000..d7ac21dd0
 --- /dev/null
 +++ b/internal/provider/openai/opencode_id_test.go
 @@ -0,0 +1,38 @@
@@ -2360,7 +2544,7 @@ index 0000000..d7ac21d
 +}
 diff --git a/internal/provider/openai/opencode_stall_test.go b/internal/provider/openai/opencode_stall_test.go
 new file mode 100644
-index 0000000..908b7c3
+index 000000000..908b7c3f0
 --- /dev/null
 +++ b/internal/provider/openai/opencode_stall_test.go
 @@ -0,0 +1,78 @@
@@ -2444,10 +2628,10 @@ index 0000000..908b7c3
 +}
 diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
 new file mode 100644
-index 0000000..7ab2789
+index 000000000..9c042246a
 --- /dev/null
 +++ b/internal/provider/openai/opencode_stream_test.go
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,102 @@
 +package openai
 +
 +import (
@@ -2518,9 +2702,6 @@ index 0000000..7ab2789
 +	if got := gotReq.Header.Get("User-Agent"); got != opencodeUserAgent {
 +		t.Errorf("User-Agent = %q", got)
 +	}
-+	if got := gotReq.Header.Get("Accept-Encoding"); got != "gzip, deflate, br, zstd" {
-+		t.Errorf("Accept-Encoding = %q", got)
-+	}
 +	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-request", "x-opencode-session"} {
 +		if got := gotReq.Header.Get(k); got == "" {
 +			t.Errorf("missing header %s", k)
@@ -2554,7 +2735,7 @@ index 0000000..7ab2789
 +	}
 +}
 diff --git a/internal/provider/openai/output_budget.go b/internal/provider/openai/output_budget.go
-index 130edcd..7b178f3 100644
+index 130edcdac..7b178f3f1 100644
 --- a/internal/provider/openai/output_budget.go
 +++ b/internal/provider/openai/output_budget.go
 @@ -1,12 +1,32 @@
@@ -2613,8 +2794,165 @@ index 130edcd..7b178f3 100644
 +	}
  	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
  }
+diff --git a/internal/provider/responses/responses_test.go b/internal/provider/responses/responses_test.go
+index c77c7ee03..c6a378f78 100644
+--- a/internal/provider/responses/responses_test.go
++++ b/internal/provider/responses/responses_test.go
+@@ -56,6 +56,10 @@ func TestDetectVendorAndModeDefaults(t *testing.T) {
+ 		{"https://api.stepfun.com/step_plan/v1", "stepfun", "stateless"},
+ 		{"https://api.stepfun.ai/v1", "stepfun", "stateless"},
+ 		{"https://gateway.stepfun.com/v1", "", "stateful"},
++		{"https://opencode.ai/zen/v1", "opencode", "stateful"},
++		{"https://opencode.ai/zen/go/v1", "opencode", "stateful"},
++		{"https://console.opencode.ai/zen/v1/responses", "opencode", "stateful"},
++		{"http://127.0.0.1:8080/zen/v1/chat/completions", "opencode", "stateful"},
+ 		{"https://api.deepseek.com.attacker.example/v1", "", "stateful"},
+ 		{"https://example.com/api.deepseek.com/v1", "", "stateful"},
+ 		{"https://example.com/v1", "", "stateful"},
+@@ -609,11 +613,13 @@ func TestVendorCapabilityTableCoversKnownEndpoints(t *testing.T) {
+ 		stateless, reasoning bool
+ 		ignoresTemp          bool
+ 		singleSegment        bool
++		summary              bool
+ 	}{
+-		{"https://api.deepseek.com", "deepseek", true, true, false, false},
+-		{"https://api.xiaomimimo.com/v1", "mimo", true, true, true, true},
+-		{"https://dashscope.aliyuncs.com/compatible-mode/v1", "dashscope", false, false, false, false},
+-		{"https://example.com/v1", "", false, false, false, false},
++		{"https://api.deepseek.com", "deepseek", true, true, false, false, false},
++		{"https://api.xiaomimimo.com/v1", "mimo", true, true, true, true, false},
++		{"https://dashscope.aliyuncs.com/compatible-mode/v1", "dashscope", false, false, false, false, true},
++		{"https://opencode.ai/zen/v1", "opencode", false, false, false, false, true},
++		{"https://example.com/v1", "", false, false, false, false, false},
+ 	}
+ 	for _, test := range tests {
+ 		vendor := DetectVendor(test.url)
+@@ -633,6 +639,9 @@ func TestVendorCapabilityTableCoversKnownEndpoints(t *testing.T) {
+ 		if caps.singleSegmentReasoning != test.singleSegment {
+ 			t.Errorf("capabilities(%q).singleSegmentReasoning = %v, want %v", vendor, caps.singleSegmentReasoning, test.singleSegment)
+ 		}
++		if caps.summaryRequired != test.summary {
++			t.Errorf("capabilities(%q).summaryRequired = %v, want %v", vendor, caps.summaryRequired, test.summary)
++		}
+ 	}
+ }
+ 
+@@ -842,40 +851,46 @@ func TestAllZeroUsageCompletedEmitsCompletionSemantics(t *testing.T) {
+ }
+ 
+ func TestMessagesToInputIncludesSummaryOnReasoningItems(t *testing.T) {
+-	// DashScope is the only vendor whose schema requires the summary list;
+-	// use its base URL so the capability table opts in.
+-	client := New(Config{Name: "dashscope", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen3"}).(*client)
+-	body, _, _ := client.buildRequestBody(provider.Request{Messages: []provider.Message{
+-		{Role: provider.RoleUser, Content: "run"},
+-		{Role: provider.RoleAssistant, ReasoningContent: "think step by step", Content: "answer"},
+-	}})
+-	items := body["input"].([]map[string]any)
+-	var reasoning map[string]any
+-	for _, item := range items {
+-		if item["type"] == "reasoning" {
+-			reasoning = item
+-			break
++	// DashScope and the opencode Console both require the summary list on
++	// replayed reasoning items (Console rejects without it); use their base
++	// URLs so the capability table opts in.
++	for _, tc := range []struct{ name, baseURL, model string }{
++		{"dashscope", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3"},
++		{"opencode-responses", "https://opencode.ai/zen/v1", "muse-spark"},
++	} {
++		client := New(Config{Name: tc.name, BaseURL: tc.baseURL, Model: tc.model}).(*client)
++		body, _, _ := client.buildRequestBody(provider.Request{Messages: []provider.Message{
++			{Role: provider.RoleUser, Content: "run"},
++			{Role: provider.RoleAssistant, ReasoningContent: "think step by step", Content: "answer"},
++		}})
++		items := body["input"].([]map[string]any)
++		var reasoning map[string]any
++		for _, item := range items {
++			if item["type"] == "reasoning" {
++				reasoning = item
++				break
++			}
++		}
++		if reasoning == nil {
++			t.Fatal("missing reasoning item in input")
++		}
++		// DashScope requires summary as a list, not a scalar; OpenAI format only
++		// needs content. The serialized input must carry both.
++		summary, ok := reasoning["summary"].([]map[string]string)
++		if !ok {
++			t.Fatalf("reasoning summary = %#v, want []map[string]string list", reasoning["summary"])
++		}
++		if len(summary) != 1 || summary[0]["type"] != "summary_text" || summary[0]["text"] != "think step by step" {
++			t.Fatalf("reasoning summary = %#v", summary)
++		}
++		content, ok := reasoning["content"].([]map[string]string)
++		if !ok || len(content) != 1 || content[0]["type"] != "reasoning_text" || content[0]["text"] != "think step by step" {
++			t.Fatalf("reasoning content = %#v", reasoning["content"])
+ 		}
+-	}
+-	if reasoning == nil {
+-		t.Fatal("missing reasoning item in input")
+-	}
+-	// DashScope requires summary as a list, not a scalar; OpenAI format only
+-	// needs content. The serialized input must carry both.
+-	summary, ok := reasoning["summary"].([]map[string]string)
+-	if !ok {
+-		t.Fatalf("reasoning summary = %#v, want []map[string]string list", reasoning["summary"])
+-	}
+-	if len(summary) != 1 || summary[0]["type"] != "summary_text" || summary[0]["text"] != "think step by step" {
+-		t.Fatalf("reasoning summary = %#v", summary)
+-	}
+-	content, ok := reasoning["content"].([]map[string]string)
+-	if !ok || len(content) != 1 || content[0]["type"] != "reasoning_text" || content[0]["text"] != "think step by step" {
+-		t.Fatalf("reasoning content = %#v", reasoning["content"])
+ 	}
+ }
+ 
+-func TestMessagesToInputOmitsSummaryForNonDashScope(t *testing.T) {
++func TestMessagesToInputOmitsSummaryWhereNotRequired(t *testing.T) {
+ 	// MiMo/DeepSeek/unknown endpoints do not define `summary` in their
+ 	// reasoning-item schema; sending it leaks the reasoning text into an
+ 	// extra field the server may echo back into the model context (the
+diff --git a/internal/provider/responses/vendor.go b/internal/provider/responses/vendor.go
+index 6200e4f67..999c44f0f 100644
+--- a/internal/provider/responses/vendor.go
++++ b/internal/provider/responses/vendor.go
+@@ -123,6 +123,15 @@ var vendorTable = map[string]vendorCapabilities{
+ 		summaryRequired:        true,
+ 		compactionOutputTokens: provider.DefaultOrdinaryOutputTokens,
+ 	},
++	// opencode.ai (Zen/Console, both the CLI /zen/v1 routes and the Go-relay
++	// /zen/go routes) validates replayed reasoning items strictly: a missing
++	// `summary` list fails the request with invalid_request_error (observed:
++	// muse-spark via Console). The field is standard OpenAI schema, so unlike
++	// MiMo there is no doubling hazard in sending it. Everything else stays
++	// at the OpenAI default.
++	"opencode": {
++		summaryRequired: true,
++	},
+ 	// "" (unknown OpenAI-compatible endpoint) → zero value = default behavior.
+ 	// Unknown gateways deliberately do NOT inherit a large max-output default.
+ }
+@@ -150,7 +159,16 @@ func DetectVendor(baseURL string) string {
+ 		return "mimo"
+ 	case host == "api.stepfun.com", host == "api.stepfun.ai":
+ 		return "stepfun"
++	case host == "opencode.ai", strings.HasSuffix(host, ".opencode.ai"):
++		return "opencode"
+ 	default:
++		// A local capture proxy may rewrite the URL to an IP while keeping
++		// the gateway path; match the opencode Zen routes by path too, the
++		// same fallback the chat provider uses for its TLS fingerprint.
++		p := u.EscapedPath()
++		if strings.Contains(p, "/zen/v1") || strings.Contains(p, "/zen/go") {
++			return "opencode"
++		}
+ 		return ""
+ 	}
+ }
 diff --git a/internal/runtimepolicy/constraints.go b/internal/runtimepolicy/constraints.go
-index 5fd8f97..0987962 100644
+index 5fd8f9708..0987962e7 100644
 --- a/internal/runtimepolicy/constraints.go
 +++ b/internal/runtimepolicy/constraints.go
 @@ -179,7 +179,29 @@ func globalMutationTail(tail string) bool {
@@ -2649,7 +2987,7 @@ index 5fd8f97..0987962 100644
  
  func globalFixTail(tail string) bool {
 diff --git a/internal/runtimepolicy/constraints_test.go b/internal/runtimepolicy/constraints_test.go
-index afce472..b01dca2 100644
+index afce4728b..b01dca2eb 100644
 --- a/internal/runtimepolicy/constraints_test.go
 +++ b/internal/runtimepolicy/constraints_test.go
 @@ -12,6 +12,11 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {

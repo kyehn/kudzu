@@ -3,11 +3,10 @@
  * real opencode CLI on the wire: User-Agent, Accept/Accept-Encoding and the
  * x-opencode-* identifier headers.
  *
- * Sources mirrored (opencode v1.18.26):
+ * Sources mirrored (opencode v1.18.28):
  *   - packages/schema/src/identifier.ts + packages/opencode/src/id/id.ts
  *     (ses_ descending, msg_ ascending, 12 hex time chars + 14 base62 chars)
  *   - packages/opencode/src/session/llm/request.ts (headers, per-provider UA)
- *   - packages/core/src/models-dev.ts (models.dev fetch UA)
  *   - packages/core/src/project.ts + util/hash.ts (x-opencode-project)
  */
 import { execFile } from "node:child_process";
@@ -29,6 +28,7 @@ import {
 	type SimpleStreamOptions,
 	streamSimple,
 } from "@earendil-works/pi-ai/compat";
+import { OPENCODE_MODELS } from "@earendil-works/pi-ai/providers/opencode.models";
 import type {
 	ExtensionAPI,
 	ProviderConfig,
@@ -36,10 +36,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 const BASE_URL = "https://opencode.ai/zen/v1";
-const MODELS_DEV_URL = "https://models.dev/api.json";
 const API_KEY = "public";
-const OPENCODE_VERSION = "1.18.26";
-const MAX_BOOTSTRAP_ATTEMPTS = 3;
+const OPENCODE_VERSION = "1.18.28";
 
 // ─── opencode wire identity ─────────────────────────────────────────────────
 
@@ -59,10 +57,6 @@ const PROVIDER_UTILS_VERSIONS: Record<EndpointApi, string> = {
 	"anthropic-messages": "4.0.27", // @ai-sdk/anthropic@3.0.82
 	"google-generative-ai": "4.0.27", // @ai-sdk/google@3.0.73
 };
-
-// models.dev catalog fetches use opencode/<channel>/<version>/<client>
-// (packages/core/src/models-dev.ts; channel "prod" for releases).
-const MODELS_DEV_USER_AGENT = `opencode/prod/${OPENCODE_VERSION}/cli`;
 
 /** Mirrors the AI SDK's getRuntimeEnvironmentUserAgent(). */
 function runtimeSegment(): string {
@@ -178,23 +172,29 @@ async function resolveProjectId(cwd: string): Promise<string> {
 		? commonDirRaw
 		: path.resolve(cwd, commonDirRaw);
 
-	// opencode caches the resolved id in <common-dir>/opencode.
-	try {
-		const cached = (
-			await readFile(path.join(commonDir, "opencode"), "utf8")
-		).trim();
-		if (cached) return cached;
-	} catch {
-		// No cached id; fall through to derivation.
-	}
+	// opencode resolves project ID with priority: remote → cached → root.
+	// remote(): normalize remote URL → sha1("git-remote:<normalized>")
+	// cached(): read <common-dir>/opencode file
+	// root(): first root commit hash (sorted lexicographically)
 
+	// 1. Try remote URL first (highest priority).
 	const origin = await gitOut(cwd, ["remote", "get-url", "origin"]);
 	const normalized = origin ? normalizeRemote(origin) : undefined;
 	if (normalized) {
 		return createHash("sha1").update(`git-remote:${normalized}`).digest("hex");
 	}
 
-	// Repos without an origin fall back to their root commit hash.
+	// 2. Try cached ID from <common-dir>/opencode.
+	try {
+		const cached = (
+			await readFile(path.join(commonDir, "opencode"), "utf8")
+		).trim();
+		if (cached) return cached;
+	} catch {
+		// No cached id; fall through to root commit.
+	}
+
+	// 3. Repos without an origin fall back to their root commit hash.
 	// opencode sorts root hashes and takes the first for determinism.
 	const roots = await gitOut(cwd, ["rev-list", "--max-parents=0", "HEAD"]);
 	const firstRoot = roots
@@ -218,9 +218,7 @@ function getProjectId(): string {
 
 function opencodeHeaders(api: EndpointApi): Record<string, string> {
 	return {
-		Accept: "*/*",
 		"User-Agent": userAgent(api),
-		"Accept-Encoding": "gzip, deflate, br, zstd",
 		"x-opencode-client": "cli",
 		"x-opencode-project": getProjectId(),
 		"x-opencode-session": SESSION_ID,
@@ -233,193 +231,54 @@ function opencodeHeaders(api: EndpointApi): Record<string, string> {
 // fetch-injection option to strip them, so that residue is not simulatable —
 // everything else matches the CLI.
 
-// ─── models.dev metadata ────────────────────────────────────────────────────
+// ─── bootstrap: discover free models from pi built-in catalog ───────────────
 
-interface ModelsDevModelInfo {
-	status?: string | null;
-	name?: string | null;
-	reasoning?: boolean | null;
-	reasoning_options?: Array<{
-		type: string;
-		values?: Array<string | null>;
-	}> | null;
-	modalities?: {
-		input?: Array<string> | null;
-		output?: Array<string> | null;
-	} | null;
-	limit?: {
-		context?: number | null;
-		output?: number | null;
-	} | null;
-	cost?: {
-		input?: number | null;
-		output?: number | null;
-		cache_read?: number | null;
-		cache_write?: number | null;
-	} | null;
-	provider?: {
-		npm?: string | null;
-	} | null;
+function isFreeModel(id: string): boolean {
+	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
+	if (!model) return false;
+	return (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0;
 }
 
-interface BootstrapState {
-	modelIds: string[];
-	modelsDevInfo: Record<string, ModelsDevModelInfo>;
-}
-
-async function fetchUpstreamModelIds(): Promise<string[] | undefined> {
-	const response = await fetch(`${BASE_URL}/models`, {
-		headers: opencodeHeaders("openai-completions"),
-	});
-	if (!response.ok) return undefined;
-	const json = (await response.json()) as { data?: Array<{ id?: string }> };
-	return (json.data ?? [])
-		.map((entry) => entry.id?.trim())
-		.filter((id): id is string => Boolean(id));
-}
-
-async function fetchModelsDevInfo(): Promise<
-	Record<string, ModelsDevModelInfo> | undefined
-> {
-	const response = await fetch(MODELS_DEV_URL, {
-		headers: { "User-Agent": MODELS_DEV_USER_AGENT },
-	});
-	if (!response.ok) return undefined;
-	const json = (await response.json()) as {
-		opencode?: { models?: Record<string, ModelsDevModelInfo> };
-	};
-	return json.opencode?.models;
-}
-
-function isFreeModel(id: string, info?: ModelsDevModelInfo): boolean {
-	if (id.toLowerCase().includes("-free")) return true;
-	if (!info) return false;
-	const cost = info.cost ?? {};
-	return (cost.input ?? 0) === 0 && (cost.output ?? 0) === 0;
-}
-
-let bootstrapPromise: Promise<BootstrapState> | undefined;
-
-function loadBootstrapState(): Promise<BootstrapState> {
-	bootstrapPromise ??= (async () => {
-		for (let attempt = 0; attempt < MAX_BOOTSTRAP_ATTEMPTS; attempt++) {
-			try {
-				const [upstreamModelIds, modelsDevInfo] = await Promise.all([
-					fetchUpstreamModelIds(),
-					fetchModelsDevInfo(),
-				]);
-
-				// The Zen API is the source of truth for what is actually served;
-				// models.dev only enriches metadata (limits, reasoning, pricing).
-				const modelIds = [...new Set(upstreamModelIds ?? [])]
-					.filter((id) => isFreeModel(id, modelsDevInfo?.[id]))
-					.filter((id) => modelsDevInfo?.[id]?.status !== "deprecated")
-					.sort(compareStrings);
-
-				if (modelIds.length > 0) {
-					return { modelIds, modelsDevInfo: modelsDevInfo ?? {} };
-				}
-			} catch {
-				// Retry with backoff; give up after MAX_BOOTSTRAP_ATTEMPTS.
-			}
-			await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
-		}
-		return { modelIds: [], modelsDevInfo: {} };
-	})();
-	return bootstrapPromise;
+function loadModelIds(): string[] {
+	return Object.keys(OPENCODE_MODELS).filter(isFreeModel).sort(compareStrings);
 }
 
 // ─── thinking-level mapping ─────────────────────────────────────────────────
 
-// pi levels from least to most thinking:
-//   off → minimal → low → medium → high → xhigh → max
-// models.dev reasoning_options: [{ type: "toggle" }, { type: "effort", values }]
-// The ladder is a plain string list on purpose: models.dev efforts and the
-// host's thinking levels both live here, and the pinned pi-ai's typed union
-// only knows up to "xhigh".
-const THINKING_LADDER = ["minimal", "low", "medium", "high", "xhigh", "max"];
-
-// Models that always think; upstream rejects any other effort level. models.dev
-// gives no static signal for this, so they are listed here.
+// Models that always think; upstream rejects any other effort level.
 const ALWAYS_THINKS_PREFIXES = ["big-pickle"];
 const ALWAYS_THINKS_EFFORTS = ["low", "high", "max"];
 
-function buildThinkingLevelMap(
+// pi built-in models already carry a typed `thinkingLevelMap`; for models
+// not in the catalog we fall back to a sensible default.
+function getThinkingLevelMap(
 	modelId: string,
-	info?: ModelsDevModelInfo,
+	model: Model<Api>,
 ): Model<Api>["thinkingLevelMap"] {
-	if (!info?.reasoning) return undefined;
-
 	const alwaysThinks = ALWAYS_THINKS_PREFIXES.some((prefix) =>
 		modelId.startsWith(prefix),
 	);
-	const supported = new Set<string>();
 	if (alwaysThinks) {
-		for (const effort of ALWAYS_THINKS_EFFORTS) supported.add(effort);
-	} else {
-		let hasToggle = false;
-		for (const opt of info.reasoning_options ?? []) {
-			if (opt.type === "toggle") hasToggle = true;
-			if (opt.type === "effort") {
-				for (const value of opt.values ?? []) {
-					if (value) supported.add(value);
-				}
-			}
+		// Force the always-thinks efforts that upstream accepts.
+		const map: Record<string, string | null> = {};
+		for (const level of [
+			"off",
+			"minimal",
+			"low",
+			"medium",
+			"high",
+			"xhigh",
+			"max",
+		]) {
+			map[level] = ALWAYS_THINKS_EFFORTS.includes(level) ? level : null;
 		}
-		if (supported.size === 0) {
-			// Toggle-only means on/off; missing metadata falls back to low/medium/high.
-			if (hasToggle) {
-				supported.add("high");
-			} else {
-				supported.add("low");
-				supported.add("medium");
-				supported.add("high");
-			}
-		}
+		return map as Model<Api>["thinkingLevelMap"];
 	}
-
-	// Snap a pi level to the nearest supported effort; ties prefer the higher
-	// level (matches DeepSeek's mapping).
-	const nearest = (level: string): string | null => {
-		if (supported.has(level)) return level;
-		const index = THINKING_LADDER.indexOf(level);
-		if (index === -1) return null;
-		let best: string | null = null;
-		let bestIndex = -1;
-		let bestDistance = Number.POSITIVE_INFINITY;
-		for (let i = 0; i < THINKING_LADDER.length; i++) {
-			const effort = THINKING_LADDER[i]!;
-			if (!supported.has(effort)) continue;
-			const distance = Math.abs(i - index);
-			if (
-				distance < bestDistance ||
-				(distance === bestDistance && i > bestIndex)
-			) {
-				bestDistance = distance;
-				bestIndex = i;
-				best = effort;
-			}
-		}
-		return best;
-	};
-
-	// "off" stays null: the host disables thinking by omitting the option, so
-	// declaring it supported would only invite a no-effort request.
-	const map: Record<string, string | null> = {};
-	for (const level of ["off", ...THINKING_LADDER]) {
-		map[level] = level === "off" ? null : nearest(level);
-	}
-	return map as Model<Api>["thinkingLevelMap"];
+	// Use the thinkingLevelMap from the pi catalog directly.
+	return model.thinkingLevelMap;
 }
 
 // ─── model catalog ──────────────────────────────────────────────────────────
-
-const NPM_TO_API: Record<string, EndpointApi> = {
-	"@ai-sdk/openai-compatible": "openai-completions",
-	"@ai-sdk/openai": "openai-responses",
-	"@ai-sdk/anthropic": "anthropic-messages",
-	"@ai-sdk/google": "google-generative-ai",
-};
 
 // Routing through streamSimple requires model.api === extension.api, so every
 // registered model carries the provider default ("openai-completions"); the
@@ -430,36 +289,33 @@ function resolveEndpoint(modelId: string): EndpointApi {
 	return endpoints.get(modelId) ?? "openai-completions";
 }
 
-function buildModelConfig(
-	id: string,
-	info?: ModelsDevModelInfo,
-): ProviderModelConfig {
-	endpoints.set(
-		id,
-		NPM_TO_API[info?.provider?.npm ?? "@ai-sdk/openai-compatible"] ??
-			"openai-completions",
-	);
-
-	const input: ("text" | "image")[] = [];
-	for (const modality of info?.modalities?.input ?? []) {
-		if (modality === "text" || modality === "image") input.push(modality);
+function buildModelConfig(id: string): ProviderModelConfig {
+	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
+	if (!model) {
+		// Should never happen: callers only pass IDs present in OPENCODE_MODELS.
+		endpoints.set(id, "openai-completions");
+		return {
+			id,
+			name: id,
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 128_000,
+			maxTokens: 4_096,
+		};
 	}
-	if (input.length === 0) input.push("text");
 
-	const thinkingLevelMap = buildThinkingLevelMap(id, info);
+	endpoints.set(id, model.api as EndpointApi);
+	const thinkingLevelMap = getThinkingLevelMap(id, model as Model<Api>);
 	return {
 		id,
-		name: info?.name?.trim() || id,
-		reasoning: info?.reasoning ?? true,
-		input,
-		cost: {
-			input: info?.cost?.input ?? 0,
-			output: info?.cost?.output ?? 0,
-			cacheRead: info?.cost?.cache_read ?? 0,
-			cacheWrite: info?.cost?.cache_write ?? 0,
-		},
-		contextWindow: info?.limit?.context ?? 128000,
-		maxTokens: info?.limit?.output ?? 4096,
+		name: model.name,
+		reasoning: model.reasoning,
+		input: model.input,
+		cost: model.cost,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+		...(model.compat ? { compat: model.compat } : {}),
 		...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 	};
 }
@@ -498,14 +354,9 @@ function streamOpencodeZen(
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
-	const [state, resolvedProjectId] = await Promise.all([
-		loadBootstrapState(),
-		resolveProjectId(process.cwd()),
-	]);
-	const { modelIds, modelsDevInfo } = state;
-	// Offline or upstream failure: keep pi's builtin opencode catalog untouched.
+	const modelIds = loadModelIds();
 	if (modelIds.length === 0) return;
-	projectId = resolvedProjectId;
+	projectId = await resolveProjectId(process.cwd());
 
 	pi.registerProvider("opencode", {
 		baseUrl: BASE_URL,
@@ -519,6 +370,6 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// and forward to the extension-local adapters; no cross-copy identity
 		// checks (instanceof/brand) are performed on either side.
 		streamSimple: streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
-		models: modelIds.map((id) => buildModelConfig(id, modelsDevInfo[id])),
+		models: modelIds.map((id) => buildModelConfig(id)),
 	});
 }
