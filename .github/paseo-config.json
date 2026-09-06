@@ -1,21 +1,18 @@
 {
-    "$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
-    "version": 1,
-    "agents": {
-        "providers": {
-            "reasonix": {
-                "extends": "acp",
-                "label": "Reasonix",
-                "command": [
-                    "reasonix",
-                    "acp"
-                ]
-            }
-        }
-    },
-    "daemon": {
-        "relay": {
-            "enabled": true
-        }
-    }
+	"$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
+	"version": 1,
+	"agents": {
+		"providers": {
+			"reasonix": {
+				"extends": "acp",
+				"label": "Reasonix",
+				"command": ["reasonix", "acp"]
+			}
+		}
+	},
+	"daemon": {
+		"relay": {
+			"enabled": true
+		}
+	}
 }

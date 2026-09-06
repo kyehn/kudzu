@@ -49,6 +49,7 @@
             nixfmtPackage = pkgs.nixfmt-rs;
             runtimeInputs = with pkgs; [
               yamlfmt
+              biome
             ];
             settings.formatter = {
               yamlfmt = {
@@ -57,6 +58,14 @@
                   "*.yaml"
                   "*.yml"
                 ];
+              };
+              biome = {
+                command = "biome";
+                options = [
+                  "check"
+                  "--write"
+                ];
+                includes = [ "*.json" ];
               };
             };
           };
