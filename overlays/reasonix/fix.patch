@@ -452,22 +452,6 @@ index fe6d6ca..e63869c 100644
  		return "", usage, err
  	}
  	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
-diff --git a/internal/agent/compact.go.rej b/internal/agent/compact.go.rej
-new file mode 100644
-index 0000000..c8aed1a
---- /dev/null
-+++ b/internal/agent/compact.go.rej
-@@ -0,0 +1,10 @@
-+diff a/internal/agent/compact.go b/internal/agent/compact.go	(rejected hunks)
-+@@ -416,7 +416,7 @@ func (a *Agent) summarize(ctx context.Context, region []provider.Message, instru
-+ 	}()
-+ 	defer trackPublishedHostStream(ctx, cancel)()
-+ 	req := a.summaryRequest(region, instructions)
-+-	if err := a.applySummaryAdmissionToRequest(&req); err != nil {
-++	if err := a.applyAdmissionToSummaryRequest(&req); err != nil {
-+ 		return "", usage, err
-+ 	}
-+ 	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
 index dacff1b..e83206c 100644
 --- a/internal/agent/compact_projection.go
@@ -593,25 +577,7 @@ index 872a159..3b2ee3f 100644
  	default:
  		return 1
  	}
-diff --git a/internal/agent/context_manager.go.rej b/internal/agent/context_manager.go.rej
-new file mode 100644
-index 0000000..5e122be
---- /dev/null
-+++ b/internal/agent/context_manager.go.rej
-@@ -0,0 +1,13 @@
-+diff a/internal/agent/context_manager.go b/internal/agent/context_manager.go	(rejected hunks)
-+@@ -179,7 +179,10 @@ func (m ContextManager) foldContext(ctx context.Context, prepared PreparedContex
-+ 	a := m.agent
-+ 	maxSummaries := 1
-+ 	if policy.Trigger == CompactionTriggerPressure {
-+-		maxSummaries = 2
-++		// Must-free pressure folds converge iteratively: each fold only covers
-++		// the largest admissible prefix, so a session several times the window
-++		// needs a third attempt to land below the trigger.
-++		maxSummaries = 3
-+ 	}
-+ 	if policy.Trigger == CompactionTriggerManual && est >= hard {
-+ 		maxSummaries = manualRecoverySummaries
+
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
 index 0416586..a1fe478 100644
 --- a/internal/agent/context_recovery.go
