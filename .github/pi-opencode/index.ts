@@ -2,7 +2,7 @@
  * pi extension that makes requests to OpenCode Zen indistinguishable from the
  * real opencode CLI on the wire: User-Agent plus the x-opencode and x-session
  *
- * Sources mirrored (opencode v2, opencode2 v0.0.0-beta-19151):
+ * Sources mirrored (opencode v2, opencode2 v0.0.0-beta-19234):
  *   - packages/schema/src/identifier.ts
  *     (ses_ descending, 12 hex time chars + 14 base62 chars)
  *   - packages/core/src/session/model-request.ts (sessionHeaders, no
@@ -38,7 +38,7 @@ import type {
 
 const BASE_URL = "https://opencode.ai/zen/v1";
 const API_KEY = "public";
-const OPENCODE_VERSION = "0.0.0-beta-19151";
+const OPENCODE_VERSION = "0.0.0-beta-19234";
 const OPENCODE_CHANNEL = "beta";
 
 // ─── opencode wire identity ─────────────────────────────────────────────────
@@ -227,7 +227,9 @@ export function resolveEndpoint(modelId: string): EndpointApi {
 	if (!api) {
 		// fail-closed: 未注册模型静默 default 会把请求送错 wire;
 		// 调用方只应传入 buildModelConfig 注册过的 id。
-		throw new Error(`opencode model ${modelId} was never registered; refusing to guess the endpoint`);
+		throw new Error(
+			`opencode model ${modelId} was never registered; refusing to guess the endpoint`,
+		);
 	}
 	return api;
 }

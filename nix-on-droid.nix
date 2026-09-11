@@ -76,31 +76,35 @@
         "seilunako.cachix.org-1:e/aJJI1S5hPY/BPeiVZcuPjt5ZjBRRo9dlYHmvwXPFM="
       ];
     };
-    extraOptions = lib.mkForce ''
-      always-allow-substitutes = true
-      builders-use-substitutes = true
-      lazy-trees = true
-      show-trace = true
-      warn-dirty = false
-      flake-registry = ${
-        pkgs.writeText "flake-registry.json" (
-          builtins.toJSON {
-            version = 2;
-            flakes = map (name: {
-              from = {
-                id = name;
-                type = "indirect";
-              };
-              to = {
-                type = "path";
-                path = inputs.${name};
-              };
-            }) (builtins.filter (name: name != "self") (builtins.attrNames inputs));
-          }
-        )
-      }
-      nix-path = nixpkgs=${inputs.nixpkgs}
-    '';
+    extraOptions = lib.mkForce (
+      ''
+        always-allow-substitutes = true
+        builders-use-substitutes = true
+        show-trace = true
+        warn-dirty = false
+        flake-registry = ${
+          pkgs.writeText "flake-registry.json" (
+            builtins.toJSON {
+              version = 2;
+              flakes = map (name: {
+                from = {
+                  id = name;
+                  type = "indirect";
+                };
+                to = {
+                  type = "path";
+                  path = inputs.${name};
+                };
+              }) (builtins.filter (name: name != "self") (builtins.attrNames inputs));
+            }
+          )
+        }
+        nix-path = nixpkgs=${inputs.nixpkgs}
+      ''
+      + (lib.optionalString (lib.versions.major pkgs.nix.version == "3") ''
+        lazy-trees = true
+      '')
+    );
   };
 
   users.users.nix-on-droid.shell = lib.getExe pkgs.fish;

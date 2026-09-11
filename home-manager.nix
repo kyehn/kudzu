@@ -391,6 +391,9 @@
         ".dynamodb/"
         ".pi"
         ".reasonix"
+        ".pi-glla"
+        "result"
+        "result-*"
       ];
       attributes = [ "*.age diff=nodiff" ];
       settings = {

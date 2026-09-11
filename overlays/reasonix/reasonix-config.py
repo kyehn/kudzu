@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import tomllib
 from pathlib import Path
 from typing import Any
 
 import httpx
 import tomli_w
+import tomllib
 
-USER_AGENT = "opencode/beta/0.0.0-beta-19151/cli"
+USER_AGENT = "opencode/beta/0.0.0-beta-19234/cli"
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 # models.dev cost 单位为美元 (USD)
 BILLING_CURRENCY = "USD"
