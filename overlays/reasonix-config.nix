@@ -4,12 +4,6 @@
   mcp-nixos,
   context7-mcp,
   nodejs-slim_latest,
-  go,
-  nil,
-  ty,
-  kotlin-language-server,
-  typescript-language-server,
-  rust-analyzer,
   ripgrep,
   bashNonInteractive,
 }:
@@ -34,33 +28,7 @@
     search.rg_path = lib.getExe ripgrep;
     shell.path = lib.getExe bashNonInteractive;
   };
-  lsp = {
-    enabled = true;
-    servers = {
-      nix = {
-        command = lib.getExe nil;
-        extensions = [ ".nix" ];
-        language_id = "nix";
-      };
-      python = {
-        command = lib.getExe ty;
-        args = [ "server" ];
-        extensions = [ ".py" ];
-      };
-      kotlin = {
-        command = lib.getExe kotlin-language-server;
-        extensions = [ ".kt" ];
-      };
-      typescript = {
-        command = lib.getExe typescript-language-server;
-        extensions = [ ".ts" ];
-      };
-      rust = {
-        command = lib.getExe rust-analyzer;
-        extensions = [ ".rs" ];
-      };
-    };
-  };
+  lsp.enabled = false;
   skills = {
     paths = [ "~/.pi/agent/skills" ];
     max_depth = 1;

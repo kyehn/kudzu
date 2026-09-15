@@ -19,7 +19,6 @@ writeText "settings.json" (
     packages = [
       "npm:pi-background-tasks"
       "npm:pi-subagents"
-      "npm:pi-lens"
       "npm:@dietrichgebert/ponytail"
       "npm:pi-goal-list-loop-audit"
       "npm:context-mode"

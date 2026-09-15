@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 5aea6c7..544de2a 100644
+index 97ca003..60afaf2 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -11,6 +11,7 @@ require (
@@ -10,12 +10,7 @@ index 5aea6c7..544de2a 100644
  	github.com/atotto/clipboard v0.1.4
  	github.com/aymanbagabas/go-udiff v0.4.1
  	github.com/bmatcuk/doublestar/v4 v4.10.0
-@@ -20,10 +21,12 @@ require (
- 	github.com/gorilla/websocket v1.5.3
- 	github.com/joho/godotenv v1.5.1
- 	github.com/kevinburke/ssh_config v1.6.0
-+	github.com/klauspost/compress v1.17.4
- 	github.com/larksuite/oapi-sdk-go/v3 v3.11.0
+@@ -26,6 +27,7 @@ require (
  	github.com/mattn/go-runewidth v0.0.29
  	github.com/modelcontextprotocol/go-sdk v1.8.0-pre.2
  	github.com/pkg/sftp v1.13.11
@@ -24,7 +19,7 @@ index 5aea6c7..544de2a 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 55a0723..0b555e3 100644
+index 11c6598..3aed549 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -36,16 +31,7 @@ index 55a0723..0b555e3 100644
  github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
  github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
  github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=
-@@ -82,6 +84,8 @@ github.com/kevinburke/ssh_config v1.6.0 h1:J1FBfmuVosPHf5GRdltRLhPJtJpTlMdKTBjRg
- github.com/kevinburke/ssh_config v1.6.0/go.mod h1:q2RIzfka+BXARoNexmF9gkxEX7DmvbW9P4hIVx2Kg4M=
- github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
- github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
-+github.com/klauspost/compress v1.17.4 h1:Ej5ixsIri7BrIjBkRZLTo6ghwrEtHFk7ijlczPW4fZ4=
-+github.com/klauspost/compress v1.17.4/go.mod h1:/dCuZOvVtNoHsyb+cuJD3itjs3NbnF6KH9zAO4BDxPM=
- github.com/kr/fs v0.1.0 h1:Jskdu9ieNAYnjxsi0LbQp1ulIKZV1LAFgK1tWhpZgl8=
- github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
- github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
-@@ -108,6 +112,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
+@@ -112,6 +114,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
  github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
  github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
  github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -55,7 +41,7 @@ index 55a0723..0b555e3 100644
  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
  github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 diff --git a/internal/acp/e2e_test.go b/internal/acp/e2e_test.go
-index 32d6bf8..6ca78ca 100644
+index a512e91..94b36ea 100644
 --- a/internal/acp/e2e_test.go
 +++ b/internal/acp/e2e_test.go
 @@ -102,7 +102,10 @@ func (f *e2eFactory) NewSession(_ context.Context, p SessionParams) (*control.Co
@@ -70,7 +56,7 @@ index 32d6bf8..6ca78ca 100644
  	responses := [][]provider.Chunk{
  		{toolCallChunk("c1", "peek", `{}`), {Type: provider.ChunkDone}},
  		{toolCallChunk("c2", "peek", `{}`), {Type: provider.ChunkDone}},
-@@ -111,7 +114,44 @@ func TestE2EExplicitMaxStepsReturnsSuccessfulPause(t *testing.T) {
+@@ -111,10 +114,50 @@ func TestE2EExplicitMaxStepsReturnsSuccessfulPause(t *testing.T) {
  		{toolCallChunk("c5", "peek", `{}`), {Type: provider.ChunkDone}},
  		{{Type: provider.ChunkText, Text: "Saved progress summary."}, {Type: provider.ChunkDone}},
  	}
@@ -115,51 +101,108 @@ index 32d6bf8..6ca78ca 100644
 +	}
  }
  
- func TestE2ETaskBudgetReturnsSuccessfulPause(t *testing.T) {
-@@ -587,6 +627,17 @@ func TestE2EApprovalRoundTrip(t *testing.T) {
- 	defer stop()
+-func TestE2ETaskBudgetReturnsSuccessfulPause(t *testing.T) {
++// Task budgets are disabled alongside max-steps: a configured spend budget
++// must not pause the run; the agent keeps executing until the provider ends
++// the turn naturally with no pause notification.
++func TestE2ETaskBudgetDoesNotPause(t *testing.T) {
+ 	responses := [][]provider.Chunk{
+ 		{
+ 			toolCallChunk("c1", "peek", `{}`),
+@@ -127,11 +170,6 @@ func TestE2ETaskBudgetReturnsSuccessfulPause(t *testing.T) {
+ 		Pricing:    &provider.Pricing{Input: 1, Currency: "USD"},
+ 		TaskBudget: agent.TaskBudget{Cost: 0.000001},
+ 	}
+-	assertE2ERunPause(t, responses, options, StopEndTurn, "paused after reaching this task's cost budget")
+-}
+-
+-func assertE2ERunPause(t *testing.T, responses [][]provider.Chunk, options *agent.Options, wantStop StopReason, wantWarning string) {
+-	t.Helper()
+ 	factory := &e2eFactory{
+ 		prov:       &scriptedProvider{name: "fake", responses: responses},
+ 		tool:       fakeTool{name: "peek", ro: true, out: "ok"},
+@@ -149,47 +187,27 @@ func assertE2ERunPause(t *testing.T, responses [][]provider.Chunk, options *agen
+ 	})
+ 	notifications, resp := drainPrompt(t, client, promptCh)
+ 	if resp.Error != nil {
+-		t.Fatalf("controlled pause returned JSON-RPC error: %+v", resp.Error)
++		t.Fatalf("task budget must be ignored, prompt errored: %+v", resp.Error)
+ 	}
+ 	var result SessionPromptResult
+ 	if err := json.Unmarshal(resp.Result, &result); err != nil {
+ 		t.Fatalf("prompt result: %v", err)
+ 	}
+-	if result.StopReason != wantStop {
+-		t.Errorf("stopReason = %q, want %q", result.StopReason, wantStop)
++	if result.StopReason != StopEndTurn {
++		t.Fatalf("stopReason = %q, want end_turn (task budget disabled)", result.StopReason)
+ 	}
+-
+-	var warned, paused bool
+ 	for _, notification := range notifications {
+-		if notification.Method == sessionStatusUpdateMethod {
+-			var update ReasonixStatusUpdate
+-			if err := json.Unmarshal(notification.Params, &update); err != nil {
+-				t.Fatalf("status update: %v", err)
+-			}
+-			if update.Event == "pause" && update.Status.TurnOutcome.Kind == "paused" {
+-				paused = true
+-			}
+-		}
+-		var params SessionUpdateParams
+-		if err := json.Unmarshal(notification.Params, &params); err != nil {
++		if notification.Method != sessionStatusUpdateMethod {
+ 			continue
+ 		}
+-		update, ok := params.Update.(map[string]any)
+-		if !ok || update["sessionUpdate"] != "agent_message_chunk" {
++		var update ReasonixStatusUpdate
++		if err := json.Unmarshal(notification.Params, &update); err != nil {
+ 			continue
+ 		}
+-		content, _ := update["content"].(map[string]any)
+-		text, _ := content["text"].(string)
+-		if strings.Contains(text, "[warning]") && strings.Contains(text, wantWarning) {
+-			warned = true
++		if update.Event == "pause" && update.Status.TurnOutcome.Kind == "paused" {
++			t.Fatal("unexpected pause: the task budget must be ignored")
+ 		}
+ 	}
+-	if !warned {
+-		t.Fatalf("missing controlled-pause warning containing %q", wantWarning)
+-	}
+-	if !paused {
+-		t.Fatal("missing paused status outcome")
+-	}
+ }
  
- 	sid := openSession(t, client)
-+	// The overlay defaults to yolo; switch this session back to ask so the
-+	// approval gate can be exercised end-to-end.
-+	setResp := client.call(t, "session/set_config_option", SetSessionConfigOptionParams{
-+		SessionID: sid,
-+		ConfigID:  "tool_approval",
-+		Value:     control.ToolApprovalAsk,
-+	})
-+	if setResp.Error != nil {
-+		t.Fatalf("set tool_approval=ask: %+v", setResp.Error)
-+	}
-+
- 	promptCh := client.callAsync("session/prompt", SessionPromptParams{
- 		SessionID: sid,
- 		Prompt:    []ContentBlock{{Type: "text", Text: "write README.md"}},
+ func toolCallChunk(id, name, args string) provider.Chunk {
 diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
-index 3af50cb..11cfdb2 100644
+index 6f02c3a..b8123a2 100644
 --- a/internal/acp/server_test.go
 +++ b/internal/acp/server_test.go
-@@ -978,8 +978,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+@@ -996,8 +996,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
  	}
  	requireNoExecutionModeOptions(t, nr.ConfigOptions)
  	approval, ok := findConfigOption(nr.ConfigOptions, "tool_approval")
--	if !ok || approval.CurrentValue != control.ToolApprovalAsk {
--		t.Fatalf("initial tool approval = %+v, want ask", approval)
+-	if !ok || approval.CurrentValue != control.ToolApprovalWorkspaceWrite {
+-		t.Fatalf("initial permission preset = %+v, want workspace-write", approval)
 +	// The overlay forces the default approval mode to yolo.
 +	if !ok || approval.CurrentValue != control.ToolApprovalYolo {
-+		t.Fatalf("initial tool approval = %+v, want yolo", approval)
++		t.Fatalf("initial permission preset = %+v, want yolo", approval)
  	}
  
  	buildsBefore := factory.buildCount()
-@@ -997,7 +998,7 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+@@ -1015,7 +1016,7 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
  		requireNoExecutionModeOptions(t, set.ConfigOptions)
  		modelOpt, _ := findConfigOption(set.ConfigOptions, "model")
  		approvalOpt, _ := findConfigOption(set.ConfigOptions, "tool_approval")
--		if modelOpt.CurrentValue != "fast" || approvalOpt.CurrentValue != control.ToolApprovalAsk {
+-		if modelOpt.CurrentValue != "fast" || approvalOpt.CurrentValue != control.ToolApprovalWorkspaceWrite {
 +		if modelOpt.CurrentValue != "fast" || approvalOpt.CurrentValue != control.ToolApprovalYolo {
  			t.Fatalf("deprecated %s mutated live axes: model=%q approval=%q", tc.id, modelOpt.CurrentValue, approvalOpt.CurrentValue)
  		}
  	}
-@@ -1156,7 +1157,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
+@@ -1174,7 +1175,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
  	}
  	requireNoExecutionModeOptions(t, lr.ConfigOptions)
  	approval, _ := findConfigOption(lr.ConfigOptions, "tool_approval")
@@ -168,8 +211,8 @@ index 3af50cb..11cfdb2 100644
 +	if approval.CurrentValue != control.ToolApprovalYolo || lr.Modes == nil || lr.Modes.CurrentModeID != sessionModePlan {
  		t.Fatalf("reloaded axes = approval:%+v modes:%+v", approval, lr.Modes)
  	}
- 	if got := reloadedFactory.buildAt(t, 0).RuntimeProfile; got != "delivery" {
-@@ -1171,8 +1173,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
+ 	if got := reloadedFactory.buildAt(t, 0).RuntimeProfile; got != "standard" {
+@@ -1189,8 +1191,8 @@ func TestServeSessionAxesRestoreFromMetadata(t *testing.T) {
  		t.Fatalf("reloaded prompt: %+v", promptResp.Error)
  	}
  	observed := <-seen
@@ -180,12 +223,12 @@ index 3af50cb..11cfdb2 100644
  	}
  }
  
-@@ -1696,8 +1698,9 @@ func TestServeSessionLoadFallsBackFromStaleSavedModel(t *testing.T) {
+@@ -1714,8 +1716,9 @@ func TestServeSessionLoadFallsBackFromStaleSavedModel(t *testing.T) {
  		t.Fatalf("session/load result: %v", err)
  	}
  	approval, _ := findConfigOption(loaded.ConfigOptions, "tool_approval")
--	if approval.CurrentValue != control.ToolApprovalAsk || loaded.Modes == nil || loaded.Modes.CurrentModeID != sessionModeNormal {
--		t.Fatalf("old metadata axes = approval:%+v modes:%+v, want ask + normal", approval, loaded.Modes)
+-	if approval.CurrentValue != control.ToolApprovalWorkspaceWrite || loaded.Modes == nil || loaded.Modes.CurrentModeID != sessionModeNormal {
+-		t.Fatalf("old metadata axes = approval:%+v modes:%+v, want workspace-write + normal", approval, loaded.Modes)
 +	// The overlay forces yolo on load regardless of persisted metadata.
 +	if approval.CurrentValue != control.ToolApprovalYolo || loaded.Modes == nil || loaded.Modes.CurrentModeID != sessionModeNormal {
 +		t.Fatalf("old metadata axes = approval:%+v modes:%+v, want yolo + normal", approval, loaded.Modes)
@@ -193,48 +236,60 @@ index 3af50cb..11cfdb2 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index ea7b806..efcd5df 100644
+index ba4af70..9faf600 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
-@@ -663,7 +663,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -664,7 +664,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  	if err != nil {
  		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
  	}
--	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalAsk)
+-	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalWorkspaceWrite)
 +	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalYolo)
  	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
  		Cwd: cwd, Model: cfgState.Model, RuntimeProfile: cfgState.RuntimeProfile,
  	})
-@@ -694,6 +694,11 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -695,11 +695,14 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
  	}
  	ctrl.EnableInteractiveApproval()
+-	// The session metadata and advertised selector both start in workspace-write.
+-	// Apply the same preset to the controller before admitting the first turn so
+-	// a later same-value reconciliation cannot look like a permission change and
 +	// ACP sessions drive automation with no human watching the approval
 +	// cards: start in YOLO so permission-gated tool calls do not hang the
 +	// turn waiting for an answer that never comes. The client can still drop
 +	// back to Ask via session/set_config_option (switchSessionToolApproval).
++	// The session metadata and advertised selector use the same preset so a
++	// later same-value reconciliation cannot look like a permission change and
+ 	// cancel work that was already admitted under the advertised boundary.
+-	ctrl.SetToolApprovalMode(control.ToolApprovalWorkspaceWrite)
 +	ctrl.SetToolApprovalMode(control.ToolApprovalYolo)
  	sink.bindControllerPrompts(ctrl, sessionParams.MCPInteractions)
  
  	now := time.Now().UTC()
-@@ -706,7 +711,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -712,7 +715,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  		model:            cfgState.Model,
  		effortOverride:   cloneStringPtr(cfgState.EffortOverride),
  		runtimeProfile:   cfgState.RuntimeProfile,
--		toolApprovalMode: control.ToolApprovalAsk,
+-		toolApprovalMode: control.ToolApprovalWorkspaceWrite,
 +		toolApprovalMode: control.ToolApprovalYolo,
  		runtimeState:     runtimeState,
  		status:           newStatusTelemetry(),
  		modeID:           sessionModeNormal,
-@@ -1025,7 +1030,7 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
- 	if err := resumeACPControllerForWrite(ctrl, loaded, path, lease); err != nil {
- 		return SessionConfigState{}, sessionLeaseBindError(method, err)
+@@ -1047,10 +1050,9 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
+ 			return SessionConfigState{}, sessionLeaseBindError(method, err)
+ 		}
  	}
 -	toolApprovalMode := normalizeACPToolApprovalMode(saved.ToolApprovalMode)
+-	if strings.TrimSpace(saved.ToolApprovalMode) == "" {
+-		toolApprovalMode = control.ToolApprovalWorkspaceWrite
+-	}
++	// The overlay forces yolo on load regardless of persisted metadata: ACP
++	// sessions drive automation with no human watching the approval cards.
 +	toolApprovalMode := control.ToolApprovalYolo
  	ctrl.SetToolApprovalMode(toolApprovalMode)
- 	modeID := normalizeACPCollaborationMode(saved.CollaborationMode)
- 	goalDraftMode := false
+ 	modeID, goalDraftMode := applyLoadedACPMode(ctrl, saved.CollaborationMode)
+ 
 diff --git a/internal/agent/active_oversize_fold_test.go b/internal/agent/active_oversize_fold_test.go
 new file mode 100644
 index 0000000..f57f984
@@ -362,31 +417,8 @@ index 0000000..f57f984
 +		t.Fatalf("pressure fold [%d:%d] must exclude the active turn", head, start)
 +	}
 +}
-diff --git a/internal/agent/argument_recovery_test.go b/internal/agent/argument_recovery_test.go
-index d4461be..aad038d 100644
---- a/internal/agent/argument_recovery_test.go
-+++ b/internal/agent/argument_recovery_test.go
-@@ -510,9 +510,16 @@ func TestArgumentRecoverySoftLimitAndExplicitBudget(t *testing.T) {
- 					t.Fatal("soft convergence never activated")
- 				}
- 			} else {
-+				// Overlay: the max-steps budget is removed from the run loop, so
-+				// an explicit MaxSteps must not pause the turn (see
-+				// TestExplicitMaxStepsIsIgnoredByTheOrdinaryTurn). The run
-+				// consumes every scripted turn instead of stopping after 3.
- 				var pause *maxStepsPause
--				if !errors.As(err, &pause) {
--					t.Fatalf("explicit steps failed to pause: %v", err)
-+				if errors.As(err, &pause) {
-+					t.Fatalf("explicit steps paused the turn: %v", err)
-+				}
-+				if len(p.messages) != 13 {
-+					t.Fatalf("explicit steps stopped early: %v requests=%d", err, len(p.messages))
- 				}
- 			}
- 		})
 diff --git a/internal/agent/ask_test.go b/internal/agent/ask_test.go
-index eee649f..2427cf9 100644
+index a29e324..bbb778d 100644
 --- a/internal/agent/ask_test.go
 +++ b/internal/agent/ask_test.go
 @@ -37,25 +37,43 @@ func TestAskToolReusesAcceptedDecisionAndRejectsSpoofedID(t *testing.T) {
@@ -577,7 +609,6 @@ index 872a159..3b2ee3f 100644
  	default:
  		return 1
  	}
-
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
 index 0416586..a1fe478 100644
 --- a/internal/agent/context_recovery.go
@@ -784,7 +815,7 @@ index 0000000..14b5a7d
 +	}
 +}
 diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
-index 98e879b..6d89f59 100644
+index 98e879b..81db150 100644
 --- a/internal/agent/coordinator_test.go
 +++ b/internal/agent/coordinator_test.go
 @@ -660,10 +660,20 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
@@ -849,40 +880,61 @@ index 98e879b..6d89f59 100644
  	}
  }
  
-@@ -1170,9 +1175,12 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+@@ -1167,38 +1172,23 @@ func TestCoordinatorRollsBackPlannerSessionOnToolPlannerFailure(t *testing.T) {
+ 	}
+ }
+ 
++// The overlay removes the max-steps budget and disables every task budget
++// axis, so no run can produce a loop pause anymore. The fail-closed contract
++// stays pinned at the mapping level: should a host-owned pause ever surface
++// again, the coordinator must still refuse to execute or approve.
  func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing.T) {
- 	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
- 		t.Run(string(route), func(t *testing.T) {
+-	for _, route := range []PlannerRoute{PlannerRoutePlanOnly, PlannerRoutePlanForApproval} {
+-		t.Run(string(route), func(t *testing.T) {
 -			planner := &mockProvider{name: "planner", chunks: []provider.Chunk{
 -				{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
 -				{Type: provider.ChunkDone},
-+			planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
-+				{
-+					{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"main.go"}`}},
-+					{Type: provider.ChunkUsage, Usage: &provider.Usage{PromptTokens: 10, TotalTokens: 10}},
-+					{Type: provider.ChunkDone},
-+				},
- 			}}
- 			exec := &mockProvider{name: "executor"}
- 			plannerReg := tool.NewRegistry()
-@@ -1184,11 +1192,15 @@ func TestCoordinatorPlannerSafetyBoundaryPreservesExecutionBoundaries(t *testing
- 			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
- 			plannerSess := NewSession("planner-sys")
- 			coord := NewCoordinatorWithPlannerPolicy(
+-			}}
+-			exec := &mockProvider{name: "executor"}
+-			plannerReg := tool.NewRegistry()
+-			plannerReg.Add(coordinatorTestTool{name: "read_file", readOnly: true, output: "package main"})
+-			policy := func(context.Context, string) PlannerDecision {
+-				return PlannerDecision{Route: route, Reason: "explicit_boundary"}
+-			}
+-
+-			executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
+-			plannerSess := NewSession("planner-sys")
+-			coord := NewCoordinatorWithPlannerPolicy(
 -				planner, plannerSess, nil, plannerReg, Options{MaxSteps: 1, MaxStepsKey: "planner emergency rounds"},
-+				planner, plannerSess, nil, plannerReg, Options{},
- 				executor, 0, event.Discard, policy,
- 			)
- 
+-				executor, 0, event.Discard, policy,
+-			)
+-
 -			err := coord.Run(withNoClosedLoop(context.Background()), "plan the migration")
-+			// The overlay removes the max-steps budget; a host-owned task
-+			// token budget lands the same resumable loop pause the boundary
-+			// must fail closed on.
-+			ctx := withNoClosedLoop(WithTaskBudget(context.Background(), TaskBudget{Tokens: 1}))
-+			err := coord.Run(ctx, "plan the migration")
- 			if err == nil || err.Error() != plannerSafetyBoundaryError {
- 				t.Fatalf("Run = %v, want the safe planner boundary error", err)
- 			}
+-			if err == nil || err.Error() != plannerSafetyBoundaryError {
+-				t.Fatalf("Run = %v, want the safe planner boundary error", err)
+-			}
+-			if got := len(exec.requests); got != 0 {
+-				t.Fatalf("executor requests = %d, want none across %s", got, route)
+-			}
+-			if got := len(plannerSess.Messages); got != 1 {
+-				t.Fatalf("planner session messages = %d, want the incomplete turn rolled back", got)
+-			}
+-		})
++	for _, err := range []error{
++		&taskBudgetPause{axis: "cost", detail: "task spend 1 reached the 1 budget"},
++		&maxStepsPause{steps: 10, key: "max_steps"},
++	} {
++		if !isToolLoopPause(err) {
++			t.Fatalf("isToolLoopPause(%T) = false, want the pause to fail closed", err)
++		}
++	}
++	for _, err := range []error{nil, fmt.Errorf("boom")} {
++		if isToolLoopPause(err) {
++			t.Fatalf("isToolLoopPause(%v) = true, want only loop pauses to fail closed", err)
++		}
+ 	}
+ }
+ 
 diff --git a/internal/agent/decision.go b/internal/agent/decision.go
 index 84c7ca5..ba1a091 100644
 --- a/internal/agent/decision.go
@@ -1106,7 +1158,7 @@ index 1871dd5..88c72fa 100644
  	if full != 1 {
  		t.Errorf("want 1 full dispatch, got %d", full)
 diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
-index 42ff84f..999052d 100644
+index 8bc3575..cf72483 100644
 --- a/internal/agent/goal_boundaries_test.go
 +++ b/internal/agent/goal_boundaries_test.go
 @@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
@@ -1234,18 +1286,17 @@ index 50bb355..f43a9d2 100644
  	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
  		adm.ApplyMaxTokens = false
 diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
-index 496e2d2..93eecb3 100644
+index 496e2d2..11ae177 100644
 --- a/internal/agent/planner_adaptive_research_test.go
 +++ b/internal/agent/planner_adaptive_research_test.go
-@@ -43,10 +43,15 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
+@@ -43,10 +43,14 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
  	}
  }
  
 -func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *testing.T) {
-+// A task budget that lands mid-research must still let the planner submit a
-+// terminal plan, even when the research output was truncated by the tool
-+// output guard — the budget nudge and the truncation work together instead of
-+// stranding the turn.
++// Task budgets are disabled: even an injected token budget must not
++// finalize the planner mid-research. The planner still submits its terminal
++// plan after truncated research — via the normal flow, with no budget nudge.
 +func TestCoordinatorTaskBudgetFinalizationSurvivesTruncatedResearch(t *testing.T) {
  	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
 -		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "call-1", Name: "read_file", Arguments: `{"path":"a"}`}}, {Type: provider.ChunkDone}},
@@ -1256,7 +1307,7 @@ index 496e2d2..93eecb3 100644
  		{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "plan-1", Name: "submit_plan", Arguments: `{"objective":"fix the bounded planner","steps":[{"title":"apply the owner-level fix","verified_files":["a","b"]}]}`}}, {Type: provider.ChunkDone}},
  	}}
  	exec := &mockProvider{name: "executor", chunks: []provider.Chunk{{Type: provider.ChunkText, Text: "Done."}, {Type: provider.ChunkDone}}}
-@@ -61,18 +66,19 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
+@@ -61,19 +65,20 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
  	executor := New(exec, tool.NewRegistry(), NewSession("exec-sys"), Options{}, event.Discard)
  	plannerSess := NewSession("planner-sys")
  	coord := NewCoordinatorWithPlannerPolicy(planner, plannerSess, nil, PlannerToolRegistry(reg),
@@ -1277,10 +1328,32 @@ index 496e2d2..93eecb3 100644
 +		t.Fatalf("planner requests = %d, want research plus terminal submission", got)
  	}
 -	if got := lastUser(planner.requests[2]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
-+	if got := lastUser(planner.requests[1]); !strings.Contains(got, "call submit_plan now") || strings.Contains(got, "Do not call any more tools") {
- 		t.Fatalf("planner finalization nudge conflicts with submit_plan: %q", got)
+-		t.Fatalf("planner finalization nudge conflicts with submit_plan: %q", got)
++	if got := lastUser(planner.requests[1]); strings.Contains(got, "reached its token budget") || strings.Contains(got, "Do not call any more tools") {
++		t.Fatalf("unexpected budget finalization nudge; task budgets are disabled: %q", got)
  	}
  	sawTruncation := false
+ 	for _, notice := range notices {
+@@ -91,6 +96,8 @@ func TestCoordinatorEmergencyBoundedPlannerCanSubmitPlanInFinalizationRound(t *t
+ 	}
+ }
+ 
++// Task budgets are disabled: an injected token budget must not finalize
++// the planner. The terminal plan is still submitted through the normal flow.
+ func TestCoordinatorTaskBudgetLetsPlannerSubmitTerminalPlan(t *testing.T) {
+ 	planner := &mockProvider{name: "planner", streams: [][]provider.Chunk{
+ 		{
+@@ -122,8 +129,8 @@ func TestCoordinatorTaskBudgetLetsPlannerSubmitTerminalPlan(t *testing.T) {
+ 	if got := len(planner.requests); got != 2 {
+ 		t.Fatalf("planner requests = %d, want research plus terminal submit_plan", got)
+ 	}
+-	if got := lastUser(planner.requests[1]); !strings.Contains(got, "reached its token budget") || !strings.Contains(got, "call submit_plan now") {
+-		t.Fatalf("task-budget finalization did not request terminal plan: %q", got)
++	if got := lastUser(planner.requests[1]); strings.Contains(got, "reached its token budget") {
++		t.Fatalf("unexpected task-budget finalization; task budgets are disabled: %q", got)
+ 	}
+ 	if len(exec.requests) == 0 || !strings.Contains(lastUser(exec.requests[0]), "finish within the safety envelope") {
+ 		t.Fatal("executor did not receive the task-budget terminal plan")
 diff --git a/internal/agent/projection_valid_test.go b/internal/agent/projection_valid_test.go
 index 69764bc..6d7a9f4 100644
 --- a/internal/agent/projection_valid_test.go
@@ -1317,20 +1390,46 @@ index 69764bc..6d7a9f4 100644
  	}
  }
  
+diff --git a/internal/agent/run_budget.go b/internal/agent/run_budget.go
+index c59985c..0959fc9 100644
+--- a/internal/agent/run_budget.go
++++ b/internal/agent/run_budget.go
+@@ -125,14 +125,13 @@ func (b *runBudget) exceeded(limit TaskBudget) (axis, detail string) {
+ 	return "", ""
+ }
+ 
+-// taskBudgetLimit resolves this turn's bound: a host-injected budget wins over
+-// the configured one, which is how an unattended loop gets a ceiling while
+-// ordinary chat keeps none.
+-func (a *Agent) taskBudgetLimit(ctx context.Context) TaskBudget {
+-	if b, ok := taskBudgetFromContext(ctx); ok {
+-		return b
+-	}
+-	return a.task.budget.limit
++// taskBudgetLimit resolves this turn's bound. Budget pauses are disabled in
++// this build: every axis ships unbounded, so a turn only stops on a genuine
++// blocker, context exhaustion, or the user stopping it — never on a spend,
++// token, or wall-clock ceiling. exceeded(TaskBudget{}) always reports "",
++// and samplingDeadline treats Wall<=0 as no deadline.
++func (a *Agent) taskBudgetLimit(_ context.Context) TaskBudget {
++	return TaskBudget{}
+ }
+ 
+ // ResetTaskBudget starts a fresh user-approved spend slice without touching
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index c018125..3ebc1d2 100644
+index fc6b13b..ee66d37 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -183,7 +183,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
- 	}()
+@@ -157,7 +157,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+ 	defer releaseMCPListObserver()
  	ctx = a.withAgentContext(ctx)
  	truncatedRounds := 0
--	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound || state.recoveryGraceRound || state.incompleteReads.hasPending(); step++ {
+-	for step := 0; state.runMaxSteps <= 0 || step < state.runMaxSteps || state.graceRound; step++ {
 +	for step := 0; ; step++ {
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -292,10 +292,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -261,10 +261,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1341,13 +1440,15 @@ index c018125..3ebc1d2 100644
  }
  
  func (a *Agent) emitProtocolRetry(attempt int, hasFallback bool) {
-@@ -566,10 +562,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
- 	if state.incompleteReads.hasPending() {
+@@ -413,12 +409,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+ 		}
  		return true, nil
  	}
 -	if state.runMaxSteps > 0 && step+1 >= state.runMaxSteps {
--		a.armFinalizationRound(ctx, state, landCause{kind: "max_steps", detail: fmt.Sprintf(
--			"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)})
+-		if err := a.armFinalizationRound(ctx, state, landCause{kind: "max_steps", detail: fmt.Sprintf(
+-			"budget (%s=%d) exhausted: one grace round to finalize", state.runMaxStepsKey, state.runMaxSteps)}); err != nil {
+-			return false, err
+-		}
 -	}
  	return true, nil
  }
@@ -1470,7 +1571,7 @@ index 0000000..d4bd9f7
 +	}
 +}
 diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
-index 7a5042f..d0c5686 100644
+index 7a5042f..798897a 100644
 --- a/internal/agent/task_budget_gate_test.go
 +++ b/internal/agent/task_budget_gate_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1481,81 +1582,173 @@ index 7a5042f..d0c5686 100644
  	"strings"
  	"testing"
  	"time"
-@@ -128,18 +127,25 @@ func TestUnconfiguredBudgetNeverCrosses(t *testing.T) {
+@@ -12,52 +11,52 @@ import (
+ 	"reasonix/internal/tool"
+ )
+ 
+-// The gate must stop a runaway on the axis it actually runs away on. This
+-// provider never repeats itself and never fails, so every adaptive guard stays
+-// quiet — the shape that burned four hours — and only spend can catch it.
++// Task budget pauses are disabled in this build: even an explicitly
++// configured spend budget must never land a run. The provider below bills
++// past the configured 1e-3 within four rounds; the run must still complete
++// every round and return without a task_budget pause.
+ func TestTaskBudgetGateLandsARunawayOnCost(t *testing.T) {
+ 	sink := newBudgetSink()
+ 	reg := tool.NewRegistry()
+ 	reg.Add(readProbe{})
+ 	pricing := &provider.Pricing{CacheHit: 0.02, Input: 1, Output: 2, Currency: "CNY"}
+-	// Each round bills 900 hits + 100 misses + 100 output = 3.18e-4.
+-	// A 1e-3 budget lands on the fourth round; 500 rounds are available.
+-	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
++	// Each round bills 900 hits + 100 misses + 100 output = 3.18e-4,
++	// so a 1e-3 budget would land on the fourth round if budgets applied.
++	a := New(&spendingProvider{max: 3}, reg, NewSession("sys"),
+ 		Options{Pricing: pricing, TaskBudget: TaskBudget{Cost: 1e-3}}, sink)
+ 
+ 	err := a.Run(context.Background(), "read everything")
+-	if err == nil {
+-		t.Fatal("Run returned nil; want a resumable task-budget pause")
++	if err != nil {
++		t.Fatalf("Run: %v; a configured cost budget must not stop the run", err)
+ 	}
+-	info, ok := InspectRunPause(err)
+-	if !ok || info.Kind != "task_budget" || info.Key != "cost" {
+-		t.Fatalf("pause = %+v (%v), want a host-owned task_budget pause on cost", info, err)
+-	}
+-	if !info.HostOwned {
+-		t.Fatal("a host-imposed budget must report HostOwned")
++	if info, ok := InspectRunPause(err); ok {
++		t.Fatalf("unexpected run pause %+v; task budgets are disabled", info)
+ 	}
+ 	last := sink.samples[len(sink.samples)-1]
+-	if last.Task.Rounds > 20 {
+-		t.Fatalf("ran %d rounds before landing; the gate should fire on spend, not drift", last.Task.Rounds)
++	if last.Task.Rounds != 4 {
++		t.Fatalf("ran %d rounds, want all 4 (3 tool rounds + final) with budgets disabled", last.Task.Rounds)
+ 	}
+ 	if last.Task.Cost < 1e-3 {
+-		t.Fatalf("task cost %v landed below its own budget", last.Task.Cost)
++		t.Fatalf("task cost %v should bill past the ignored 1e-3 budget", last.Task.Cost)
+ 	}
+ }
+ 
+-// Landing is one tool-free summary, not a truncated turn: the work stays in
+-// the session and the next message continues it.
++// With budget finalization disabled, no budget nudge may enter the session:
++// the user-visible "reached its budget" interruption must never appear,
++// while completed tool work still stays in the session.
+ func TestTaskBudgetGateKeepsTheWorkAndAsksForASummary(t *testing.T) {
+ 	sink := newBudgetSink()
+ 	reg := tool.NewRegistry()
+ 	reg.Add(readProbe{})
+-	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
++	a := New(&spendingProvider{max: 3}, reg, NewSession("sys"),
+ 		Options{
+ 			Pricing:    &provider.Pricing{CacheHit: 0.02, Input: 1, Output: 2},
+ 			TaskBudget: TaskBudget{Cost: 1e-3},
+ 		}, sink)
+ 
+-	_ = a.Run(context.Background(), "read everything")
++	if err := a.Run(context.Background(), "read everything"); err != nil {
++		t.Fatalf("Run: %v; a configured cost budget must not stop the run", err)
++	}
+ 
+ 	var sawNudge, sawToolResult bool
+ 	for _, m := range a.sess.conversation.Messages {
+@@ -68,8 +67,8 @@ func TestTaskBudgetGateKeepsTheWorkAndAsksForASummary(t *testing.T) {
+ 			sawToolResult = true
+ 		}
+ 	}
+-	if !sawNudge {
+-		t.Fatal("no finalization request in the session; the model was cut off instead of asked to land")
++	if sawNudge {
++		t.Fatal("budget finalization nudge in the session; budget interruptions are disabled")
+ 	}
+ 	if !sawToolResult {
+ 		t.Fatal("completed tool work was dropped from the session")
+@@ -128,18 +127,20 @@ func TestUnconfiguredBudgetNeverCrosses(t *testing.T) {
  	}
  }
  
 -// An explicit max_steps still bounds a run by rounds when the user asks for
 -// that specifically, with every spend axis disabled.
 -func TestExplicitMaxStepsStillLandsWhenNoBudgetApplies(t *testing.T) {
-+// The overlay removes max_steps from the run loop; with it gone, an explicit
-+// task token budget still stops an unbudgeted runaway that no spend axis or
-+// wall clock constrains.
++// The overlay removes max_steps from the run loop and disables every task
++// budget axis: an explicit token budget must not stop a run either.
 +func TestTaskBudgetTokensLandsWhenMaxStepsIsOff(t *testing.T) {
  	sink := event.FuncSink(func(event.Event) {})
  	reg := tool.NewRegistry()
  	reg.Add(readProbe{})
- 	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
+-	a := New(&spendingProvider{max: 500}, reg, NewSession("sys"),
 -		Options{MaxSteps: 3, TaskBudget: TaskBudget{Cost: 0, Wall: -1}}, sink)
++	a := New(&spendingProvider{max: 3}, reg, NewSession("sys"),
 +		Options{TaskBudget: TaskBudget{Cost: 0, Wall: -1, Tokens: 2200}}, sink)
  
  	err := a.Run(context.Background(), "read everything")
 -	var pause *maxStepsPause
 -	if !errors.As(err, &pause) {
 -		t.Fatalf("err = %v, want an explicit max_steps to still stop an unbudgeted runaway", err)
-+	if err == nil {
-+		t.Fatal("Run returned nil; want a resumable task-budget pause")
-+	}
-+	info, ok := InspectRunPause(err)
-+	if !ok || info.Kind != "task_budget" || info.Key != "token" {
-+		t.Fatalf("pause = %+v (%v), want a host-owned task_budget pause on tokens", info, err)
-+	}
-+	if !info.HostOwned {
-+		t.Fatal("a host-imposed budget must report HostOwned")
- 	}
- }
-diff --git a/internal/agent/todo_progress_guard_test.go b/internal/agent/todo_progress_guard_test.go
-index 978f791..b1f7998 100644
---- a/internal/agent/todo_progress_guard_test.go
-+++ b/internal/agent/todo_progress_guard_test.go
-@@ -2,7 +2,6 @@ package agent
- 
- import (
- 	"context"
--	"errors"
- 	"fmt"
- 	"testing"
- 
-@@ -172,7 +171,10 @@ func TestCanonicalTodoProgressIgnoresTitleAndPendingListChurn(t *testing.T) {
- 	}
- }
- 
--func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
-+// The overlay removes max_steps from the run loop: an explicit MaxSteps must
-+// not truncate a turn whose todo is still unfinished — the provider decides
-+// when the turn ends.
-+func TestMaxStepsIgnoredLeavesIncompleteTodoToTheProvider(t *testing.T) {
- 	reg := tool.NewRegistry()
- 	reg.Add(mustBuiltinTool(t, "todo_write"))
- 	reg.Add(fakeTool{name: "write_file", readOnly: false})
-@@ -186,12 +188,11 @@ func TestMaxStepsGraceSummaryBypassesIncompleteTodoReadiness(t *testing.T) {
- 	a := New(mp, reg, NewSession(""), Options{MaxSteps: 1}, event.Discard)
- 
- 	err := a.Run(context.Background(), "start a long task")
--	var pause *maxStepsPause
--	if !errors.As(err, &pause) {
--		t.Fatalf("Run error = %v, want maxStepsPause instead of final-readiness retries", err)
 +	if err != nil {
-+		t.Fatalf("Run error = %v, want the run to end when the provider ends the turn", err)
- 	}
- 	if mp.CallCount() != 2 {
--		t.Fatalf("provider calls = %d, want tool round plus one summary round", mp.CallCount())
-+		t.Fatalf("provider calls = %d, want tool round plus one final round", mp.CallCount())
++		t.Fatalf("Run: %v; a configured token budget must not stop the run", err)
++	}
++	if info, ok := InspectRunPause(err); ok {
++		t.Fatalf("unexpected run pause %+v; task budgets are disabled", info)
  	}
  }
+diff --git a/internal/boot/effect_test.go b/internal/boot/effect_test.go
+index fdf0a38..bbf1b63 100644
+--- a/internal/boot/effect_test.go
++++ b/internal/boot/effect_test.go
+@@ -153,7 +153,8 @@ func TestEffectSubagentAblationRemovesChildToolSchemas(t *testing.T) {
+ }
  
+ // budgetRunawayProvider never repeats itself and never fails, so every
+-// adaptive guard stays quiet. Only the spend gate can stop it.
++// adaptive guard stays quiet. With spend gates disabled, only the context
++// deadline stops it.
+ type budgetRunawayProvider struct {
+ 	mu     sync.Mutex
+ 	rounds int
+@@ -186,10 +187,11 @@ func (p *budgetRunawayProvider) roundCount() int {
+ 	return p.rounds
+ }
+ 
+-// TestEffectTaskBudgetLandsARunawayThroughRealBuild pins the gate at its final
+-// boundary: a configured spend budget must stop a wandering turn through the
+-// real Build assembly. Nothing else would stop it: ordinary chat has no round
+-// ceiling, and this provider never repeats itself.
++// TestEffectTaskBudgetLandsARunawayThroughRealBuild pins the disabled gate
++// at its final boundary: a configured time budget must NOT stop a wandering
++// turn through the real Build assembly. Ordinary chat has no round ceiling
++// and this provider never repeats itself, so the run only ends at the
++// context deadline — and never with a task_budget pause.
+ func TestEffectTaskBudgetLandsARunawayThroughRealBuild(t *testing.T) {
+ 	isolateConfigHome(t)
+ 	dir := robustTempDir(t)
+@@ -222,12 +224,14 @@ model = "x"
+ 	defer cancel()
+ 	runErr := ctrl.Run(runCtx, "read every file you can find")
+ 
+-	// Ordinary chat has no round ceiling, so a gate that never reached the
+-	// executor would run until the context deadline. Assert the typed boundary
+-	// instead of a machine-speed-dependent round count.
+-	pause, ok := agent.InspectRunPause(runErr)
+-	if !ok || pause.Kind != "task_budget" || pause.Key != "time" {
+-		t.Fatalf("Run error = %v (pause=%+v, ok=%v), want time task-budget pause", runErr, pause, ok)
++	// Ordinary chat has no round ceiling and budgets are disabled, so the run
++	// continues until the context deadline. Assert it never lands on the
++	// removed gate instead of a machine-speed-dependent round count.
++	if pause, ok := agent.InspectRunPause(runErr); ok && pause.Kind == "task_budget" {
++		t.Fatalf("Run landed on a disabled task_budget pause: %+v (%v)", pause, runErr)
++	}
++	if runErr == nil {
++		t.Fatal("Run returned nil; the runaway provider should only stop at the context deadline")
+ 	}
+ 	if rec.roundCount() == 0 {
+ 		t.Fatal("no round reached the provider; the run never started")
 diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
-index ee813a7..b7e6e1e 100644
+index f8a4635..1de437d 100644
 --- a/internal/control/chat_run_budget_test.go
 +++ b/internal/control/chat_run_budget_test.go
 @@ -77,8 +77,11 @@ func TestOrdinaryChatTurnRunsPastTheOldRoundCeiling(t *testing.T) {
@@ -3102,6 +3295,130 @@ index 0000000..5315dfa
 +		}
 +	}
 +}
+diff --git a/internal/provider/responses/encrypted_retry_test.go b/internal/provider/responses/encrypted_retry_test.go
+new file mode 100644
+index 0000000..d674d19
+--- /dev/null
++++ b/internal/provider/responses/encrypted_retry_test.go
+@@ -0,0 +1,118 @@
++package responses
++
++import (
++	"encoding/json"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"sync/atomic"
++	"testing"
++
++	"reasonix/internal/provider"
++)
++
++// The opencode Console gateway may serve consecutive turns with different
++// callers (reroute, rotated key): a replayed encrypted_content issued to the
++// previous caller then 400s with "was not issued to this caller". The client
++// must retry once with the plaintext summary only, instead of failing the
++// turn — no response has streamed yet, so the retry is side-effect free.
++
++func TestForeignEncryptedReasoningErrorMatches(t *testing.T) {
++	match := &provider.APIError{Status: http.StatusBadRequest,
++		Body: `{"model":"muse-spark-1.5","error":{"type":"invalid_request_error","message":"Error from provider (Console): Upstream request failed: [invalid_request_error] reasoning ` + "`encrypted_content`" + ` was not issued to this caller"}}`}
++	if !isForeignEncryptedReasoningError(match) {
++		t.Fatalf("observed Console rejection not recognized: %q", match.Body)
++	}
++	for _, err := range []error{
++		nil,
++		&provider.APIError{Status: http.StatusBadRequest, Body: `{"type":"invalid_request_error","message":"previous_response_id not found or has expired"}`},
++		&provider.APIError{Status: http.StatusTooManyRequests, Body: "encrypted_content was not issued to this caller"},
++		&provider.APIError{Status: http.StatusBadRequest, Body: `{"type":"invalid_request_error","message":"max_output_tokens reached"}`},
++	} {
++		if isForeignEncryptedReasoningError(err) {
++			t.Fatalf("non-matching error recognized: %#v", err)
++		}
++	}
++}
++
++func TestBodyWithoutEncryptedReasoningStripsBlob(t *testing.T) {
++	body := map[string]any{
++		"model": "muse-spark",
++		"input": []map[string]any{
++			{"role": "user", "content": "hi"},
++			{"id": "rs_1", "type": "reasoning", "status": "completed",
++				"summary":           []map[string]string{{"type": "summary_text", "text": "thought"}},
++				"encrypted_content": "opaque-prior"},
++		},
++	}
++	stripped := bodyWithoutEncryptedReasoning(body)
++	if stripped == nil {
++		t.Fatal("body carrying encrypted_content returned nil")
++	}
++	raw, _ := json.Marshal(stripped["input"])
++	if strings.Contains(string(raw), "opaque-prior") {
++		t.Fatalf("encrypted_content survived the strip: %s", raw)
++	}
++	if !strings.Contains(string(raw), "thought") {
++		t.Fatalf("plaintext summary lost in the strip: %s", raw)
++	}
++	// The source body is untouched: the first attempt's shape is preserved.
++	orig, _ := json.Marshal(body["input"])
++	if !strings.Contains(string(orig), "opaque-prior") {
++		t.Fatalf("source body mutated by the strip: %s", orig)
++	}
++	if bodyWithoutEncryptedReasoning(map[string]any{"input": "last message only"}) != nil {
++		t.Fatal("stateful string input must not strip")
++	}
++	if bodyWithoutEncryptedReasoning(map[string]any{"input": []map[string]any{{"role": "user", "content": "hi"}}}) != nil {
++		t.Fatal("input without encrypted_content must return nil (no retry)")
++	}
++}
++
++func TestStreamRetriesWithoutEncryptedReasoning(t *testing.T) {
++	const prior = `{"id":"rs_prior","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"prior thought"}],"encrypted_content":"opaque-prior"}`
++	var calls atomic.Int32
++	var secondBody []byte
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		payload, _ := io.ReadAll(r.Body)
++		if calls.Add(1) == 1 {
++			if !strings.Contains(string(payload), "opaque-prior") {
++				t.Errorf("first attempt should replay the stored blob, got: %s", payload)
++			}
++			w.Header().Set("Content-Type", "application/json")
++			w.WriteHeader(http.StatusBadRequest)
++			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"Upstream request failed: [invalid_request_error] reasoning ` + "`encrypted_content`" + ` was not issued to this caller"}}`))
++			return
++		}
++		secondBody = payload
++		writeEvents(w,
++			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"recovered"}`,
++			`{"type":"response.completed","response":{"id":"resp_2","status":"completed","output":[{"type":"message","id":"m_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"recovered"}]}],"usage":{"input_tokens":4,"output_tokens":2,"total_tokens":6}}}`,
++		)
++	}))
++	defer server.Close()
++
++	client := New(Config{Name: "opencode-responses", APIKey: "key", BaseURL: server.URL, Model: "muse-spark-test", Mode: "stateless"})
++	chunks := collect(t, client, provider.Request{Messages: []provider.Message{
++		{Role: provider.RoleUser, Content: "first"},
++		{Role: provider.RoleAssistant, Content: "answer", ResponsesItems: []json.RawMessage{json.RawMessage(prior)}},
++		{Role: provider.RoleUser, Content: "second"},
++	}})
++	if got := calls.Load(); got != 2 {
++		t.Fatalf("requests = %d, want exactly one retry", got)
++	}
++	if strings.Contains(string(secondBody), "opaque-prior") || strings.Contains(string(secondBody), "encrypted_content") {
++		t.Fatalf("retry still carried the foreign blob: %s", secondBody)
++	}
++	if !strings.Contains(string(secondBody), "prior thought") {
++		t.Fatalf("retry lost the plaintext summary: %s", secondBody)
++	}
++	var text strings.Builder
++	for _, chunk := range chunks {
++		text.WriteString(chunk.Text)
++	}
++	if !strings.Contains(text.String(), "recovered") {
++		t.Fatalf("retried turn did not complete: %+v", chunks)
++	}
++}
 diff --git a/internal/provider/responses/image_test.go b/internal/provider/responses/image_test.go
 index a8f35d2..1a85857 100644
 --- a/internal/provider/responses/image_test.go
@@ -3116,7 +3433,7 @@ index a8f35d2..1a85857 100644
  			if vision {
  				want++
 diff --git a/internal/provider/responses/message_input.go b/internal/provider/responses/message_input.go
-index 3454610..f460a48 100644
+index 3454610..db5904c 100644
 --- a/internal/provider/responses/message_input.go
 +++ b/internal/provider/responses/message_input.go
 @@ -4,7 +4,14 @@ import (
@@ -3135,6 +3452,15 @@ index 3454610..f460a48 100644
  	input := make([]map[string]any, 0, len(messages)*2)
  	// Keep function outputs together before appending a vision user message,
  	// matching the Chat adapter while retaining provider-specific exclusions.
+@@ -45,7 +52,7 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems,
+ 			}
+ 		case provider.RoleAssistant:
+ 			var rawReasoning bool
+-			input, rawReasoning = appendReasoningItems(input, message.ResponsesItems)
++			input, rawReasoning = appendReasoningItems(input, message.ResponsesItems, omitReasoningID)
+ 			if !rawReasoning && message.ReasoningContent != "" {
+ 				// Only vendors requiring summary receive the extra reasoning copy;
+ 				// otherwise an echoed summary could duplicate reasoning each turn.
 @@ -53,9 +60,14 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems,
  					"type":    "reasoning",
  					"content": []map[string]string{{"type": "reasoning_text", "text": message.ReasoningContent}},
@@ -3153,10 +3479,10 @@ index 3454610..f460a48 100644
  				if message.ReasoningStatus != "" {
 diff --git a/internal/provider/responses/opencode_summary_test.go b/internal/provider/responses/opencode_summary_test.go
 new file mode 100644
-index 0000000..bc3f44f
+index 0000000..905b85f
 --- /dev/null
 +++ b/internal/provider/responses/opencode_summary_test.go
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,224 @@
 +package responses
 +
 +import (
@@ -3165,6 +3491,7 @@ index 0000000..bc3f44f
 +	"io"
 +	"net/http"
 +	"net/http/httptest"
++	"strings"
 +	"testing"
 +	"time"
 +
@@ -3249,6 +3576,42 @@ index 0000000..bc3f44f
 +	}
 +	if item["summary"] == nil {
 +		t.Fatalf("stateless replay must keep summary: %#v", item)
++	}
++}
++
++// Raw replayed items kept their provider-issued id even on stateless
++// requests: the Console 400s them with "Referenced reasoning item ... was
++// not found or has expired" (muse-spark-1.3-contributor-free, live 2026-09).
++// The omit rule now covers raw items too; summary/encrypted_content survive.
++func TestStatelessReplayOmitsRawReasoningID(t *testing.T) {
++	raw := json.RawMessage(`{"id":"rs_prior","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"prior thought"}],"encrypted_content":"opaque-prior"}`)
++	msgs := []provider.Message{
++		{Role: provider.RoleUser, Content: "first"},
++		{Role: provider.RoleAssistant, Content: "answer", ResponsesItems: []json.RawMessage{raw}},
++		{Role: provider.RoleUser, Content: "second"},
++	}
++	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free", Mode: "stateless", Effort: "xhigh"}).(*client)
++	body, _, _ := client.buildRequestBody(provider.Request{Messages: msgs})
++	item := findReasoningItem(t, body)
++	if _, ok := item["id"]; ok {
++		t.Fatalf("stateless replay must omit raw reasoning id: %#v", item)
++	}
++	encoded, _ := json.Marshal(item)
++	if !strings.Contains(string(encoded), "opaque-prior") || !strings.Contains(string(encoded), "prior thought") {
++		t.Fatalf("stateless replay must keep blob+summary: %s", encoded)
++	}
++}
++
++func TestNonOpencodeReplayKeepsRawReasoningID(t *testing.T) {
++	raw := json.RawMessage(`{"id":"rs_prior","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"prior thought"}]}`)
++	msgs := []provider.Message{
++		{Role: provider.RoleAssistant, Content: "answer", ResponsesItems: []json.RawMessage{raw}},
++	}
++	client := New(Config{Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4", Mode: "stateless", Effort: "high"}).(*client)
++	body, _, _ := client.buildRequestBody(provider.Request{Messages: msgs})
++	item := findReasoningItem(t, body)
++	if item["id"] != "rs_prior" {
++		t.Fatalf("non-opencode replay must keep raw reasoning id: %#v", item)
 +	}
 +}
 +
@@ -3344,6 +3707,32 @@ index 0000000..bc3f44f
 +		t.Errorf("prompt_cache_key = %v, want the session ID", body["prompt_cache_key"])
 +	}
 +}
+diff --git a/internal/provider/responses/reasoning_snapshots.go b/internal/provider/responses/reasoning_snapshots.go
+index 3a805c7..bd62c1f 100644
+--- a/internal/provider/responses/reasoning_snapshots.go
++++ b/internal/provider/responses/reasoning_snapshots.go
+@@ -35,12 +35,20 @@ func (s *responseReasoningSnapshots) metadata() (string, string) {
+ 	_ = json.Unmarshal(s.items[len(s.items)-1], &item)
+ 	return item.ID, item.Status
+ }
+-func appendReasoningItems(input []map[string]any, items []json.RawMessage) ([]map[string]any, bool) {
++func appendReasoningItems(input []map[string]any, items []json.RawMessage, omitID bool) ([]map[string]any, bool) {
+ 	found := false
+ 	for _, raw := range items {
+ 		if provider.IsReplayableResponsesReasoning(raw) {
+ 			var item map[string]any
+ 			if json.Unmarshal(raw, &item) == nil {
++				if omitID {
++					// Same rule as the constructed summary item: the
++					// opencode Console cannot resolve prior-turn ids on
++					// stateless requests (400 "not found or has
++					// expired"). Content/summary/encrypted_content
++					// still replay; only the unresolvable reference goes.
++					delete(item, "id")
++				}
+ 				input = append(input, item)
+ 				found = true
+ 			}
 diff --git a/internal/provider/responses/reasoning_snapshots_test.go b/internal/provider/responses/reasoning_snapshots_test.go
 index 7f70b37..bea7982 100644
 --- a/internal/provider/responses/reasoning_snapshots_test.go
@@ -3367,7 +3756,7 @@ index 7f70b37..bea7982 100644
  	var got, want any
  	_ = json.Unmarshal(encoded, &got)
 diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
-index df43b71..76f5f43 100644
+index df43b71..4bb1ad4 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
 @@ -95,6 +95,8 @@ type client struct {
@@ -3421,7 +3810,26 @@ index df43b71..76f5f43 100644
  		vision:    vision,
  		modelInfo: modelInfo,
  		http:      httpClient, idleTimeout: defaultStreamIdleTimeout,
-@@ -286,6 +301,9 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -264,6 +279,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+ 		body, _, wireMessages = c.buildRequestBody(req)
+ 		resp, err = c.send(requestCtx, body)
+ 	}
++	if err != nil && isForeignEncryptedReasoningError(err) {
++		// The gateway served this request with a different caller than the
++		// one that issued the replayed encrypted_content (reroute, rotated
++		// key, or a transcript restored under another caller): the opaque
++		// blob is unauthenticated without its issuer and the request 400s.
++		// Retry once with the plaintext summary only — no response has
++		// streamed yet, so the retry is a second stateless request.
++		if stripped := bodyWithoutEncryptedReasoning(body); stripped != nil {
++			body = stripped
++			resp, err = c.send(requestCtx, body)
++		}
++	}
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -286,6 +313,9 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  		req.Header.Set("Content-Type", "application/json")
  		req.Header.Set("Authorization", "Bearer "+c.apiKey)
  		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
@@ -3431,7 +3839,62 @@ index df43b71..76f5f43 100644
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")
  		}
-@@ -308,6 +326,13 @@ func isStalePreviousResponseError(err error) bool {
+@@ -305,9 +335,68 @@ func isStalePreviousResponseError(err error) bool {
+ 		(strings.Contains(body, "not found") || strings.Contains(body, "invalid") || strings.Contains(body, "expired"))
+ }
+ 
++// isForeignEncryptedReasoningError reports the 400 a gateway returns when a
++// replayed reasoning item's encrypted_content was issued to a different
++// caller than the one serving this request.
++func isForeignEncryptedReasoningError(err error) bool {
++	var apiErr *provider.APIError
++	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadRequest {
++		return false
++	}
++	body := strings.ToLower(apiErr.Body)
++	if !strings.Contains(body, "encrypted_content") {
++		return false
++	}
++	return strings.Contains(body, "not issued") || strings.Contains(body, "caller")
++}
++
++// bodyWithoutEncryptedReasoning returns a copy of a Responses request body
++// with every replayed reasoning item's encrypted_content removed, or nil
++// when the body carries none. Plaintext summary/content survive, so the
++// replayed turn keeps its thinking without the issuer-bound opaque blob.
++func bodyWithoutEncryptedReasoning(body map[string]any) map[string]any {
++	input, ok := body["input"].([]map[string]any)
++	if !ok {
++		return nil
++	}
++	stripped := false
++	next := make([]map[string]any, len(input))
++	for i, item := range input {
++		if item["type"] == "reasoning" {
++			if _, has := item["encrypted_content"]; has {
++				cp := make(map[string]any, len(item))
++				for k, v := range item {
++					if k != "encrypted_content" {
++						cp[k] = v
++					}
++				}
++				item = cp
++				stripped = true
++			}
++		}
++		next[i] = item
++	}
++	if !stripped {
++		return nil
++	}
++	out := make(map[string]any, len(body))
++	for k, v := range body {
++		out[k] = v
++	}
++	out["input"] = next
++	return out
++}
++
  func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, []provider.Message) {
  	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
  	body := map[string]any{"model": c.model, "stream": true}
@@ -3445,7 +3908,7 @@ index df43b71..76f5f43 100644
  
  	effort := c.effort
  	if req.EffortOverride != "" {
-@@ -321,7 +346,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -321,7 +410,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		effort = "none"
  	}
  	if effort != "" {
@@ -3464,7 +3927,7 @@ index df43b71..76f5f43 100644
  	}
  	maxOutputTokens := req.MaxTokens
  	if maxOutputTokens == 0 {
-@@ -363,7 +398,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -363,7 +462,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		return body, true, messages
  	}
  
@@ -3473,7 +3936,7 @@ index df43b71..76f5f43 100644
  	return body, false, messages
  }
  
-@@ -410,7 +445,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
+@@ -410,7 +509,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
  	payload, _ := json.Marshal(struct {
  		Instructions string           `json:"instructions,omitempty"`
  		Input        []map[string]any `json:"input"`
@@ -3644,10 +4107,10 @@ index 6200e4f..7aca23b 100644
  	}
  }
 diff --git a/internal/runtimepolicy/constraints.go b/internal/runtimepolicy/constraints.go
-index f97b1fa..3a76d56 100644
+index 1c255e9..d6828eb 100644
 --- a/internal/runtimepolicy/constraints.go
 +++ b/internal/runtimepolicy/constraints.go
-@@ -197,7 +197,29 @@ func globalMutationTail(tail string) bool {
+@@ -184,7 +184,29 @@ func globalMutationTail(tail string) bool {
  	if strings.HasPrefix(tail, ":") {
  		return false
  	}

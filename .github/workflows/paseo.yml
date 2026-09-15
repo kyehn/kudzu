@@ -56,6 +56,10 @@ jobs:
             ~/.pi/agent
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
             ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-
@@ -133,4 +137,8 @@ jobs:
             ~/.pi/agent
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+            ~/.cargo/registry
+            ~/.cargo/git
           key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
