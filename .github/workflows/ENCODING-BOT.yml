@@ -25,18 +25,18 @@ jobs:
         id: cache
         with:
           path: bot.db
-          key: ${{ github.workflow }}-db-state-${{ github.run_id }}
-          restore-keys: ${{ github.workflow }}-db-state-
+          key: ${{ github.workflow }}-${{ github.run_id }}
+          restore-keys: ${{ github.workflow }}-
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg mkvtoolnix
-      - run: |
+      - continue-on-error: true
+        run: |
           ./run.sh
           ./run.sh logs
-      - if: always()
+      - continue-on-error: true
         run: ./run.sh stop
-      - if: always()
-        uses: actions/cache/save@main
+      - uses: actions/cache/save@main
         with:
           path: bot.db
-          key: ${{ github.workflow }}-db-state-${{ github.run_id }}
+          key: ${{ github.workflow }}-${{ github.run_id }}

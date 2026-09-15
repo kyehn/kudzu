@@ -91,6 +91,7 @@
       "use_capability"
     ];
     deny = [
+      "Bash(git checkout --:*)"
       "Bash(find /nix/store:*)"
       "Bash(ls /nix/store:*)"
       "Bash(find /*:*)"

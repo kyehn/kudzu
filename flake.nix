@@ -50,6 +50,7 @@
             runtimeInputs = with pkgs; [
               yamlfmt
               biome
+              ruff
             ];
             settings.formatter = {
               yamlfmt = {
@@ -65,7 +66,24 @@
                   "check"
                   "--write"
                 ];
-                includes = [ "*.json" ];
+                includes = [
+                  "*.json"
+                  "*.jsonc"
+                  "*.ts"
+                ];
+              };
+              ruff-format = {
+                command = "ruff";
+                options = [ "format" ];
+                includes = [ "*.py" ];
+              };
+              ruff-check = {
+                command = "ruff";
+                options = [
+                  "check"
+                  "--fix"
+                ];
+                includes = [ "*.py" ];
               };
             };
           };

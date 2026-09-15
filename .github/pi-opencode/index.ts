@@ -13,9 +13,9 @@
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 // 显式导入而非依赖全局 process：类型解析不再依赖环境自动发现 @types/node。
 import process from "node:process";
-import path from "node:path";
 import { promisify } from "node:util";
 // Import from the compat entrypoint: the host aliases extension imports of
 // "@earendil-works/pi-ai/compat" to its bundled copy (loader.js), and this
@@ -319,7 +319,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// instances, which we consume duck-typed (id, reasoning, header merge)
 		// and forward to the extension-local adapters; no cross-copy identity
 		// checks (instanceof/brand) are performed on either side.
-		streamSimple: streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
+		streamSimple:
+			streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
 		models: modelIds.map((id) => buildModelConfig(id)),
 	});
 }

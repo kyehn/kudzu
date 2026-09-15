@@ -1,0 +1,16 @@
+name: install-config
+description: install-config
+inputs:
+  working-directory:
+    description: working directory
+    required: false
+    default: "."
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        mkdir -p ~/.config/git ~/.config/ruff
+        nix build --verbose --print-build-logs --print-out-paths --impure '.#nixosConfigurations.default.config.home-manager.users.nix-on-droid.xdg.configFile."git/ignore".source' --out-link /tmp/git-ignore && install -m 0644 /tmp/git-ignore ~/.config/git/ignore && rm -f /tmp/git-ignore
+        nix build --verbose --print-build-logs --print-out-paths --impure '.#nixosConfigurations.default.config.home-manager.users.nix-on-droid.xdg.configFile."ruff/ruff.toml".source' --out-link /tmp/ruff-settings && install -m 0644 /tmp/ruff-settings ~/.config/ruff/ruff.toml && rm -f /tmp/ruff-settings
