@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import httpx
 import tomli_w
-import tomllib
 
-USER_AGENT = "opencode/beta/0.0.0-beta-19234/cli"
+USER_AGENT = "opencode/latest/1.18.31/cli"
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 # models.dev cost 单位为美元 (USD)
 BILLING_CURRENCY = "USD"
@@ -120,8 +120,9 @@ def main(argv: list[str] | None = None) -> None:
         )
         response.raise_for_status()
         official_model_ids = sorted(model["id"] for model in response.json()["data"])
-        chat = []
+        openai = []
         responses = []
+        anthropic = []
         for model_id in official_model_ids:
             model = entry["models"].get(model_id)
             if model is None or model.get("status") == "deprecated":
@@ -139,12 +140,14 @@ def main(argv: list[str] | None = None) -> None:
             ):
                 continue
             npm = (model.get("provider") or {}).get("npm")
-            if npm == RESPONSES_SDK_PACKAGE:
+            if npm == "@ai-sdk/openai":
                 responses.append((model_id, model))
+            elif npm == "@ai-sdk/anthropic":
+                anthropic.append((model_id, model))
             else:
-                chat.append((model_id, model))
-        if chat:
-            new_providers.append(_provider_dict(provider, "openai", entry, chat))
+                openai.append((model_id, model))
+        if openai:
+            new_providers.append(_provider_dict(provider, "openai", entry, openai))
         if responses:
             new_providers.append(
                 _provider_dict(
@@ -152,6 +155,15 @@ def main(argv: list[str] | None = None) -> None:
                     "responses",
                     entry,
                     responses,
+                )
+            )
+        if anthropic:
+            new_providers.append(
+                _provider_dict(
+                    f"{provider}-anthropic",
+                    "responses",
+                    entry,
+                    anthropic,
                 )
             )
     with REASONIX_CONFIG.open("rb") as config_file:

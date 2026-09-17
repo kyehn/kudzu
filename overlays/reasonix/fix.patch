@@ -2,9 +2,10 @@ diff --git a/go.mod b/go.mod
 index 97ca003..60afaf2 100644
 --- a/go.mod
 +++ b/go.mod
-@@ -11,6 +11,7 @@ require (
+@@ -11,7 +11,8 @@ require (
  	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
  	github.com/BurntSushi/toml v1.6.0
+ 	github.com/UserExistsError/conpty v0.1.4
  	github.com/alecthomas/chroma/v2 v2.27.0
 +	github.com/andybalholm/brotli v1.0.6
  	github.com/atotto/clipboard v0.1.4
@@ -1868,7 +1869,7 @@ index 0000000..e5ac949
 +}
 +
 +// TestOpenCodeClientHelloSpecHTTP11Only pins the ALPN to http/1.1-only,
-+// exactly as recaptured from the v2 CLI (which never offers h2, even with
++// exactly as the real CLI emits (verified v1.18.31; never offers h2, even with
 +// SNI). Offering h2 makes Cloudflare negotiate it while Go cannot speak h2
 +// over this utls connection, killing every request — never re-add h2 here.
 +func TestOpenCodeClientHelloSpecHTTP11Only(t *testing.T) {
@@ -1887,7 +1888,7 @@ index 0000000..e5ac949
 +}
 +
 +// TestOpenCodeClientHelloSpecGroups pins supported_groups and key shares to
-+// the v2 CLI capture: X25519MLKEM768 (0x11ec, Bun's post-quantum hybrid group
++// the CLI capture (v1.18.31, Bun/BoringSSL): X25519MLKEM768 (0x11ec, Bun's post-quantum hybrid group
 +// — not GREASE) first, then X25519/P-256/P-384. Key shares cover MLKEM768 plus
 +// an X25519 fallback, mirroring BoringSSL, so the server never needs a
 +// HelloRetryRequest. Groups feed JA3 directly; dropping 0x11ec changes the
@@ -1941,7 +1942,7 @@ index 0000000..0b93ebf
 +)
 +
 +// OpenCodeClientHelloSpec reproduces the TLS ClientHello emitted by the opencode
-+// CLI (Bun/BoringSSL), recaptured with opencode2 v0.0.0-beta-19151 against a
++// CLI (Bun/BoringSSL, verified against opencode-ai 1.18.31 wire behavior) against a
 +// hostname endpoint:
 +//
 +//	JA3  : 7c60c49b23c5483a84737c3ae0a5cd3c
@@ -2214,7 +2215,7 @@ diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/opena
 index c3309ba..3e65483 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
-@@ -230,10 +230,15 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -230,10 +230,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
  	// max_output_tokens=0 on official DeepSeek omits the wire field so the
  	// server uses its 384K ceiling. Effort only selects thinking depth.
  	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
@@ -2225,18 +2226,21 @@ index c3309ba..3e65483 100644
  		return nil, fmt.Errorf("openai: network: %w", err)
  	}
 +	opencodeSession := ""
++	opencodeProject := ""
 +	if opencode {
 +		opencodeSession = provider.OpenCodeSessionID()
++		opencodeProject = provider.OpenCodeProjectID()
 +	}
  	return &client{
  		identityHeaders: provider.NewClientIdentityHeaders(),
  		reasoningState:  reasoningState{ollamaCloud: ollamaCloud, thinkingLocked: configuredThinkingType(cfg) == "disabled", reasoning: ReasoningForConfig(cfg)},
-@@ -262,20 +267,29 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -262,20 +267,30 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		effort:          effort,
  		http:            httpClient,
  		idleTimeout:     defaultStreamIdleTimeout,
 +		opencode:        opencode,
 +		opencodeSession: opencodeSession,
++		opencodeProject: opencodeProject,
  	}, nil
  }
  
@@ -2264,12 +2268,13 @@ index c3309ba..3e65483 100644
  }
  
  type client struct {
-@@ -307,6 +321,8 @@ type client struct {
+@@ -307,6 +321,9 @@ type client struct {
  	effort          string        // reasoning_effort for OpenAI; thinking.type for MiniMax; "" = auto/provider default
  	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
 +	opencode        bool          // opencode Zen provider — match the CLI's TLS fingerprint, headers, and body
 +	opencodeSession string        // fixed descending ses_ ID stamped on every request (x-opencode-session)
++	opencodeProject string        // resolved x-opencode-project (remote → cached → root, global fallback)
  }
  
  func (c *client) Name() string { return c.name }
@@ -2389,7 +2394,7 @@ new file mode 100644
 index 0000000..7ffe136
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,170 @@
 +package openai
 +
 +import (
@@ -2409,13 +2414,14 @@ index 0000000..7ffe136
 +)
 +
 +// applyOpenCodeHeaders stamps the shared opencode CLI identity onto a chat
-+// request: one ses_ ID (and prompt_cache_key) is reused for the whole session,
-+// exactly like the CLI.
++// request: one ses_ ID (and prompt_cache_key) is reused for the whole session
++// plus a fresh msg_ request ID per call, exactly like the CLI
++// (packages/opencode/src/session/llm/request.ts, v1.18.31).
 +func (c *client) applyOpenCodeHeaders(h http.Header) {
 +	if !c.opencode {
 +		return
 +	}
-+	provider.ApplyOpenCodeCLIHeaders(h, c.opencodeSession)
++	provider.ApplyOpenCodeCLIHeaders(h, c.opencodeSession, c.opencodeProject)
 +}
 +
 +// openCodeOmitsStore mirrors openai-chat.ts detectSupportsStore(): the CLI
@@ -2770,7 +2776,7 @@ new file mode 100644
 index 0000000..bc74b62
 --- /dev/null
 +++ b/internal/provider/openai/opencode_stream_test.go
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,227 @@
 +package openai
 +
 +import (
@@ -2841,13 +2847,18 @@ index 0000000..bc74b62
 +	if got := gotReq.Header.Get("User-Agent"); got != provider.OpenCodeUserAgent {
 +		t.Errorf("User-Agent = %q", got)
 +	}
-+	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-session", "x-session-affinity", "x-session-id"} {
++	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-session", "x-opencode-request"} {
 +		if got := gotReq.Header.Get(k); got == "" {
 +			t.Errorf("missing header %s", k)
 +		}
 +	}
-+	if got := gotReq.Header.Get("x-opencode-request"); got != "" {
-+		t.Errorf("x-opencode-request = %q, want absent (v2 CLI dropped it)", got)
++	if got := gotReq.Header.Get("x-opencode-request"); got == "" || len(got) != 30 || got[:4] != "msg_" {
++		t.Errorf("x-opencode-request = %q, want fresh msg_ ID (v1.18.31)", got)
++	}
++	for _, k := range []string{"x-session-affinity", "x-session-id"} {
++		if got := gotReq.Header.Get(k); got != "" {
++			t.Errorf("header %s = %q, want absent on opencode path (v1.18.31)", k, got)
++		}
 +	}
 +	var wire struct {
 +		Keys []string
@@ -2877,8 +2888,8 @@ index 0000000..bc74b62
 +	}
 +}
 +
-+// TestOpencodeBodyKeyOrder pins the exact wire key order against the v2 CLI
-+// source (openai-chat.ts fromRequest): model, messages, tools, tool_choice,
++// TestOpencodeBodyKeyOrder pins the exact wire key order against the v1 CLI
++// source (openai-chat.ts fromRequest, v1.18.31): model, messages, tools, tool_choice,
 +// stream, stream_options, max_completion_tokens, temperature, store,
 +// prompt_cache_key. Unset keys are dropped like the CLI's JSON.stringify
 +// dropping undefined. In particular the output budget travels as
@@ -3058,25 +3069,32 @@ new file mode 100644
 index 0000000..c3089d7
 --- /dev/null
 +++ b/internal/provider/opencode_cli.go
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,269 @@
 +package provider
 +
 +import (
 +	"crypto/rand"
++	"crypto/sha1"
 +	"encoding/hex"
 +	"net/http"
 +	"net/url"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"sort"
 +	"strings"
 +	"sync"
 +	"time"
 +)
 +
-+// OpenCodeUserAgent is the exact User-Agent emitted by the real opencode2 CLI
-+// on the beta channel (installed 0.0.0-beta-19234; refreshed from the
-+// beta-19151 capture the TLS spec below was recorded against). The Console
-+// free tier rejects anonymous Zen traffic that does not look like OpenCode,
-+// so every opencode Zen adapter must stamp this — not Go's default UA.
-+const OpenCodeUserAgent = "opencode/beta/0.0.0-beta-19234/cli"
++// OpenCodeUserAgent is the exact User-Agent emitted by the real opencode CLI
++// (opencode-ai 1.18.31, verified via local capture against a mock
++// OpenAI-compatible endpoint). request.ts uses `opencode/${Version}` as the
++// base; the ai-sdk provider-utils fetch wrapper appends the suffix on the
++// wire. The Console free tier rejects anonymous Zen traffic that does not
++// look like OpenCode, so every opencode Zen adapter must stamp this — not
++// Go's default UA.
++const OpenCodeUserAgent = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
 +
 +// IsOpenCode reports whether a provider speaks the opencode CLI wire shape
 +// (CLI TLS fingerprint, x-opencode-* headers, fixed body key order). It
@@ -3110,24 +3128,144 @@ index 0000000..c3089d7
 +	return OpenCodeCreate("ses", true)
 +}
 +
-+// ApplyOpenCodeCLIHeaders stamps the opencode-specific headers onto a request.
-+// The x-opencode-* keys are written lowercase (like the real CLI) via direct
-+// map assignment; Go writes header map keys verbatim, preserving the casing.
-+func ApplyOpenCodeCLIHeaders(header http.Header, session string) {
++// OpenCodeRequestID returns a fresh CLI-shaped per-request ID: the ascending
++// encoding via SessionMessage.create, stamped on x-opencode-request for each
++// request (packages/opencode/src/session/llm/request.ts, v1.18.31).
++func OpenCodeRequestID() string {
++	return OpenCodeCreate("msg", false)
++}
++
++// OpenCodeProjectID resolves the CLI's x-opencode-project for the current
++// working directory (packages/core/src/project.ts, v1.18.31): remote →
++// cached → root, sha1("git-remote:<host/path>"), "global" fallback.
++func OpenCodeProjectID() string {
++	cwd, err := os.Getwd()
++	if err != nil {
++		return "global"
++	}
++	return openCodeProjectIDFor(cwd)
++}
++
++func openCodeGitOut(cwd string, args ...string) string {
++	cmd := exec.Command("git", args...)
++	cmd.Dir = cwd
++	out, err := cmd.Output()
++	if err != nil {
++		return ""
++	}
++	return strings.TrimSpace(string(out))
++}
++
++func openCodeNormalizeRemote(value string) string {
++	trimmed := strings.TrimSpace(value)
++	if trimmed == "" {
++		return ""
++	}
++	parts := func(host, name string) string {
++		pathname := name
++		for strings.HasPrefix(pathname, "/") {
++			pathname = strings.TrimPrefix(pathname, "/")
++		}
++		pathname = strings.TrimSuffix(strings.TrimSuffix(pathname, "/"), ".git")
++		pathname = strings.TrimSuffix(pathname, "/")
++		// Mirror the TS chain: strip leading slashes, ".git" suffix, then
++		// trailing slashes (handles ".git/" too).
++		for strings.HasSuffix(pathname, "/") {
++			pathname = strings.TrimSuffix(pathname, "/")
++		}
++		if host == "" || pathname == "" {
++			return ""
++		}
++		return strings.ToLower(host) + "/" + pathname
++	}
++	// Try URL form first (https://, ssh://, ...); file: URLs never qualify.
++	if strings.Contains(trimmed, "://") {
++		if u, err := url.Parse(trimmed); err == nil {
++			if u.Scheme == "file" {
++				return ""
++			}
++			if normalized := parts(u.Hostname(), u.Path); normalized != "" {
++				return normalized
++			}
++		}
++	}
++	// SCP-like syntax: [user@]host:path
++	if idx := strings.Index(trimmed, ":"); idx >= 0 {
++		before, after := trimmed[:idx], trimmed[idx+1:]
++		if !strings.Contains(before, "/") && after != "" {
++			host := before
++			if at := strings.LastIndex(host, "@"); at >= 0 {
++				host = host[at+1:]
++			}
++			if host != "" {
++				if normalized := parts(host, after); normalized != "" {
++					return normalized
++				}
++			}
++		}
++	}
++	return ""
++}
++
++func openCodeProjectIDFor(cwd string) string {
++	commonDirRaw := openCodeGitOut(cwd, "rev-parse", "--git-common-dir")
++	if commonDirRaw == "" {
++		return "global"
++	}
++	commonDir := commonDirRaw
++	if !filepath.IsAbs(commonDir) {
++		commonDir = filepath.Join(cwd, commonDir)
++	}
++	// 1. Remote URL first (highest priority).
++	if normalized := openCodeNormalizeRemote(openCodeGitOut(cwd, "remote", "get-url", "origin")); normalized != "" {
++		sum := sha1.Sum([]byte("git-remote:" + normalized))
++		return hex.EncodeToString(sum[:])
++	}
++	// 2. Cached ID from <common-dir>/opencode.
++	if data, err := os.ReadFile(filepath.Join(commonDir, "opencode")); err == nil {
++		if cached := strings.TrimSpace(string(data)); cached != "" {
++			return cached
++		}
++	}
++	// 3. First root commit hash, sorted lexicographically.
++	if roots := openCodeGitOut(cwd, "rev-list", "--max-parents=0", "HEAD"); roots != "" {
++		var list []string
++		for _, line := range strings.Split(roots, "\n") {
++			if trimmed := strings.TrimSpace(line); trimmed != "" {
++				list = append(list, trimmed)
++			}
++		}
++		if len(list) > 0 {
++			sort.Strings(list)
++			return list[0]
++		}
++	}
++	return "global"
++}
++
++// ApplyOpenCodeCLIHeaders stamps the opencode-specific headers onto a request
++// (packages/opencode/src/session/llm/request.ts, v1.18.31): opencode provider
++// → x-opencode-* only, with a fresh ascending msg_ request ID per call. The
++// x-opencode-* keys are written lowercase (like the real CLI) via direct map
++// assignment; Go writes header map keys verbatim, preserving the casing.
++func ApplyOpenCodeCLIHeaders(header http.Header, session, project string) {
 +	// Drop canonical-cased copies a config may have supplied so the lowercase
 +	// keys below are the only ones that reach the wire.
 +	header.Del("User-Agent")
 +	header.Del("X-Opencode-Client")
 +	header.Del("X-Opencode-Session")
 +	header.Del("X-Opencode-Project")
++	header.Del("X-Opencode-Request")
 +	header.Del("X-Session-Affinity")
 +	header.Del("X-Session-Id")
++	if project == "" {
++		project = "global"
++	}
 +	header.Set("User-Agent", OpenCodeUserAgent)
 +	header["x-opencode-client"] = []string{"cli"}
-+	header["x-opencode-project"] = []string{"global"}
++	header["x-opencode-project"] = []string{project}
 +	header["x-opencode-session"] = []string{session}
-+	header["x-session-affinity"] = []string{session}
-+	header["x-session-id"] = []string{session}
++	header["x-opencode-request"] = []string{OpenCodeRequestID()}
 +}
 +
 +// Port of opencode's ID generator (packages/schema/src/identifier.ts):
@@ -3206,7 +3344,7 @@ new file mode 100644
 index 0000000..5315dfa
 --- /dev/null
 +++ b/internal/provider/opencode_cli_test.go
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,110 @@
 +package provider
 +
 +import (
@@ -3278,7 +3416,7 @@ index 0000000..5315dfa
 +		"X-Opencode-Client":  {"custom"},
 +		"X-Opencode-Session": {"old"},
 +	}
-+	ApplyOpenCodeCLIHeaders(header, "ses_example")
++	ApplyOpenCodeCLIHeaders(header, "ses_example", "global")
 +	if got := header["User-Agent"][0]; got != OpenCodeUserAgent {
 +		t.Fatalf("User-Agent = %q", got)
 +	}
@@ -3286,13 +3424,35 @@ index 0000000..5315dfa
 +		"x-opencode-client":  "cli",
 +		"x-opencode-project": "global",
 +		"x-opencode-session": "ses_example",
-+		"x-session-affinity": "ses_example",
-+		"x-session-id":       "ses_example",
 +	} {
 +		values, ok := header[key]
 +		if !ok || len(values) != 1 || values[0] != want {
 +			t.Fatalf("header %s = %q, want %q", key, values, want)
 +		}
++	}
++	// v1 sends a fresh ascending msg_ request ID per request and no
++	// x-session-affinity/X-Session-Id on the opencode provider path.
++	values, ok := header["x-opencode-request"]
++	if !ok || len(values) != 1 || len(values[0]) != 30 || values[0][:4] != "msg_" {
++		t.Fatalf("header x-opencode-request = %q, want fresh msg_ ID", values)
++	}
++	for _, key := range []string{"x-session-affinity", "x-session-id", "X-Session-Affinity", "X-Session-Id"} {
++		if values, ok := header[key]; ok {
++			t.Fatalf("header %s = %q, want absent on opencode path (v1.18.31)", key, values)
++		}
++	}
++}
++
++func TestOpenCodeProjectIDResolution(t *testing.T) {
++	// normalizeRemote mirrors packages/core/src/project.ts parts().
++	if got := openCodeNormalizeRemote("https://github.com/kyehn/kudzu.git"); got != "github.com/kyehn/kudzu" {
++		t.Fatalf("normalize https .git = %q", got)
++	}
++	if got := openCodeNormalizeRemote("git@github.com:kyehn/kudzu.git"); got != "github.com/kyehn/kudzu" {
++		t.Fatalf("normalize scp = %q", got)
++	}
++	if openCodeNormalizeRemote("file:///tmp/repo") != "" {
++		t.Fatal("file: URLs must not qualify")
 +	}
 +}
 diff --git a/internal/provider/responses/encrypted_retry_test.go b/internal/provider/responses/encrypted_retry_test.go
@@ -3482,7 +3642,7 @@ new file mode 100644
 index 0000000..905b85f
 --- /dev/null
 +++ b/internal/provider/responses/opencode_summary_test.go
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,230 @@
 +package responses
 +
 +import (
@@ -3687,13 +3847,19 @@ index 0000000..905b85f
 +	}
 +	for key, want := range map[string]string{
 +		"x-opencode-client":  "cli",
-+		"x-opencode-project": "global",
++		"x-opencode-project": client.opencodeProject,
 +		"x-opencode-session": client.opencodeSession,
-+		"x-session-affinity": client.opencodeSession,
-+		"x-session-id":       client.opencodeSession,
 +	} {
 +		if got := gotReq.Header.Get(key); got != want {
 +			t.Errorf("header %s = %q, want %q", key, got, want)
++		}
++	}
++	if got := gotReq.Header.Get("x-opencode-request"); got == "" || len(got) != 30 || got[:4] != "msg_" {
++		t.Errorf("x-opencode-request = %q, want fresh msg_ ID (v1.18.31)", got)
++	}
++	for _, key := range []string{"x-session-affinity", "x-session-id"} {
++		if got := gotReq.Header.Get(key); got != "" {
++			t.Errorf("header %s = %q, want absent on opencode path (v1.18.31)", key, got)
 +		}
 +	}
 +	var body map[string]any
@@ -3759,16 +3925,17 @@ diff --git a/internal/provider/responses/responses.go b/internal/provider/respon
 index df43b71..4bb1ad4 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
-@@ -95,6 +95,8 @@ type client struct {
+@@ -95,6 +95,9 @@ type client struct {
  	apiKey, keyEnv, keySource          string
  	baseURL, requestURL, model, effort string
  	vendor, mode                       string
 +	opencode                           bool
 +	opencodeSession                    string
++	opencodeProject                    string
  	caps                               vendorCapabilities
  	sessionCache                       bool
  	search                             provider.SearchPolicy
-@@ -147,17 +149,29 @@ func New(cfg Config) provider.Provider {
+@@ -147,17 +149,31 @@ func New(cfg Config) provider.Provider {
  	// Official DeepSeek image input is pinned to one SKU. Ignore metadata or
  	// Extra["vision"] for Flash/Pro.
  	vision = openai.DeepSeekImageInputAllowed(vendor == "deepseek", cfg.RequestURL, cfg.Model, cfg.ModelInfo != nil, vision)
@@ -3777,8 +3944,10 @@ index df43b71..4bb1ad4 100644
 +	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 +	opencode := provider.IsOpenCode(cfg.Name, baseURL)
 +	opencodeSession := ""
++	opencodeProject := ""
 +	if opencode {
 +		opencodeSession = provider.OpenCodeSessionID()
++		opencodeProject = provider.OpenCodeProjectID()
 +	}
 +	transport := netclient.TransportOptions{
  		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
@@ -3806,7 +3975,7 @@ index df43b71..4bb1ad4 100644
  		reasoning: ReasoningForConfig(provider.Config{BaseURL: cfg.BaseURL, Model: cfg.Model, Extra: cfg.Extra}),
  		baseURL:   baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
  		vendor: vendor, caps: cap, mode: cfg.mode(), sessionCache: sessionCache, search: provider.SearchPolicy{NativeEnabled: cfg.WebSearch, ClientEnabled: clientWebSearch}, maxOutputTokens: maxOutputTokens,
-+		opencode: opencode, opencodeSession: opencodeSession,
++		opencode: opencode, opencodeSession: opencodeSession, opencodeProject: opencodeProject,
  		vision:    vision,
  		modelInfo: modelInfo,
  		http:      httpClient, idleTimeout: defaultStreamIdleTimeout,
@@ -3834,7 +4003,7 @@ index df43b71..4bb1ad4 100644
  		req.Header.Set("Authorization", "Bearer "+c.apiKey)
  		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		if c.opencode {
-+			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession)
++			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject)
 +		}
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")

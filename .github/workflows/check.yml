@@ -16,8 +16,10 @@ jobs:
         with:
           name: ${{ secrets.CACHIX_NAME }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: rm -f ~/.config/nix/nix.conf
       - run: |
+          rm -f ~/.config/nix/nix.conf
           nix flake update
+      - uses: ./.github/actions/install-config
+      - run: |
           nix fmt
           nix flake check --impure

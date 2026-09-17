@@ -1,21 +1,25 @@
 /**
  * pi extension that makes requests to OpenCode Zen indistinguishable from the
- * real opencode CLI on the wire: User-Agent plus the x-opencode and x-session
+ * real opencode CLI on the wire: User-Agent plus the x-opencode headers.
  *
- * Sources mirrored (opencode v2, opencode2 v0.0.0-beta-19234):
+ * Sources mirrored (opencode-ai v1.18.31:
  *   - packages/schema/src/identifier.ts
- *     (ses_ descending, 12 hex time chars + 14 base62 chars)
- *   - packages/core/src/session/model-request.ts (sessionHeaders, no
- *     x-opencode-request; x-session-affinity + X-Session-Id added)
- *   - packages/core/src/app.ts (App.useragent: opencode/{channel}/{version}/{name})
- *   - packages/schema/src/project-id.ts (x-opencode-project, "global" fallback)
+ *     (ses_ descending / msg_ ascending, 12 hex time chars + 14 base62 chars)
+ *   - packages/opencode/src/session/llm/request.ts (USER_AGENT
+ *     `opencode/${InstallationVersion}` plus ai-sdk suffix on the wire;
+ *     opencode provider → x-opencode-project/session/request/client only,
+ *     other providers → x-session-affinity/X-Session-Id only)
+ *   - packages/opencode/src/installation/index.ts (userAgent():
+ *     `opencode/${channel}/${version}/${client}` for models.dev)
+ *   - packages/core/src/project.ts (remote → cached → root, sha1
+ *     "git-remote:<host/path>", "global" fallback)
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 // 显式导入而非依赖全局 process：类型解析不再依赖环境自动发现 @types/node。
 import process from "node:process";
-import path from "node:path";
 import { promisify } from "node:util";
 // Import from the compat entrypoint: the host aliases extension imports of
 // "@earendil-works/pi-ai/compat" to its bundled copy (loader.js), and this
@@ -38,14 +42,15 @@ import type {
 
 const BASE_URL = "https://opencode.ai/zen/v1";
 const API_KEY = "public";
-const OPENCODE_VERSION = "0.0.0-beta-19234";
-const OPENCODE_CHANNEL = "beta";
+const OPENCODE_VERSION = "1.18.31";
 
 // ─── opencode wire identity ─────────────────────────────────────────────────
 
-// App.useragent(): `opencode/${channel}/${version}/${name}` — a single exact
-// string on every endpoint. v2 sends no ai-sdk/runtime suffix (v1 did).
-const USER_AGENT = `opencode/${OPENCODE_CHANNEL}/${OPENCODE_VERSION}/cli`;
+// request.ts: `opencode/${InstallationVersion}` as the base; the ai-sdk
+// provider-utils fetch wrapper appends ` ai-sdk/provider-utils/<v>
+// runtime/bun/<v>` on the wire. Captured from opencode-ai 1.18.31:
+// `opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`.
+const USER_AGENT = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`;
 
 type EndpointApi =
 	| "anthropic-messages"
@@ -86,12 +91,12 @@ function identifier(descending: boolean): string {
 }
 
 // Sessions use the descending encoding and are fixed per client instance,
-// stamped on x-opencode-session/x-session-affinity/X-Session-Id and reused
-// as prompt_cache_key — exactly like the CLI reusing one ses_ ID per session.
-// (v2 dropped the per-request x-opencode-request header, so no msg_ IDs.)
+// stamped on x-opencode-session and reused as prompt_cache_key — exactly like
+// the CLI reusing one ses_ ID per session. Each request carries a fresh
+// ascending msg_ ID on x-opencode-request (SessionMessage ID).
 const SESSION_ID = `ses_${identifier(true)}`;
 
-// ─── x-opencode-project (packages/schema/src/project-id.ts) ─────────────────
+// ─── x-opencode-project (packages/core/src/project.ts) ─────────────────────
 
 async function gitOut(cwd: string, args: string[]): Promise<string | null> {
 	try {
@@ -185,7 +190,10 @@ function getProjectId(): string {
 	return projectId ?? "global";
 }
 
-// ─── request headers ────────────────────────────────────────────────────────
+// ─── request headers (packages/opencode/src/session/llm/request.ts) ─────────
+// opencode provider → x-opencode-* only (no x-session-affinity/X-Session-Id;
+// those are for non-opencode providers). x-opencode-request is a fresh
+// ascending msg_ ID per request (SessionMessage ID), not the session ID.
 
 function opencodeHeaders(): Record<string, string> {
 	return {
@@ -193,8 +201,7 @@ function opencodeHeaders(): Record<string, string> {
 		"x-opencode-client": "cli",
 		"x-opencode-project": getProjectId(),
 		"x-opencode-session": SESSION_ID,
-		"x-session-affinity": SESSION_ID,
-		"X-Session-Id": SESSION_ID,
+		"x-opencode-request": `msg_${identifier(false)}`,
 	};
 }
 
@@ -236,7 +243,7 @@ export function resolveEndpoint(modelId: string): EndpointApi {
 
 const ZEN_BASE_URLS = [BASE_URL, "https://opencode.ai/zen"];
 
-/** pi 目录里出现过的合法 zen 根 (live pi.dev 实证: /zen/v1 49 族 + 裸 /zen 14 族, 后者当前全付费)。 */
+/** pi 目录里出现过的合法 zen 根 (live 实证 2026-09-17: /zen/v1 54 族 + 裸 /zen 14 族, 后者当前全付费)。 */
 export function isKnownZenBaseUrl(url: string): boolean {
 	return ZEN_BASE_URLS.includes(url);
 }
@@ -294,12 +301,24 @@ function streamOpencodeZen(
 ): AssistantMessageEventStream {
 	const api = resolveEndpoint(model.id);
 
+	// Wire identity wins for the opencode keys; other caller headers
+	// (Authorization etc.) pass through untouched.
 	const wrappedOptions: SimpleStreamOptions = {
 		...options,
-		headers: { ...opencodeHeaders(), ...options?.headers },
+		headers: { ...options?.headers, ...opencodeHeaders() },
 	};
 
-	const wrappedModel = { ...model, api, baseUrl: BASE_URL };
+	// Honor the catalog's authoritative baseUrl (anthropic-messages uses bare
+	// /zen, the rest /zen/v1); the free set currently only hits /zen/v1.
+	const catalogBaseUrl =
+		"baseUrl" in model && typeof model.baseUrl === "string"
+			? model.baseUrl
+			: BASE_URL;
+	const wrappedModel = {
+		...model,
+		api,
+		baseUrl: isKnownZenBaseUrl(catalogBaseUrl) ? catalogBaseUrl : BASE_URL,
+	};
 	return streamSimple(wrappedModel as Model<Api>, context, wrappedOptions);
 }
 
@@ -319,7 +338,8 @@ export default async function (pi: ExtensionAPI): Promise<void> {
 		// instances, which we consume duck-typed (id, reasoning, header merge)
 		// and forward to the extension-local adapters; no cross-copy identity
 		// checks (instanceof/brand) are performed on either side.
-		streamSimple: streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
+		streamSimple:
+			streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
 		models: modelIds.map((id) => buildModelConfig(id)),
 	});
 }

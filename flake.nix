@@ -6,7 +6,7 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     nix = {
-      url = "github:DeterminateSystems/nix-src/v3.22.3";
+      url = "github:DeterminateSystems/nix-src/v3.22.4";
       # inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-regression.follows = "nixpkgs";
       inputs.nixpkgs-23-11.follows = "nixpkgs";
@@ -50,6 +50,7 @@
             runtimeInputs = with pkgs; [
               yamlfmt
               biome
+              ruff
             ];
             settings.formatter = {
               yamlfmt = {
@@ -65,7 +66,24 @@
                   "check"
                   "--write"
                 ];
-                includes = [ "*.json" ];
+                includes = [
+                  "*.json"
+                  "*.jsonc"
+                  "*.ts"
+                ];
+              };
+              ruff-format = {
+                command = "ruff";
+                options = [ "format" ];
+                includes = [ "*.py" ];
+              };
+              ruff-check = {
+                command = "ruff";
+                options = [
+                  "check"
+                  "--fix"
+                ];
+                includes = [ "*.py" ];
               };
             };
           };
