@@ -13,6 +13,7 @@ import tomli_w
 USER_AGENT = "opencode/latest/1.18.31/cli"
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 PROVIDER_NAMES = ("opencode", "nvidia")
+REQUEST_TIMEOUT = 30.0
 # models.dev cost 单位为美元 (USD)
 BILLING_CURRENCY = "USD"
 
@@ -31,14 +32,14 @@ def _provider_dict(
         "default": models[0][0],
         "api_key_env": entry["env"][0],
         "context_window": max(
-            model.get("limit", {}).get("context", 0) for _, model in models
+            (model.get("limit") or {}).get("context", 0) for _, model in models
         ),
     }
     if kind == "responses":
         provider_config["responses_mode"] = "stateless"
     provider_config["billing_currency"] = BILLING_CURRENCY
-    prices = {}
-    overrides = {}
+    prices: dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
     for model_id, model in models:
         cost = model.get("cost") or {}
         model_price: dict[str, Any] = {
@@ -62,11 +63,11 @@ def _provider_dict(
             model_override["max_output_tokens"] = model_limit["output"]
         if model.get("reasoning"):
             model_override["reasoning_protocol"] = "openai"
-            for option in model.get("reasoning_options", []):
+            for option in model.get("reasoning_options") or []:
                 if isinstance(option, dict) and option.get("type") == "effort":
                     effort_values = [
                         "none" if value is None else value
-                        for value in option.get("values", [])
+                        for value in (option.get("values") or [])
                     ]
                     if effort_values:
                         model_override["supported_efforts"] = effort_values
@@ -105,7 +106,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     providers = args.provider or list(PROVIDER_NAMES)
     response = httpx.get(
-        "https://models.dev/api.json", headers={"User-Agent": USER_AGENT}
+        "https://models.dev/api.json",
+        headers={"User-Agent": USER_AGENT},
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     models_dev_data = response.json()
@@ -113,13 +116,15 @@ def main(argv: list[str] | None = None) -> None:
     for provider in providers:
         entry = models_dev_data[provider]
         response = httpx.get(
-            f"{entry['api'].rstrip('/')}/models", headers={"User-Agent": USER_AGENT}
+            f"{entry['api'].rstrip('/')}/models",
+            headers={"User-Agent": USER_AGENT},
+            timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
         official_model_ids = sorted(model["id"] for model in response.json()["data"])
-        openai = []
-        responses = []
-        anthropic = []
+        openai: list[tuple[str, dict[str, Any]]] = []
+        responses: list[tuple[str, dict[str, Any]]] = []
+        anthropic: list[tuple[str, dict[str, Any]]] = []
         for model_id in official_model_ids:
             model = entry["models"].get(model_id)
             if model is None or model.get("status") == "deprecated":
@@ -163,16 +168,23 @@ def main(argv: list[str] | None = None) -> None:
                     anthropic,
                 )
             )
-    with REASONIX_CONFIG.open("rb") as config_file:
-        existing = tomllib.load(config_file)
+    existing = (
+        tomllib.loads(REASONIX_CONFIG.read_text(encoding="utf-8"))
+        if REASONIX_CONFIG.exists()
+        else {}
+    )
     new_names = {provider_config["name"] for provider_config in new_providers}
+    kept_providers = existing.get("providers") or []
+    if not isinstance(kept_providers, list):
+        kept_providers = []
     existing["providers"] = [
         provider_config
-        for provider_config in existing.get("providers", [])
+        for provider_config in kept_providers
         if provider_config.get("name") not in new_names
     ]
     existing["providers"].extend(new_providers)
-    REASONIX_CONFIG.write_text(tomli_w.dumps(existing))
+    REASONIX_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    REASONIX_CONFIG.write_text(tomli_w.dumps(existing), encoding="utf-8")
     print(f"Wrote {len(new_providers)} provider(s) to {REASONIX_CONFIG}")
     for provider_config in new_providers:
         print(

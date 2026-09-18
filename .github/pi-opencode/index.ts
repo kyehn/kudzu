@@ -13,6 +13,23 @@
  *     `opencode/${channel}/${version}/${client}` for models.dev)
  *   - packages/core/src/project.ts (remote → cached → root, sha1
  *     "git-remote:<host/path>", "global" fallback)
+ *
+ * Wire captures (overlays/reasonix/opencode/): chat-completions wires carry
+ * `ai-sdk/provider-utils/4.0.23`, responses wires carry `4.0.40` under the
+ * same `opencode/1.18.31 ... runtime/bun/1.3.14` prefix, so the User-Agent is
+ * selected per endpoint instead of a single constant.
+ *
+ * Reliability: history replay never carries the issuer-bound reasoning
+ * `encrypted_content` blob (responses `thinkingSignature` object /
+ * completions `reasoning.encrypted` detail / legacy `thoughtSignature`).
+ * The Console gateway 400s a replayed blob with "was not issued to this
+ * caller" once a different caller serves the turn; plaintext summary alone
+ * replays cleanly (reasonix responses retry proof), so sanitizeZenContext()
+ * strips the blob proactively before streamSimple. Empty `call_id` items are
+ * repaired deterministically for the same reason: the Responses gateway
+ * 400s `input[N].call_id` with "length must be >= 1" once a normalized id
+ * collapses to empty, so the sanitizer never lets an empty call_id reach
+ * the wire.
  */
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -48,15 +65,25 @@ const OPENCODE_VERSION = "1.18.31";
 
 // request.ts: `opencode/${InstallationVersion}` as the base; the ai-sdk
 // provider-utils fetch wrapper appends ` ai-sdk/provider-utils/<v>
-// runtime/bun/<v>` on the wire. Captured from opencode-ai 1.18.31:
-// `opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`.
-const USER_AGENT = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`;
+// runtime/bun/<v>` on the wire. Real captures diverge per endpoint:
+// chat-completions → 4.0.23, responses → 4.0.40 (same opencode/1.18.31 prefix).
+const USER_AGENT_OPENAI = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`;
+const USER_AGENT_RESPONSES = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14`;
 
 type EndpointApi =
 	| "anthropic-messages"
 	| "google-generative-ai"
 	| "openai-completions"
 	| "openai-responses";
+
+/** Per-endpoint User-Agent: chat-completions capture pins 4.0.23, responses
+ * capture pins 4.0.40; non-free anthropic/google wires have no free capture
+ * and follow the responses suffix. */
+function userAgentFor(api: EndpointApi): string {
+	return api === "openai-completions"
+		? USER_AGENT_OPENAI
+		: USER_AGENT_RESPONSES;
+}
 
 // ─── opencode identifiers (packages/schema/src/identifier.ts) ───────────────
 
@@ -90,11 +117,13 @@ function identifier(descending: boolean): string {
 	return time + Array.from(bytes, (b) => RANDOM_CHARS[b % 62]).join("");
 }
 
-// Sessions use the descending encoding and are fixed per client instance,
-// stamped on x-opencode-session and reused as prompt_cache_key — exactly like
-// the CLI reusing one ses_ ID per session. Each request carries a fresh
-// ascending msg_ ID on x-opencode-request (SessionMessage ID).
-const SESSION_ID = `ses_${identifier(true)}`;
+// Sessions use the descending encoding, one ses_ ID per pi session stamped
+// on x-opencode-session and reused as prompt_cache_key — like the CLI reusing
+// one ses_ ID per session. Each request carries a fresh ascending msg_ ID on
+// x-opencode-request (SessionMessage ID). Rotated on session_start so separate
+// pi conversations do not share a session ID like separate `opencode run`
+// invocations do not (captured ses_ differ per run).
+let sessionId = `ses_${identifier(true)}`;
 
 // ─── x-opencode-project (packages/core/src/project.ts) ─────────────────────
 
@@ -195,12 +224,12 @@ function getProjectId(): string {
 // those are for non-opencode providers). x-opencode-request is a fresh
 // ascending msg_ ID per request (SessionMessage ID), not the session ID.
 
-function opencodeHeaders(): Record<string, string> {
+function opencodeHeaders(api: EndpointApi): Record<string, string> {
 	return {
-		"User-Agent": USER_AGENT,
+		"User-Agent": userAgentFor(api),
 		"x-opencode-client": "cli",
 		"x-opencode-project": getProjectId(),
-		"x-opencode-session": SESSION_ID,
+		"x-opencode-session": sessionId,
 		"x-opencode-request": `msg_${identifier(false)}`,
 	};
 }
@@ -212,15 +241,17 @@ function opencodeHeaders(): Record<string, string> {
 // and pin the User-Agent as a second lock behind opencodeHeaders().
 
 function stripStainlessFetch(
+	api: EndpointApi,
 	inner: typeof globalThis.fetch = globalThis.fetch,
 ): typeof globalThis.fetch {
+	const userAgent = userAgentFor(api);
 	return (async (...args: Parameters<typeof globalThis.fetch>) => {
 		const [input, init] = args;
 		const headers = new Headers(init?.headers);
 		headers.forEach((_value, name) => {
 			if (name.toLowerCase().startsWith("x-stainless-")) headers.delete(name);
 		});
-		headers.set("User-Agent", USER_AGENT);
+		headers.set("User-Agent", userAgent);
 		return inner(input, { ...init, headers });
 	}) as typeof globalThis.fetch;
 }
@@ -263,33 +294,30 @@ export function isKnownZenBaseUrl(url: string): boolean {
 	return ZEN_BASE_URLS.includes(url);
 }
 
+function catalogBaseUrlOf(model: Model<Api>): string {
+	return "baseUrl" in model && typeof model.baseUrl === "string"
+		? model.baseUrl
+		: BASE_URL;
+}
+
 export function buildModelConfig(id: string): ProviderModelConfig {
 	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
+	if (!model) {
+		throw new Error(
+			`opencode model ${id} is not in the built-in catalog; refusing to guess its wire shape`,
+		);
+	}
 	// 各模型的权威 baseUrl 在 pi 目录里: anthropic-messages 族走裸 /zen
 	// (live 实证, 当前全为付费模型故不进免费集), 其余走 /zen/v1。
 	// 目录一旦漂移到未知根必须大声报错而非静默错路。
-	if (
-		model &&
-		"baseUrl" in model &&
-		typeof (model as { baseUrl?: unknown }).baseUrl === "string" &&
-		!isKnownZenBaseUrl((model as { baseUrl: string }).baseUrl)
-	) {
+	const rawBaseUrl =
+		"baseUrl" in model && typeof model.baseUrl === "string"
+			? model.baseUrl
+			: BASE_URL;
+	if (!isKnownZenBaseUrl(rawBaseUrl)) {
 		throw new Error(
-			`opencode model ${id} baseUrl drifted to ${(model as { baseUrl: string }).baseUrl}; update BASE_URL routing`,
+			`opencode model ${id} baseUrl drifted to ${rawBaseUrl}; update BASE_URL routing`,
 		);
-	}
-	if (!model) {
-		// Should never happen: callers only pass IDs present in OPENCODE_MODELS.
-		endpoints.set(id, "openai-completions");
-		return {
-			id,
-			name: id,
-			reasoning: false,
-			input: ["text"],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 128_000,
-			maxTokens: 4_096,
-		};
 	}
 
 	endpoints.set(id, model.api as EndpointApi);
@@ -307,6 +335,218 @@ export function buildModelConfig(id: string): ProviderModelConfig {
 	};
 }
 
+// ─── history sanitizing (Console 400 fixes) ─────────────────────────────────
+// Two issuer-bound failure modes share one proactive pass before streamSimple:
+//
+// 1. reasoning `encrypted_content` was not issued to this caller — muse-spark
+//    等 responses 模型回放上一轮 reasoning 时会带上 issuer 绑定的 opaque
+//    `encrypted_content` (pi-ai 存在 thinking.thinkingSignature, completions
+//    通道是 reasoning_details 数组里的 reasoning.encrypted 项 /
+//    toolCall.thoughtSignature 的 legacy 加密项)。网关换 caller 承接
+//    (reroute / 轮换 key / 恢复的历史会话) 即 400。reasonix 已用“失败后去
+//    blob 重试”证明只留 plaintext summary 即可干净重放；此处取更简单的主
+//    动剥离——单次请求即成功，无需消费事件流判错做重试 (streamSimple 返回
+//    事件流而非 Promise，重试复杂度远高于此)。剥离时连同 provider-issued
+//    `id` 一起去掉 (reasonix omitReasoningID: Console 在 stateless 下无法
+//    resolve 跨轮 id，"not found or has expired" 亦 400)，只留 summary /
+//    content 明文；剥后无载荷的空 reasoning 项直接丢弃，避免空回放。
+// 2. `input[N].call_id` length must be >= 1 — Responses 网关要求每个
+//    function_call / function_call_output 的 call_id 非空；pi 内 `id` 是
+//    `{call_id}|{item_id}` 双段式，跨模型归一化 (`_+` 尾剥) 或网关空回
+//    可能把 call_id 压成空串。空串直发即 400，故此处用确定性 fallback
+//    (`call_repaired_<8hex>`) 修复并在 assistant/toolResult 间保持一致，
+//    绝不让空 call_id 上线。
+
+const COMPLETIONS_REASONING_FIELDS = new Set([
+	"reasoning",
+	"reasoning_content",
+	"reasoning_text",
+]);
+
+function hasReasoningPayload(item: Record<string, unknown>): boolean {
+	const summary = item.summary;
+	if (Array.isArray(summary) && summary.length > 0) return true;
+	const content = item.content;
+	if (Array.isArray(content) && content.length > 0) return true;
+	if (typeof content === "string" && content.length > 0) return true;
+	const text = item.text;
+	if (typeof text === "string" && text.length > 0) return true;
+	return false;
+}
+
+function stripEncryptedSignature(
+	signature: string | undefined,
+	api?: EndpointApi,
+): string | undefined {
+	if (!signature) return signature;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(signature);
+	} catch {
+		// completions 推理字段名 ("reasoning_content" 等) 不是 JSON，原样保留；
+		// 其余非 JSON opaque (responses 下会导致 pi-ai JSON.parse 直抛) 直接丢弃。
+		return COMPLETIONS_REASONING_FIELDS.has(signature) ? signature : undefined;
+	}
+	if (Array.isArray(parsed)) {
+		const kept = parsed.filter(
+			(detail) =>
+				typeof detail !== "object" ||
+				detail === null ||
+				(detail as { type?: unknown }).type !== "reasoning.encrypted",
+		);
+		if (kept.length === parsed.length) return signature;
+		if (kept.length === 0) return undefined;
+		return JSON.stringify(kept);
+	}
+	if (typeof parsed === "object" && parsed !== null) {
+		const record = parsed as Record<string, unknown>;
+		if (record.type === "reasoning.encrypted") return undefined;
+		if ("encrypted_content" in record) {
+			const { encrypted_content: _encrypted, id: _id, ...rest } = record;
+			void _encrypted;
+			void _id;
+			// responses/stateless 下 id 与 blob 同为 issuer 绑定 (reasonix
+			// omitReasoningID)，一并去掉；completions 亦去 id，避免 stale 配对。
+			if (!hasReasoningPayload(rest)) return undefined;
+			return JSON.stringify(rest);
+		}
+		// responses/stateless 无 blob 但带跨轮 id 亦无法 resolve (reasonix 实证
+		// "not found or has expired")，主动去 id 只留明文载荷。
+		if (api === "openai-responses" && typeof record.id === "string") {
+			const { id: _id, ...rest } = record;
+			void _id;
+			if (!hasReasoningPayload(rest)) return undefined;
+			return JSON.stringify(rest);
+		}
+		return signature;
+	}
+	return signature;
+}
+
+/** 与 pi-ai openai-responses 归一化同算法：压成空即视为上不了线的空 call_id。 */
+function isEmptyCallIdPart(callId: string): boolean {
+	const sanitized = callId
+		.replace(/[^a-zA-Z0-9_-]/g, "_")
+		.slice(0, 64)
+		.replace(/_+$/, "");
+	return sanitized.length === 0;
+}
+
+function fallbackCallId(seed: string): string {
+	return `call_repaired_${createHash("sha1").update(seed).digest("hex").slice(0, 8)}`;
+}
+
+function repairToolId(
+	fullId: string,
+	seedHint: string,
+	repairs: Map<string, string>,
+	index: number,
+): string {
+	const cached = repairs.get(fullId);
+	if (cached) return cached;
+	const separator = fullId.indexOf("|");
+	const callId = separator === -1 ? fullId : fullId.slice(0, separator);
+	const itemPart = separator === -1 ? "" : fullId.slice(separator + 1);
+	if (!isEmptyCallIdPart(callId)) return fullId;
+	const repairedCall = fallbackCallId(`${seedHint}:${index}:${fullId}`);
+	const repaired = itemPart ? `${repairedCall}|${itemPart}` : repairedCall;
+	repairs.set(fullId, repaired);
+	return repaired;
+}
+
+export function sanitizeZenContext(
+	context: Context,
+	api?: EndpointApi,
+): Context {
+	const repairs = new Map<string, string>();
+	let toolIndex = 0;
+	let changed = false;
+	const messages = context.messages.map((message) => {
+		if (message.role === "assistant") {
+			let messageChanged = false;
+			const content: typeof message.content = [];
+			for (const block of message.content) {
+				if (block.type === "thinking") {
+					if (block.redacted) {
+						// redacted 即 opaque 加密载荷，zen 下无 issuer 即不可回放；
+						// 有明文 thinking 则转纯文本保留 (responses 无签名 thinking
+						// 不回放，直接丢会丢失可见思考)，无则整块丢弃。
+						if (!block.thinking || block.thinking.trim() === "") {
+							messageChanged = true;
+							continue;
+						}
+						messageChanged = true;
+						content.push({ type: "text", text: block.thinking });
+						continue;
+					}
+					if (typeof block.thinkingSignature === "string") {
+						const stripped = stripEncryptedSignature(
+							block.thinkingSignature,
+							api,
+						);
+						if (stripped !== block.thinkingSignature) {
+							messageChanged = true;
+							if (
+								stripped === undefined &&
+								(!block.thinking || block.thinking.trim() === "")
+							) {
+								continue;
+							}
+							content.push({ ...block, thinkingSignature: stripped });
+							continue;
+						}
+					}
+					content.push(block);
+				} else if (block.type === "toolCall") {
+					let nextBlock = block;
+					if (typeof block.thoughtSignature === "string") {
+						const stripped = stripEncryptedSignature(
+							block.thoughtSignature,
+							api,
+						);
+						if (stripped !== block.thoughtSignature) {
+							messageChanged = true;
+							nextBlock = { ...nextBlock, thoughtSignature: stripped };
+						}
+					}
+					const repairedId = repairToolId(
+						block.id,
+						`${block.name}:${JSON.stringify(block.arguments)}`,
+						repairs,
+						toolIndex++,
+					);
+					if (repairedId !== block.id) {
+						messageChanged = true;
+						nextBlock = { ...nextBlock, id: repairedId };
+					}
+					content.push(nextBlock);
+				} else {
+					content.push(block);
+				}
+			}
+			if (!messageChanged) return message;
+			changed = true;
+			return { ...message, content };
+		}
+		if (message.role === "toolResult") {
+			const repairedId = repairToolId(
+				message.toolCallId,
+				`${message.toolName}:${message.toolCallId}`,
+				repairs,
+				toolIndex++,
+			);
+			if (repairedId !== message.toolCallId) {
+				changed = true;
+				return { ...message, toolCallId: repairedId };
+			}
+			return message;
+		}
+		return message;
+	});
+	if (!changed) return context;
+	return { ...context, messages };
+}
+
 // ─── streaming ──────────────────────────────────────────────────────────────
 
 function streamOpencodeZen(
@@ -321,28 +561,40 @@ function streamOpencodeZen(
 	// SDK-stamped X-Stainless-* telemetry the CLI never sends.
 	const wrappedOptions: SimpleStreamOptions = {
 		...options,
-		headers: { ...options?.headers, ...opencodeHeaders() },
-		fetch: stripStainlessFetch(options?.fetch),
+		headers: { ...options?.headers, ...opencodeHeaders(api) },
+		fetch: stripStainlessFetch(api, options?.fetch),
 	};
 
 	// Honor the catalog's authoritative baseUrl (anthropic-messages uses bare
 	// /zen, the rest /zen/v1); the free set currently only hits /zen/v1.
-	const catalogBaseUrl =
-		"baseUrl" in model && typeof model.baseUrl === "string"
-			? model.baseUrl
-			: BASE_URL;
+	// Unknown roots fail closed instead of silently rerouting.
+	const catalogBaseUrl = catalogBaseUrlOf(model);
+	if (!isKnownZenBaseUrl(catalogBaseUrl)) {
+		throw new Error(
+			`opencode model ${model.id} baseUrl drifted to ${catalogBaseUrl}; update BASE_URL routing`,
+		);
+	}
 	const wrappedModel = {
 		...model,
 		api,
-		baseUrl: isKnownZenBaseUrl(catalogBaseUrl) ? catalogBaseUrl : BASE_URL,
+		baseUrl: catalogBaseUrl,
 	};
-	return streamSimple(wrappedModel as Model<Api>, context, wrappedOptions);
+	return streamSimple(
+		wrappedModel as Model<Api>,
+		sanitizeZenContext(context, api),
+		wrappedOptions,
+	);
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
 	const modelIds = loadModelIds();
 	if (modelIds.length === 0) return;
 	projectId = await resolveProjectId(process.cwd());
+	// Closest to the CLI: a fresh descending ses_ per pi session, like separate
+	// `opencode run` invocations carrying different ses_ IDs in the captures.
+	pi.on("session_start", () => {
+		sessionId = `ses_${identifier(true)}`;
+	});
 
 	pi.registerProvider("opencode", {
 		baseUrl: BASE_URL,

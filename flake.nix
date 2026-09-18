@@ -110,7 +110,12 @@
               name = "default";
               paths = with pkgs; [ nix ];
             };
-            inherit (pkgs) reasonix fast-nix-gc;
+            inherit (pkgs)
+              reasonix
+              fast-nix-gc
+              maki
+              maki-config
+              ;
           };
         };
 

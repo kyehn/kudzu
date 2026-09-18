@@ -11,6 +11,8 @@ final: prev: {
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
+  maki-config = prev.callPackage ./maki-config.nix { };
+  maki = prev.callPackage ./maki { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {

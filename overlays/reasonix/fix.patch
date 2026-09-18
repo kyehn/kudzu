@@ -2108,7 +2108,7 @@ index 0000000..9bb3045
 +	}
 +}
 diff --git a/internal/provider/anthropic/anthropic.go b/internal/provider/anthropic/anthropic.go
-index b0e04b9..ac80642 100644
+index b0e04b9..bb54913 100644
 --- a/internal/provider/anthropic/anthropic.go
 +++ b/internal/provider/anthropic/anthropic.go
 @@ -147,13 +147,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
@@ -2192,10 +2192,10 @@ index b0e04b9..ac80642 100644
  		httpReq.Header.Set("Content-Type", "application/json")
  		httpReq.Header.Set("Accept", "text/event-stream")
 -		if c.authHeader {
-+		if c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey), "public") {
-+			httpReq.Header.Del("Authorization")
-+			httpReq.Header.Del("x-api-key")
-+		} else if c.opencode {
++		if c.opencode {
++			// The CLI sends the literal public fallback key on the free tier
++			// (`options: { apiKey: "public" }` -> SDK auth header) instead of
++			// going anonymous; only a real key changes the header shape.
 +			httpReq.Header.Del("Authorization")
 +			httpReq.Header.Set("x-api-key", c.apiKey)
 +		} else if c.authHeader {
@@ -2208,7 +2208,7 @@ index b0e04b9..ac80642 100644
  		applyCustomHeaders(httpReq.Header, c.headers)
 -		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
 +		if c.opencode {
-+			provider.ApplyOpenCodeCLIHeaders(httpReq.Header, c.opencodeSession, c.opencodeProject)
++			provider.ApplyOpenCodeCLIHeaders(httpReq.Header, c.opencodeSession, c.opencodeProject, true)
 +		} else {
 +			provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
 +		}
@@ -2275,19 +2275,28 @@ index df04262..1873143 100644
 +		t.Fatal("input <= window must be rejected")
 +	}
 +}
+diff --git a/internal/provider/openai/fetch_models_test.go b/internal/provider/openai/fetch_models_test.go
+index c8a3855..f4690da 100644
+--- a/internal/provider/openai/fetch_models_test.go
++++ b/internal/provider/openai/fetch_models_test.go
+@@ -215,6 +215,12 @@ func TestApplyAPIKeyHeaderUsesMiMoAPIKeyHeader(t *testing.T) {
+ 		t.Fatalf("Authorization = %q, want omitted for MiMo", got)
+ 	}
+ 
++	h = http.Header{}
++	applyAPIKeyHeader(h, "https://opencode.ai/zen/v1", "public")
++	if got := h.Get("Authorization"); got != "Bearer public" {
++		t.Fatalf("Authorization = %q, want Bearer public on the zen free tier", got)
++	}
++
+ 	h = http.Header{}
+ 	applyAPIKeyHeader(h, "https://api.deepseek.com", "deepseek-key")
+ 	if got := h.Get("Authorization"); got != "Bearer deepseek-key" {
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index c3309ba..11cf9fd 100644
+index c3309ba..8878b27 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
-@@ -29,6 +29,7 @@ import (
- 	"io"
- 	"maps"
- 	"net/http"
-+	"net/url"
- 	"sort"
- 	"strings"
- 	"sync"
-@@ -230,10 +231,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -230,10 +230,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
  	// max_output_tokens=0 on official DeepSeek omits the wire field so the
  	// server uses its 384K ceiling. Effort only selects thinking depth.
  	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
@@ -2306,7 +2315,7 @@ index c3309ba..11cf9fd 100644
  	return &client{
  		identityHeaders: provider.NewClientIdentityHeaders(),
  		reasoningState:  reasoningState{ollamaCloud: ollamaCloud, thinkingLocked: configuredThinkingType(cfg) == "disabled", reasoning: ReasoningForConfig(cfg)},
-@@ -262,20 +270,30 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -262,20 +269,30 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		effort:          effort,
  		http:            httpClient,
  		idleTimeout:     defaultStreamIdleTimeout,
@@ -2340,7 +2349,7 @@ index c3309ba..11cf9fd 100644
  }
  
  type client struct {
-@@ -307,6 +325,9 @@ type client struct {
+@@ -307,6 +324,9 @@ type client struct {
  	effort          string        // reasoning_effort for OpenAI; thinking.type for MiniMax; "" = auto/provider default
  	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -2350,7 +2359,7 @@ index c3309ba..11cf9fd 100644
  }
  
  func (c *client) Name() string { return c.name }
-@@ -324,7 +345,7 @@ func (c *client) RequiresToolCallReasoning() bool {
+@@ -324,7 +344,7 @@ func (c *client) RequiresToolCallReasoning() bool {
  	if c == nil || c.thinkingType == "disabled" {
  		return false
  	}
@@ -2359,38 +2368,17 @@ index c3309ba..11cf9fd 100644
  		return true
  	}
  	// Generic OpenAI-compatible gateways can explicitly opt into the
-@@ -433,6 +454,10 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
+@@ -433,6 +453,9 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
  	if apiKey == "" {
  		return
  	}
-+	// Zen free is anonymous like the CLI (no Authorization); only a real key is sent.
-+	if strings.EqualFold(apiKey, "public") && isZenHost(baseURL) {
-+		return
-+	}
++	// The CLI sends the literal public fallback key on the free tier
++	// (`options: { apiKey: "public" }` -> SDK auth header), so Zen free is
++	// NOT anonymous on the wire (capture: Authorization: Bearer public).
  	if IsMiMo(baseURL) {
  		h.Set("api-key", apiKey)
  		return
-@@ -440,6 +465,19 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
- 	h.Set("Authorization", "Bearer "+apiKey)
- }
- 
-+// isZenHost reports the opencode Zen gateway (host-based IsOpenCode route).
-+func isZenHost(baseURL string) bool {
-+	u, err := url.Parse(baseURL)
-+	if err != nil {
-+		return false
-+	}
-+	host := strings.ToLower(u.Hostname())
-+	if host == "zenmux.ai" || strings.HasSuffix(host, ".zenmux.ai") {
-+		return true
-+	}
-+	return strings.Contains(u.EscapedPath(), "/zen/v1")
-+}
-+
- func cleanExtraBody(in map[string]any) map[string]any {
- 	if len(in) == 0 {
- 		return nil
-@@ -522,7 +560,10 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+@@ -522,7 +545,10 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
  		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
  		httpReq.Header.Set("Accept", "text/event-stream")
  		applyCustomHeaders(httpReq.Header, c.headers)
@@ -2402,7 +2390,7 @@ index c3309ba..11cf9fd 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -698,6 +739,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
+@@ -698,6 +724,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
  }
  
  func (c *client) buildRequest(req provider.Request) chatRequest {
@@ -2410,7 +2398,7 @@ index c3309ba..11cf9fd 100644
  	// Repair tool-call pairing before sending: an interrupted/resumed history can
  	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
  	// rejects with a 400 ("must be followed by tool messages …").
-@@ -825,6 +867,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -825,6 +852,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -2424,7 +2412,7 @@ index c3309ba..11cf9fd 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1109,6 +1158,7 @@ type chatRequest struct {
+@@ -1109,6 +1143,7 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -2475,7 +2463,7 @@ index 2d0251d..f4af8af 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..a46df06
+index 0000000..4ec1855
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
 @@ -0,0 +1,74 @@
@@ -2502,7 +2490,7 @@ index 0000000..a46df06
 +	if !c.opencode {
 +		return
 +	}
-+	provider.ApplyOpenCodeCLIHeaders(h, c.opencodeSession, c.opencodeProject)
++	provider.ApplyOpenCodeCLIHeaders(h, c.opencodeSession, c.opencodeProject, false)
 +}
 +
 +// decodedBody couples a Content-Encoding decoder with the underlying response
@@ -2651,10 +2639,10 @@ index c172869..60922d3 100644
  	for _, t := range req.Tools {
 diff --git a/internal/provider/opencode_cli.go b/internal/provider/opencode_cli.go
 new file mode 100644
-index 0000000..ac1b563
+index 0000000..e5a00b5
 --- /dev/null
 +++ b/internal/provider/opencode_cli.go
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,284 @@
 +package provider
 +
 +import (
@@ -2672,14 +2660,29 @@ index 0000000..ac1b563
 +	"time"
 +)
 +
-+// OpenCodeUserAgent is the exact User-Agent emitted by the real opencode CLI
-+// (opencode-ai 1.18.31, verified via local capture against a mock
-+// OpenAI-compatible endpoint). request.ts uses `opencode/${Version}` as the
++// OpenCodeUserAgents are the exact User-Agents emitted by the real opencode CLI
++// (opencode-ai 1.18.31, verified via overlays/reasonix/opencode/ captures).
++// request.ts uses `opencode/${Version}` as the
 +// base; the ai-sdk provider-utils fetch wrapper appends the suffix on the
 +// wire. The Console free tier rejects anonymous Zen traffic that does not
 +// look like OpenCode, so every opencode Zen adapter must stamp this — not
 +// Go's default UA.
-+const OpenCodeUserAgent = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++const OpenCodeUserAgentOpenAI = "opencode/1.18.31 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++const OpenCodeUserAgentResponses = "opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14"
++
++// OpenCodeUserAgent keeps the openai suffix for older callers/tests; new code
++// should select per endpoint via OpenCodeUserAgentFor.
++const OpenCodeUserAgent = OpenCodeUserAgentOpenAI
++
++// OpenCodeUserAgentFor selects the per-endpoint User-Agent: openai wires use
++// 4.0.23, responses/anthropic wires use 4.0.40 (no free anthropic capture;
++// follows the responses suffix from overlays/reasonix/opencode/ captures).
++func OpenCodeUserAgentFor(responses bool) string {
++	if responses {
++		return OpenCodeUserAgentResponses
++	}
++	return OpenCodeUserAgentOpenAI
++}
 +
 +// IsOpenCode reports whether a provider speaks the opencode CLI wire shape
 +// (CLI TLS fingerprint, x-opencode-* headers, fixed body key order). It
@@ -2833,7 +2836,7 @@ index 0000000..ac1b563
 +// → x-opencode-* only, with a fresh ascending msg_ request ID per call. The
 +// x-opencode-* keys are written lowercase (like the real CLI) via direct map
 +// assignment; Go writes header map keys verbatim, preserving the casing.
-+func ApplyOpenCodeCLIHeaders(header http.Header, session, project string) {
++func ApplyOpenCodeCLIHeaders(header http.Header, session, project string, responses bool) {
 +	// Drop canonical-cased copies a config may have supplied so the lowercase
 +	// keys below are the only ones that reach the wire.
 +	header.Del("User-Agent")
@@ -2846,7 +2849,7 @@ index 0000000..ac1b563
 +	if project == "" {
 +		project = "global"
 +	}
-+	header.Set("User-Agent", OpenCodeUserAgent)
++	header.Set("User-Agent", OpenCodeUserAgentFor(responses))
 +	header["x-opencode-client"] = []string{"cli"}
 +	header["x-opencode-project"] = []string{project}
 +	header["x-opencode-session"] = []string{session}
@@ -2926,10 +2929,10 @@ index 0000000..ac1b563
 +}
 diff --git a/internal/provider/opencode_cli_test.go b/internal/provider/opencode_cli_test.go
 new file mode 100644
-index 0000000..530d61f
+index 0000000..539fb76
 --- /dev/null
 +++ b/internal/provider/opencode_cli_test.go
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,119 @@
 +package provider
 +
 +import (
@@ -3001,9 +3004,18 @@ index 0000000..530d61f
 +		"X-Opencode-Client":  {"custom"},
 +		"X-Opencode-Session": {"old"},
 +	}
-+	ApplyOpenCodeCLIHeaders(header, "ses_example", "global")
-+	if got := header["User-Agent"][0]; got != OpenCodeUserAgent {
-+		t.Fatalf("User-Agent = %q", got)
++	ApplyOpenCodeCLIHeaders(header, "ses_example", "global", false)
++	if got := header["User-Agent"][0]; got != OpenCodeUserAgentOpenAI {
++		t.Fatalf("openai User-Agent = %q", got)
++	}
++	headerResponses := map[string][]string{
++		"User-Agent":         {"Reasonix"},
++		"X-Opencode-Client":  {"custom"},
++		"X-Opencode-Session": {"old"},
++	}
++	ApplyOpenCodeCLIHeaders(headerResponses, "ses_example", "global", true)
++	if got := headerResponses["User-Agent"][0]; got != OpenCodeUserAgentResponses {
++		t.Fatalf("responses User-Agent = %q", got)
 +	}
 +	for key, want := range map[string]string{
 +		"x-opencode-client":  "cli",
@@ -3271,7 +3283,7 @@ index 7f70b37..bea7982 100644
  	var got, want any
  	_ = json.Unmarshal(encoded, &got)
 diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
-index df43b71..15fc151 100644
+index df43b71..80001ff 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
 @@ -95,6 +95,9 @@ type client struct {
@@ -3355,24 +3367,24 @@ index df43b71..15fc151 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -284,8 +315,14 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -284,8 +315,15 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  			return nil, err
  		}
  		req.Header.Set("Content-Type", "application/json")
--		req.Header.Set("Authorization", "Bearer "+c.apiKey)
++		// The CLI sends the literal public fallback key on the free tier
++		// (`options: { apiKey: "public" }` -> SDK auth header; see the
++		// responses capture, Authorization: Bearer public).
+ 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 -		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
-+		if !(c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey), "public")) {
-+			req.Header.Set("Authorization", "Bearer "+c.apiKey)
-+		}
 +		if c.opencode {
-+			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject)
++			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject, true)
 +		} else {
 +			provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		}
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")
  		}
-@@ -305,6 +342,58 @@ func isStalePreviousResponseError(err error) bool {
+@@ -305,6 +343,58 @@ func isStalePreviousResponseError(err error) bool {
  		(strings.Contains(body, "not found") || strings.Contains(body, "invalid") || strings.Contains(body, "expired"))
  }
  
@@ -3431,7 +3443,7 @@ index df43b71..15fc151 100644
  func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, []provider.Message) {
  	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
  	body := map[string]any{"model": c.model, "stream": true}
-@@ -321,7 +410,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -321,7 +411,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		effort = "none"
  	}
  	if effort != "" {
@@ -3450,7 +3462,7 @@ index df43b71..15fc151 100644
  	}
  	maxOutputTokens := req.MaxTokens
  	if maxOutputTokens == 0 {
-@@ -363,7 +462,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -363,7 +463,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		return body, true, messages
  	}
  
@@ -3459,7 +3471,7 @@ index df43b71..15fc151 100644
  	return body, false, messages
  }
  
-@@ -410,7 +509,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
+@@ -410,7 +510,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
  	payload, _ := json.Marshal(struct {
  		Instructions string           `json:"instructions,omitempty"`
  		Input        []map[string]any `json:"input"`

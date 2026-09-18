@@ -93,16 +93,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1789578229,
-        "narHash": "sha256-hN4Bk5CgfFUom5CCnXVdlgQbXDK3dIXRoPSumpRrru4=",
+        "lastModified": 1789679063,
+        "narHash": "sha256-5rX9rK1y8NpOaYyL+cn1P2O5re+ON2Wpo39J8/LLCXI=",
         "owner": "DeterminateSystems",
         "repo": "nix-src",
-        "rev": "1c948117a75081b103af16befa58b575ddc2721f",
+        "rev": "6468ca430b298865100b753ec21687aba457a05c",
         "type": "github"
       },
       "original": {
         "owner": "DeterminateSystems",
-        "ref": "v3.22.4",
+        "ref": "v3.22.5",
         "repo": "nix-src",
         "type": "github"
       }

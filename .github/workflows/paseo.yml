@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.reasonix"
-          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun nixpkgs#skills .#reasonix
+          nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun nixpkgs#skills nixpkgs#rtk .#reasonix
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
@@ -133,7 +133,7 @@ jobs:
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         run: |
           paseo daemon stop
-          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/mcp-state ~/.reasonix/state ~/.reasonix/stats ~/.reasonix/commands ~/.reasonix/AGENTS.md ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/mcp-cache.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
+          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/mcp-state ~/.reasonix/stats ~/.reasonix/commands ~/.reasonix/AGENTS.md ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/mcp-cache.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         uses: actions/cache/save@main
         with:

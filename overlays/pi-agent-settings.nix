@@ -24,6 +24,7 @@ writeText "settings.json" (
       "npm:@juicesharp/rpiv-todo"
       "npm:@ff-labs/pi-fff"
       "npm:pi-memory"
+      "npm:pi-rtk-optimizer"
     ];
     env.PI_LENS_STARTUP_MODE = "minimal";
     defaultProvider = "opencode";
