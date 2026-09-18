@@ -1697,27 +1697,20 @@ index 7a5042f..798897a 100644
  	}
  }
 diff --git a/internal/agent/tool_call_parse.go b/internal/agent/tool_call_parse.go
-index cac104e..44ba592 100644
+index cac104e..e6abe8a 100644
 --- a/internal/agent/tool_call_parse.go
 +++ b/internal/agent/tool_call_parse.go
-@@ -7,6 +7,7 @@ import (
- 	"strings"
- 
- 	"reasonix/internal/evidence"
-+	"reasonix/internal/provider"
- 	"reasonix/internal/tool"
- )
- 
-@@ -17,6 +18,14 @@ func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *tool
+@@ -17,6 +17,15 @@ func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *tool
  		return toolOutcome{output: msg, errMsg: "tool_retired"}, true
  	}
  	t, canonicalName, ambiguous := a.svc.tools.ResolveCall(plan.call.Name)
 +	if t == nil && len(ambiguous) == 0 {
-+		// Opencode-native wire alias (e.g. `read` for read_file, emitted only
-+		// for the zen gateway): resolve to the real implementation. Exact
-+		// registry names always win, so user-defined tools are unaffected.
-+		if aliased := provider.UnaliasOpencodeTool(plan.call.Name); aliased != plan.call.Name {
-+			t, canonicalName, ambiguous = a.svc.tools.ResolveCall(aliased)
++		// The zen gateway sees `read_file` renamed to the opencode CLI name
++		// `read` (see openai.ApplyOpencodeNames); map it back so the call
++		// executes against the real implementation. Exact registry names
++		// always win, so user-defined tools are unaffected.
++		if plan.call.Name == "read" {
++			t, canonicalName, ambiguous = a.svc.tools.ResolveCall("read_file")
 +		}
 +	}
  	if len(ambiguous) > 0 {
@@ -2115,7 +2108,7 @@ index 0000000..9bb3045
 +	}
 +}
 diff --git a/internal/provider/anthropic/anthropic.go b/internal/provider/anthropic/anthropic.go
-index b0e04b9..efd981c 100644
+index b0e04b9..ac80642 100644
 --- a/internal/provider/anthropic/anthropic.go
 +++ b/internal/provider/anthropic/anthropic.go
 @@ -147,13 +147,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
@@ -2186,7 +2179,15 @@ index b0e04b9..efd981c 100644
  }
  
  func (c *client) Name() string { return c.name }
-@@ -343,7 +365,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -322,6 +344,7 @@ var bufPool = sync.Pool{
+ }
+ 
+ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
++	req = openai.ApplyOpencodeNames(c.name, c.baseURL, req)
+ 	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
+ 		return nil, err
+ 	}
+@@ -343,7 +366,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  		}
  		httpReq.Header.Set("Content-Type", "application/json")
  		httpReq.Header.Set("Accept", "text/event-stream")
@@ -2201,48 +2202,19 @@ index b0e04b9..efd981c 100644
  			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
  		} else {
  			httpReq.Header.Set("x-api-key", c.apiKey)
-@@ -354,6 +382,9 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -353,7 +382,11 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+ 			httpReq.Header.Set("anthropic-beta", "files-api-2025-04-14")
  		}
  		applyCustomHeaders(httpReq.Header, c.headers)
- 		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
+-		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
 +		if c.opencode {
 +			provider.ApplyOpenCodeCLIHeaders(httpReq.Header, c.opencodeSession, c.opencodeProject)
++		} else {
++			provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
 +		}
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-diff --git a/internal/provider/anthropic/tool_search_wire.go b/internal/provider/anthropic/tool_search_wire.go
-index d054a28..e8b30c1 100644
---- a/internal/provider/anthropic/tool_search_wire.go
-+++ b/internal/provider/anthropic/tool_search_wire.go
-@@ -8,6 +8,7 @@ import (
- 
- func encodeAnthTools(c *client, req provider.Request) []anthTool {
- 	var tools []anthTool
-+	names := make([]string, 0, len(req.Tools))
- 	if c.search.NativeEnabled && !c.search.ClientEnabled {
- 		tools = append(tools, anthTool{Type: "web_search_20250305", Name: "web_search"})
- 	}
-@@ -25,6 +26,19 @@ func encodeAnthTools(c *client, req provider.Request) []anthTool {
- 			item.DeferLoading = t.Deferred
- 		}
- 		tools = append(tools, item)
-+		names = append(names, t.Name)
-+	}
-+	// Same opencode-native `read` alias as the chat adapter: a renamed copy
-+	// of read_file, mapped back on return.
-+	if provider.OpencodeReadAliasNeeded(c.name, c.baseURL, names) {
-+		for i := range tools {
-+			if tools[i].Name == "read_file" {
-+				alias := tools[i]
-+				alias.Name = provider.OpencodeReadWireName
-+				tools = append(tools, alias)
-+				break
-+			}
-+		}
- 	}
- 	return tools
- }
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
 index 6aa011d..cd63f3f 100644
 --- a/internal/provider/context_limit.go
@@ -2304,7 +2276,7 @@ index df04262..1873143 100644
 +	}
 +}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index c3309ba..3f249d3 100644
+index c3309ba..11cf9fd 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
 @@ -29,6 +29,7 @@ import (
@@ -2418,24 +2390,27 @@ index c3309ba..3f249d3 100644
  func cleanExtraBody(in map[string]any) map[string]any {
  	if len(in) == 0 {
  		return nil
-@@ -523,6 +561,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+@@ -522,7 +560,10 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+ 		applyAPIKeyHeader(httpReq.Header, c.baseURL, c.apiKey)
  		httpReq.Header.Set("Accept", "text/event-stream")
  		applyCustomHeaders(httpReq.Header, c.headers)
- 		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
+-		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
 +		c.applyOpenCodeHeaders(httpReq.Header)
++		if !c.opencode {
++			provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
++		}
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -783,7 +822,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
- 	}
- 	flushToolImages()
+@@ -698,6 +739,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
+ }
  
--	tools := encodeChatTools(req, c.mimo)
-+	tools := encodeChatTools(req, c.mimo, c.name, c.baseURL)
- 
- 	maxOutputTokens := req.MaxTokens
- 	if maxOutputTokens == 0 {
-@@ -825,6 +864,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+ func (c *client) buildRequest(req provider.Request) chatRequest {
++	req = ApplyOpencodeNames(c.name, c.baseURL, req)
+ 	// Repair tool-call pairing before sending: an interrupted/resumed history can
+ 	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
+ 	// rejects with a 400 ("must be followed by tool messages …").
+@@ -825,6 +867,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -2449,7 +2424,7 @@ index c3309ba..3f249d3 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1109,6 +1155,7 @@ type chatRequest struct {
+@@ -1109,6 +1158,7 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -2639,47 +2614,47 @@ index bf3aca8..c4470b2 100644
  	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
  }
 diff --git a/internal/provider/openai/tool_search_wire.go b/internal/provider/openai/tool_search_wire.go
-index c172869..91fffb2 100644
+index c172869..60922d3 100644
 --- a/internal/provider/openai/tool_search_wire.go
 +++ b/internal/provider/openai/tool_search_wire.go
-@@ -2,8 +2,9 @@ package openai
+@@ -2,6 +2,31 @@ package openai
  
  import "reasonix/internal/provider"
  
--func encodeChatTools(req provider.Request, mimo bool) []chatTool {
-+func encodeChatTools(req provider.Request, mimo bool, name, baseURL string) []chatTool {
- 	var tools []chatTool
-+	names := make([]string, 0, len(req.Tools))
- 	for _, t := range req.Tools {
- 		parameters := t.Parameters
- 		if len(parameters) == 0 {
-@@ -15,6 +16,20 @@ func encodeChatTools(req provider.Request, mimo bool) []chatTool {
- 		item := chatTool{Type: "function", Function: chatFunction{Name: t.Name, Description: t.Description, Parameters: parameters, Strict: t.Strict}}
- 		item.DeferLoading = t.Deferred
- 		tools = append(tools, item)
-+		names = append(names, t.Name)
++// opencodeRename maps reasonix-native tool names to the opencode CLI names
++// the zen free-tier gate requires. Live-probed: the gate needs tools named
++// exactly `bash` and `read`; reasonix natively provides `bash` but reads via
++// `read_file`, so only that one is renamed. Extra tools are unaffected.
++var opencodeRename = map[string]string{"read_file": "read"}
++
++// ApplyOpencodeNames returns req with tools renamed to opencode CLI names
++// when talking to an opencode endpoint. Non-opencode providers pass through
++// untouched. Renaming (not aliasing) keeps exactly one entry per tool, so
++// the model can never call a name with no implementation.
++func ApplyOpencodeNames(name, baseURL string, req provider.Request) provider.Request {
++	if !provider.IsOpenCode(name, baseURL) {
++		return req
 +	}
-+	// The zen free-tier gate requires an opencode-native `read` tool. Emit the
-+	// local read_file a second time under that name; calls come back as `read`
-+	// and are mapped back in parseToolCall, so execution is unaffected.
-+	if provider.OpencodeReadAliasNeeded(name, baseURL, names) {
-+		for i := range tools {
-+			if tools[i].Function.Name == "read_file" {
-+				alias := tools[i]
-+				alias.Function.Name = provider.OpencodeReadWireName
-+				tools = append(tools, alias)
-+				break
-+			}
++	tools := make([]provider.ToolSchema, 0, len(req.Tools))
++	for _, t := range req.Tools {
++		if renamed, ok := opencodeRename[t.Name]; ok {
++			t.Name = renamed
 +		}
- 	}
- 	return tools
- }
++		tools = append(tools, t)
++	}
++	req.Tools = tools
++	return req
++}
++
+ func encodeChatTools(req provider.Request, mimo bool) []chatTool {
+ 	var tools []chatTool
+ 	for _, t := range req.Tools {
 diff --git a/internal/provider/opencode_cli.go b/internal/provider/opencode_cli.go
 new file mode 100644
-index 0000000..2b7ff52
+index 0000000..ac1b563
 --- /dev/null
 +++ b/internal/provider/opencode_cli.go
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,269 @@
 +package provider
 +
 +import (
@@ -2948,40 +2923,6 @@ index 0000000..2b7ff52
 +		out[i] = openCodeIDChars[b%62]
 +	}
 +	return string(out)
-+}
-+
-+// OpencodeReadWireName is the opencode-native tool name the zen free-tier
-+// gate requires alongside `bash`. The local implementation is read_file.
-+const OpencodeReadWireName = "read"
-+
-+const opencodeReadLocalName = "read_file"
-+
-+// OpencodeReadAliasNeeded reports whether to also emit the local read_file
-+// tool under the opencode-native `read` name: opencode endpoint, read_file
-+// present, no `read` already listed. Extra tools are ignored by the gate.
-+func OpencodeReadAliasNeeded(name, baseURL string, names []string) bool {
-+	if !IsOpenCode(name, baseURL) {
-+		return false
-+	}
-+	hasRead, hasReadFile := false, false
-+	for _, n := range names {
-+		if n == OpencodeReadWireName {
-+			hasRead = true
-+		}
-+		if n == opencodeReadLocalName {
-+			hasReadFile = true
-+		}
-+	}
-+	return hasReadFile && !hasRead
-+}
-+
-+// UnaliasOpencodeTool maps the wire alias back to the local implementation
-+// so aliased calls execute against the real tool. Unknown names pass through.
-+func UnaliasOpencodeTool(name string) string {
-+	if name == OpencodeReadWireName {
-+		return opencodeReadLocalName
-+	}
-+	return name
 +}
 diff --git a/internal/provider/opencode_cli_test.go b/internal/provider/opencode_cli_test.go
 new file mode 100644
@@ -3330,7 +3271,7 @@ index 7f70b37..bea7982 100644
  	var got, want any
  	_ = json.Unmarshal(encoded, &got)
 diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
-index df43b71..5f7ba7f 100644
+index df43b71..15fc151 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
 @@ -95,6 +95,9 @@ type client struct {
@@ -3387,7 +3328,15 @@ index df43b71..5f7ba7f 100644
  		vision:    vision,
  		modelInfo: modelInfo,
  		http:      httpClient, idleTimeout: defaultStreamIdleTimeout,
-@@ -264,6 +282,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -246,6 +264,7 @@ func (c *client) ResetContext() {
+ }
+ 
+ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
++	req = openai.ApplyOpencodeNames(c.name, c.baseURL, req)
+ 	if c.effort != "auto" && c.effort != "off" {
+ 		if err := c.reasoning.Validate(c.model, c.effort); err != nil {
+ 			return nil, err
+@@ -264,6 +283,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  		body, _, wireMessages = c.buildRequestBody(req)
  		resp, err = c.send(requestCtx, body)
  	}
@@ -3406,22 +3355,24 @@ index df43b71..5f7ba7f 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -284,8 +314,13 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -284,8 +315,14 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  			return nil, err
  		}
  		req.Header.Set("Content-Type", "application/json")
 -		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+-		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		if !(c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey), "public")) {
 +			req.Header.Set("Authorization", "Bearer "+c.apiKey)
 +		}
- 		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		if c.opencode {
 +			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject)
++		} else {
++			provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		}
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")
  		}
-@@ -305,6 +340,58 @@ func isStalePreviousResponseError(err error) bool {
+@@ -305,6 +342,58 @@ func isStalePreviousResponseError(err error) bool {
  		(strings.Contains(body, "not found") || strings.Contains(body, "invalid") || strings.Contains(body, "expired"))
  }
  
@@ -3480,7 +3431,7 @@ index df43b71..5f7ba7f 100644
  func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, []provider.Message) {
  	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
  	body := map[string]any{"model": c.model, "stream": true}
-@@ -321,7 +408,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -321,7 +410,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		effort = "none"
  	}
  	if effort != "" {
@@ -3499,7 +3450,7 @@ index df43b71..5f7ba7f 100644
  	}
  	maxOutputTokens := req.MaxTokens
  	if maxOutputTokens == 0 {
-@@ -363,7 +460,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -363,7 +462,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		return body, true, messages
  	}
  
@@ -3508,7 +3459,7 @@ index df43b71..5f7ba7f 100644
  	return body, false, messages
  }
  
-@@ -410,7 +507,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
+@@ -410,7 +509,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
  	payload, _ := json.Marshal(struct {
  		Instructions string           `json:"instructions,omitempty"`
  		Input        []map[string]any `json:"input"`
@@ -3640,48 +3591,6 @@ index 3547d50..5723bd0 100644
  	// MiMo/DeepSeek/unknown endpoints do not define `summary` in their
  	// reasoning-item schema; sending it leaks the reasoning text into an
  	// extra field the server may echo back into the model context (the
-diff --git a/internal/provider/responses/tool_search_wire.go b/internal/provider/responses/tool_search_wire.go
-index a50a79e..2829627 100644
---- a/internal/provider/responses/tool_search_wire.go
-+++ b/internal/provider/responses/tool_search_wire.go
-@@ -2,12 +2,14 @@ package responses
- 
- import (
- 	"encoding/json"
-+	"maps"
- 
- 	"reasonix/internal/provider"
- )
- 
- func encodeResponsesTools(c *client, req provider.Request) []map[string]any {
- 	tools := make([]map[string]any, 0, len(req.Tools)+1)
-+	names := make([]string, 0, len(req.Tools))
- 	if c.search.NativeEnabled && !c.search.ClientEnabled {
- 		tools = append(tools, map[string]any{"type": "web_search"})
- 	}
-@@ -27,9 +29,22 @@ func encodeResponsesTools(c *client, req provider.Request) []map[string]any {
- 			item["defer_loading"] = true
- 		}
- 		tools = append(tools, item)
-+		names = append(names, tool.Name)
- 	}
- 	if req.ToolSearch != nil && req.ToolSearch.Enabled && provider.IsFirstPartyOpenAI(c.baseURL) {
- 		tools = append([]map[string]any{{"type": "tool_search"}}, tools...)
- 	}
-+	// Same opencode-native `read` alias as the chat adapter: a renamed copy
-+	// of read_file, mapped back on return.
-+	if provider.OpencodeReadAliasNeeded(c.name, c.baseURL, names) {
-+		for _, item := range tools {
-+			if item["name"] == "read_file" {
-+				alias := maps.Clone(item)
-+				alias["name"] = provider.OpencodeReadWireName
-+				tools = append(tools, alias)
-+				break
-+			}
-+		}
-+	}
- 	return tools
- }
 diff --git a/internal/provider/responses/vendor.go b/internal/provider/responses/vendor.go
 index 6200e4f..7aca23b 100644
 --- a/internal/provider/responses/vendor.go

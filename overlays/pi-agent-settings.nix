@@ -1,10 +1,6 @@
 {
   lib,
   writeText,
-  mcp-nixos,
-  context7-mcp,
-  uv,
-  nodejs-slim,
 }:
 
 writeText "settings.json" (

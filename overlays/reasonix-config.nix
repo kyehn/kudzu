@@ -3,14 +3,14 @@
   formats,
   mcp-nixos,
   context7-mcp,
-  nodejs-slim_latest,
+  nodejs-slim,
   ripgrep,
   bashNonInteractive,
 }:
 
 (formats.toml { }).generate "config.toml" {
   config_version = 8;
-  default_model = "mimo-v2.5-free";
+  default_model = "muse-spark-1.3-contributor-free";
   language = "zh";
   ui.show_reasoning = true;
   environment.enabled = false;
@@ -136,7 +136,7 @@
     {
       name = "mobile-mcp";
       type = "stdio";
-      command = lib.getExe' nodejs-slim_latest "npx";
+      command = lib.getExe' nodejs-slim "npx";
       concurrency = "serial";
       args = [
         "--yes"

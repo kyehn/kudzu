@@ -4,7 +4,7 @@
   mcp-nixos,
   context7-mcp,
   uv,
-  nodejs-slim_latest,
+  nodejs-slim,
 }:
 
 writeText "mcp.json" (
@@ -17,7 +17,7 @@ writeText "mcp.json" (
         command = lib.getExe context7-mcp;
       };
       mobile-mcp = {
-        command = lib.getExe' nodejs-slim_latest "npx";
+        command = lib.getExe' nodejs-slim "npx";
         args = [
           "--yes"
           "@mobilenext/mobile-mcp@latest"

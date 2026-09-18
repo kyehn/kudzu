@@ -80,7 +80,7 @@ jobs:
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm -f /tmp/pi-agent-mcp
-          cp --recursive .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
+          cp -r .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
           pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
