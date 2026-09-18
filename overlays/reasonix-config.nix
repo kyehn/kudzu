@@ -10,7 +10,7 @@
 
 (formats.toml { }).generate "config.toml" {
   config_version = 8;
-  default_model = "muse-spark-1.3-contributor-free";
+  default_model = "mimo-v2.5-free";
   language = "zh";
   ui.show_reasoning = true;
   environment.enabled = false;

@@ -71,6 +71,9 @@
                   "*.jsonc"
                   "*.ts"
                 ];
+                excludes = [
+                  "**/package-lock.json"
+                ];
               };
               ruff-format = {
                 command = "ruff";

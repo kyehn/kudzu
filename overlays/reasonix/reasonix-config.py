@@ -12,12 +12,9 @@ import tomli_w
 
 USER_AGENT = "opencode/latest/1.18.31/cli"
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
+PROVIDER_NAMES = ("opencode", "nvidia")
 # models.dev cost 单位为美元 (USD)
 BILLING_CURRENCY = "USD"
-# models.dev provider.npm == 此值 → Responses wire, 否则 chat completions
-RESPONSES_SDK_PACKAGE = "@ai-sdk/openai"
-
-PROVIDER_NAMES = ("opencode", "nvidia")
 
 
 def _provider_dict(
@@ -161,7 +158,7 @@ def main(argv: list[str] | None = None) -> None:
             new_providers.append(
                 _provider_dict(
                     f"{provider}-anthropic",
-                    "responses",
+                    "anthropic",
                     entry,
                     anthropic,
                 )

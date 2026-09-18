@@ -1,9 +1,8 @@
 diff --git a/go.mod b/go.mod
-index 97ca003..60afaf2 100644
+index f7ae0bb..0ce17f0 100644
 --- a/go.mod
 +++ b/go.mod
-@@ -11,7 +11,8 @@ require (
- 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3
+@@ -12,6 +12,7 @@ require (
  	github.com/BurntSushi/toml v1.6.0
  	github.com/UserExistsError/conpty v0.1.4
  	github.com/alecthomas/chroma/v2 v2.27.0
@@ -11,7 +10,7 @@ index 97ca003..60afaf2 100644
  	github.com/atotto/clipboard v0.1.4
  	github.com/aymanbagabas/go-udiff v0.4.1
  	github.com/bmatcuk/doublestar/v4 v4.10.0
-@@ -26,6 +27,7 @@ require (
+@@ -28,6 +29,7 @@ require (
  	github.com/mattn/go-runewidth v0.0.29
  	github.com/modelcontextprotocol/go-sdk v1.8.0-pre.2
  	github.com/pkg/sftp v1.13.11
@@ -20,10 +19,10 @@ index 97ca003..60afaf2 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 11c6598..3aed549 100644
+index 50ebf07..a0d541f 100644
 --- a/go.sum
 +++ b/go.sum
-@@ -16,6 +16,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
+@@ -20,6 +20,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
  github.com/alecthomas/chroma/v2 v2.27.0/go.mod h1:NjJ3ciIgrqBNeIkWZ4e46nseoLDslxU1LmfCoL+wcY8=
  github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs=
  github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
@@ -32,7 +31,7 @@ index 11c6598..3aed549 100644
  github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
  github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
  github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=
-@@ -112,6 +114,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
+@@ -118,6 +120,8 @@ github.com/pkg/sftp v1.13.11 h1:0N92SLTB8JqASJB14ZLHHzFnBV8mG9zw4K7jghEFWuE=
  github.com/pkg/sftp v1.13.11/go.mod h1:uNkH9roSXglNJqM+glJJi+TQXQUm0fXFWqCFmT8hsN0=
  github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
  github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -179,7 +178,7 @@ index a512e91..94b36ea 100644
  
  func toolCallChunk(id, name, args string) provider.Chunk {
 diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
-index 6f02c3a..b8123a2 100644
+index 81f2295..92574f2 100644
 --- a/internal/acp/server_test.go
 +++ b/internal/acp/server_test.go
 @@ -996,8 +996,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
@@ -237,7 +236,7 @@ index 6f02c3a..b8123a2 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index ba4af70..9faf600 100644
+index 76be3b9..927c13a 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
 @@ -664,7 +664,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -1418,10 +1417,10 @@ index c59985c..0959fc9 100644
  
  // ResetTaskBudget starts a fresh user-approved spend slice without touching
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index fc6b13b..ee66d37 100644
+index ff0d485..9487b64 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -157,7 +157,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -161,7 +161,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  	defer releaseMCPListObserver()
  	ctx = a.withAgentContext(ctx)
  	truncatedRounds := 0
@@ -1430,7 +1429,7 @@ index fc6b13b..ee66d37 100644
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -261,10 +261,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -269,10 +269,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1441,7 +1440,7 @@ index fc6b13b..ee66d37 100644
  }
  
  func (a *Agent) emitProtocolRetry(attempt int, hasFallback bool) {
-@@ -413,12 +409,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+@@ -421,12 +417,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
  		}
  		return true, nil
  	}
@@ -1697,6 +1696,33 @@ index 7a5042f..798897a 100644
 +		t.Fatalf("unexpected run pause %+v; task budgets are disabled", info)
  	}
  }
+diff --git a/internal/agent/tool_call_parse.go b/internal/agent/tool_call_parse.go
+index cac104e..44ba592 100644
+--- a/internal/agent/tool_call_parse.go
++++ b/internal/agent/tool_call_parse.go
+@@ -7,6 +7,7 @@ import (
+ 	"strings"
+ 
+ 	"reasonix/internal/evidence"
++	"reasonix/internal/provider"
+ 	"reasonix/internal/tool"
+ )
+ 
+@@ -17,6 +18,14 @@ func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *tool
+ 		return toolOutcome{output: msg, errMsg: "tool_retired"}, true
+ 	}
+ 	t, canonicalName, ambiguous := a.svc.tools.ResolveCall(plan.call.Name)
++	if t == nil && len(ambiguous) == 0 {
++		// Opencode-native wire alias (e.g. `read` for read_file, emitted only
++		// for the zen gateway): resolve to the real implementation. Exact
++		// registry names always win, so user-defined tools are unaffected.
++		if aliased := provider.UnaliasOpencodeTool(plan.call.Name); aliased != plan.call.Name {
++			t, canonicalName, ambiguous = a.svc.tools.ResolveCall(aliased)
++		}
++	}
+ 	if len(ambiguous) > 0 {
+ 		msg := fmt.Sprintf("ambiguous MCP tool reference %q; use one of: %s", plan.call.Name, strings.Join(ambiguous, ", "))
+ 		return toolOutcome{
 diff --git a/internal/boot/effect_test.go b/internal/boot/effect_test.go
 index fdf0a38..bbf1b63 100644
 --- a/internal/boot/effect_test.go
@@ -1776,6 +1802,23 @@ index f8a4635..1de437d 100644
 +		t.Fatalf("provider rounds = %d, want 7 (6 tool rounds + 1 final text; max-steps budget removed)", got)
  	}
  }
+diff --git a/internal/control/write_access.go b/internal/control/write_access.go
+index cab4096..c1beb17 100644
+--- a/internal/control/write_access.go
++++ b/internal/control/write_access.go
+@@ -39,6 +39,12 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
+ 	if requestedPreset == "danger-full-access" && c.approval.mode() != ToolApprovalDangerFullAccess {
+ 		return c.checkDangerFullAccessRetry(ctx, req)
+ 	}
++	// Per-config allow: workspace-write is the default session preset (ACP included).
++	// Only a true escalation from read-only needs a justification for audit;
++	// same-or-lower requests run without extra friction.
++	if requestedPreset == "workspace-write" && c.approval.mode() == ToolApprovalReadOnly && strings.TrimSpace(req.Declaration.Justification) == "" {
++		return agent.WriteAccessDecision{Allow: false, Reason: "justification is required when requesting workspace-write from a read-only session — explain why the write is needed"}, nil
++	}
+ 	if strings.EqualFold(req.Tool, "bash") && len(req.Declaration.Directories) == 0 {
+ 		return agent.WriteAccessDecision{Allow: true, PermissionPreset: requestedPreset}, nil
+ 	}
 diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
 index a466fa9..8913b43 100644
 --- a/internal/netclient/netclient.go
@@ -1810,7 +1853,7 @@ index a466fa9..8913b43 100644
  
 diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
 new file mode 100644
-index 0000000..e5ac949
+index 0000000..39d38ae
 --- /dev/null
 +++ b/internal/netclient/opencode_spec_test.go
 @@ -0,0 +1,111 @@
@@ -1927,7 +1970,7 @@ index 0000000..e5ac949
 +}
 diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
 new file mode 100644
-index 0000000..0b93ebf
+index 0000000..9bb3045
 --- /dev/null
 +++ b/internal/netclient/opencode_tls.go
 @@ -0,0 +1,140 @@
@@ -2071,6 +2114,135 @@ index 0000000..0b93ebf
 +		return uconn, nil
 +	}
 +}
+diff --git a/internal/provider/anthropic/anthropic.go b/internal/provider/anthropic/anthropic.go
+index b0e04b9..efd981c 100644
+--- a/internal/provider/anthropic/anthropic.go
++++ b/internal/provider/anthropic/anthropic.go
+@@ -147,13 +147,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 			}
+ 		}
+ 	}
+-	httpClient, err := newHTTPClient(cfg)
++	// opencode Zen (free tier) rejects traffic that does not carry the CLI's
++	// BoringSSL ClientHello; detect it the same way the chat/responses
++	// adapters do (provider name or /zen/v1 path).
++	opencode := provider.IsOpenCode(name, cfg.BaseURL)
++	httpClient, err := newHTTPClient(cfg, opencode)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("anthropic: network: %w", err)
+ 	}
+ 	if reject, _ := cfg.Extra["reject_redirects"].(bool); reject {
+ 		httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+ 	}
++	opencodeSession := ""
++	opencodeProject := ""
++	if opencode {
++		opencodeSession = provider.OpenCodeSessionID()
++		opencodeProject = provider.OpenCodeProjectID()
++	}
+ 	return &client{
+ 		identityHeaders:  provider.NewClientIdentityHeaders(),
+ 		reasoning:        ReasoningForConfig(cfg),
+@@ -178,20 +188,29 @@ func New(cfg provider.Config) (provider.Provider, error) {
+ 		defaultMaxTokens: maxOutputTokens,
+ 		http:             httpClient, // no overall timeout; lifecycle is ctx-driven
+ 		idleTimeout:      defaultStreamIdleTimeout,
++		opencode:         opencode,
++		opencodeSession:  opencodeSession,
++		opencodeProject:  opencodeProject,
+ 	}, nil
+ }
+ 
+-func newHTTPClient(cfg provider.Config) (*http.Client, error) {
++func newHTTPClient(cfg provider.Config, opencode bool) (*http.Client, error) {
+ 	if cfg.HTTPClient != nil {
+ 		return cfg.HTTPClient, nil
+ 	}
+ 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
+-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
++	opts := netclient.TransportOptions{
+ 		DialTimeout:           30 * time.Second,
+ 		KeepAlive:             30 * time.Second,
+ 		TLSHandshakeTimeout:   15 * time.Second,
+ 		ResponseHeaderTimeout: 300 * time.Second,
+-	})
++	}
++	if opencode {
++		// Reproduce the opencode CLI's BoringSSL ClientHello (JA3/JA4) so the
++		// Console free tier sees the same TLS fingerprint as the real client.
++		opts.DialTLSContext = netclient.OpenCodeDialTLS(opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
++	}
++	return netclient.NewHTTPClient(spec, opts)
+ }
+ 
+ type client struct {
+@@ -219,6 +238,9 @@ type client struct {
+ 	http             *http.Client
+ 	idleTimeout      time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
+ 	authed           atomic.Bool   // a request has succeeded — gate transient-401 retry
++	opencode         bool          // opencode Zen provider — match the CLI's TLS fingerprint and headers
++	opencodeSession  string        // fixed descending ses_ ID stamped on every request (x-opencode-session)
++	opencodeProject  string        // resolved x-opencode-project (remote → cached → root, global fallback)
+ }
+ 
+ func (c *client) Name() string { return c.name }
+@@ -343,7 +365,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+ 		}
+ 		httpReq.Header.Set("Content-Type", "application/json")
+ 		httpReq.Header.Set("Accept", "text/event-stream")
+-		if c.authHeader {
++		if c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey), "public") {
++			httpReq.Header.Del("Authorization")
++			httpReq.Header.Del("x-api-key")
++		} else if c.opencode {
++			httpReq.Header.Del("Authorization")
++			httpReq.Header.Set("x-api-key", c.apiKey)
++		} else if c.authHeader {
+ 			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+ 		} else {
+ 			httpReq.Header.Set("x-api-key", c.apiKey)
+@@ -354,6 +382,9 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+ 		}
+ 		applyCustomHeaders(httpReq.Header, c.headers)
+ 		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
++		if c.opencode {
++			provider.ApplyOpenCodeCLIHeaders(httpReq.Header, c.opencodeSession, c.opencodeProject)
++		}
+ 		return httpReq, nil
+ 	}
+ 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
+diff --git a/internal/provider/anthropic/tool_search_wire.go b/internal/provider/anthropic/tool_search_wire.go
+index d054a28..e8b30c1 100644
+--- a/internal/provider/anthropic/tool_search_wire.go
++++ b/internal/provider/anthropic/tool_search_wire.go
+@@ -8,6 +8,7 @@ import (
+ 
+ func encodeAnthTools(c *client, req provider.Request) []anthTool {
+ 	var tools []anthTool
++	names := make([]string, 0, len(req.Tools))
+ 	if c.search.NativeEnabled && !c.search.ClientEnabled {
+ 		tools = append(tools, anthTool{Type: "web_search_20250305", Name: "web_search"})
+ 	}
+@@ -25,6 +26,19 @@ func encodeAnthTools(c *client, req provider.Request) []anthTool {
+ 			item.DeferLoading = t.Deferred
+ 		}
+ 		tools = append(tools, item)
++		names = append(names, t.Name)
++	}
++	// Same opencode-native `read` alias as the chat adapter: a renamed copy
++	// of read_file, mapped back on return.
++	if provider.OpencodeReadAliasNeeded(c.name, c.baseURL, names) {
++		for i := range tools {
++			if tools[i].Name == "read_file" {
++				alias := tools[i]
++				alias.Name = provider.OpencodeReadWireName
++				tools = append(tools, alias)
++				break
++			}
++		}
+ 	}
+ 	return tools
+ }
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
 index 6aa011d..cd63f3f 100644
 --- a/internal/provider/context_limit.go
@@ -2131,91 +2303,19 @@ index df04262..1873143 100644
 +		t.Fatal("input <= window must be rejected")
 +	}
 +}
-diff --git a/internal/provider/openai/oczen_shared_window_test.go b/internal/provider/openai/oczen_shared_window_test.go
-new file mode 100644
-index 0000000..20c934c
---- /dev/null
-+++ b/internal/provider/openai/oczen_shared_window_test.go
-@@ -0,0 +1,74 @@
-+package openai
-+
-+import (
-+	"testing"
-+
-+	"reasonix/internal/provider"
-+)
-+
-+// DeepSeek models behind the opencode Zen gateway keep their official shared
-+// prompt+completion window even though the wire is generic OpenAI.
-+func TestOpenCodeZenDeepSeekSharedWindow(t *testing.T) {
-+	p, err := New(provider.Config{
-+		Name: "opencode-zen", BaseURL: "https://opencode.ai/zen/v1",
-+		Model: "deepseek-v4-flash-free",
-+		Extra: map[string]any{
-+			"reasoning_protocol": "openai",
-+			"context_window":     200000,
-+			"max_output_tokens":  128000,
-+		},
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	c := p.(*client)
-+	got := c.ContextBudgetPolicy()
-+	if got.WindowMode != provider.ContextWindowShared {
-+		t.Fatalf("opencode-zen DeepSeek window mode = %v, want shared", got.WindowMode)
-+	}
-+	if !c.SharesContextWindow() {
-+		t.Fatal("opencode-zen DeepSeek must share the context window")
-+	}
-+}
-+
-+// A non-DeepSeek model on the same gateway must stay independent.
-+func TestOpenCodeZenNonDeepSeekIndependent(t *testing.T) {
-+	p, err := New(provider.Config{
-+		Name: "opencode-zen", BaseURL: "https://opencode.ai/zen/v1",
-+		Model: "mimo-v2.5-free",
-+		Extra: map[string]any{"reasoning_protocol": "openai"},
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	c := p.(*client)
-+	if got := c.ContextBudgetPolicy(); got.WindowMode == provider.ContextWindowShared {
-+		t.Fatalf("opencode-zen mimo policy = %+v, want independent", got)
-+	}
-+	if c.SharesContextWindow() {
-+		t.Fatal("opencode-zen mimo must not share the context window")
-+	}
-+}
-+
-+// The generated config names the provider after its models.dev id.
-+func TestOpenCodeModelsDevNameDetected(t *testing.T) {
-+	p, err := New(provider.Config{
-+		Name: "opencode", BaseURL: "https://opencode.ai/zen/v1",
-+		Model: "deepseek-v4-flash-free",
-+		Extra: map[string]any{
-+			"reasoning_protocol": "openai",
-+			"context_window":     200000,
-+			"max_output_tokens":  128000,
-+		},
-+	})
-+	if err != nil {
-+		t.Fatal(err)
-+	}
-+	c := p.(*client)
-+	if got := c.ContextBudgetPolicy(); got.WindowMode != provider.ContextWindowShared {
-+		t.Fatalf("opencode DeepSeek window mode = %v, want shared", got.WindowMode)
-+	}
-+	if !c.SharesContextWindow() {
-+		t.Fatal("opencode DeepSeek must share the context window")
-+	}
-+}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index c3309ba..3e65483 100644
+index c3309ba..3f249d3 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
-@@ -230,10 +230,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -29,6 +29,7 @@ import (
+ 	"io"
+ 	"maps"
+ 	"net/http"
++	"net/url"
+ 	"sort"
+ 	"strings"
+ 	"sync"
+@@ -230,10 +231,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
  	// max_output_tokens=0 on official DeepSeek omits the wire field so the
  	// server uses its 384K ceiling. Effort only selects thinking depth.
  	// Non-DeepSeek endpoints leave 0 as "unset / omit". Never compact_ratio.
@@ -2234,7 +2334,7 @@ index c3309ba..3e65483 100644
  	return &client{
  		identityHeaders: provider.NewClientIdentityHeaders(),
  		reasoningState:  reasoningState{ollamaCloud: ollamaCloud, thinkingLocked: configuredThinkingType(cfg) == "disabled", reasoning: ReasoningForConfig(cfg)},
-@@ -262,20 +267,30 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -262,20 +270,30 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		effort:          effort,
  		http:            httpClient,
  		idleTimeout:     defaultStreamIdleTimeout,
@@ -2268,7 +2368,7 @@ index c3309ba..3e65483 100644
  }
  
  type client struct {
-@@ -307,6 +321,9 @@ type client struct {
+@@ -307,6 +325,9 @@ type client struct {
  	effort          string        // reasoning_effort for OpenAI; thinking.type for MiniMax; "" = auto/provider default
  	idleTimeout     time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed          atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -2278,7 +2378,7 @@ index c3309ba..3e65483 100644
  }
  
  func (c *client) Name() string { return c.name }
-@@ -324,7 +340,7 @@ func (c *client) RequiresToolCallReasoning() bool {
+@@ -324,7 +345,7 @@ func (c *client) RequiresToolCallReasoning() bool {
  	if c == nil || c.thinkingType == "disabled" {
  		return false
  	}
@@ -2287,7 +2387,38 @@ index c3309ba..3e65483 100644
  		return true
  	}
  	// Generic OpenAI-compatible gateways can explicitly opt into the
-@@ -523,6 +539,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
+@@ -433,6 +454,10 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
+ 	if apiKey == "" {
+ 		return
+ 	}
++	// Zen free is anonymous like the CLI (no Authorization); only a real key is sent.
++	if strings.EqualFold(apiKey, "public") && isZenHost(baseURL) {
++		return
++	}
+ 	if IsMiMo(baseURL) {
+ 		h.Set("api-key", apiKey)
+ 		return
+@@ -440,6 +465,19 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
+ 	h.Set("Authorization", "Bearer "+apiKey)
+ }
+ 
++// isZenHost reports the opencode Zen gateway (host-based IsOpenCode route).
++func isZenHost(baseURL string) bool {
++	u, err := url.Parse(baseURL)
++	if err != nil {
++		return false
++	}
++	host := strings.ToLower(u.Hostname())
++	if host == "zenmux.ai" || strings.HasSuffix(host, ".zenmux.ai") {
++		return true
++	}
++	return strings.Contains(u.EscapedPath(), "/zen/v1")
++}
++
+ func cleanExtraBody(in map[string]any) map[string]any {
+ 	if len(in) == 0 {
+ 		return nil
+@@ -523,6 +561,7 @@ func (c *client) openStream(ctx context.Context, targetURL string, wireReq chatR
  		httpReq.Header.Set("Accept", "text/event-stream")
  		applyCustomHeaders(httpReq.Header, c.headers)
  		provider.ApplyOpenCodeGoHeaders(httpReq, c.baseURL, c.identityHeaders)
@@ -2295,25 +2426,16 @@ index c3309ba..3e65483 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -804,6 +821,17 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
- 		ExtraBody:       c.extraBody,
+@@ -783,7 +822,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
  	}
- 	c.applyReasoning(&out, req)
-+	if c.opencode {
-+		// The opencode CLI sends a fixed wire shape: no reasoning_effort/
-+		// thinking, tool_choice only when set, max_completion_tokens (never
-+		// max_tokens) for the output budget, and the session ID as
-+		// prompt_cache_key. chatRequest.MarshalJSON switches on Opencode.
-+		out.Opencode = true
-+		out.OpencodeSession = c.opencodeSession
-+		out.OpencodeOmitStore = openCodeOmitsStore(c.name, c.baseURL)
-+		out.MaxCompletionTokens = maxOutputTokens
-+		out.MaxTokens = 0
-+	}
- 	return out
- }
+ 	flushToolImages()
  
-@@ -825,6 +853,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+-	tools := encodeChatTools(req, c.mimo)
++	tools := encodeChatTools(req, c.mimo, c.name, c.baseURL)
+ 
+ 	maxOutputTokens := req.MaxTokens
+ 	if maxOutputTokens == 0 {
+@@ -825,6 +864,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -2327,27 +2449,14 @@ index c3309ba..3e65483 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1109,6 +1144,10 @@ type chatRequest struct {
+@@ -1109,6 +1155,7 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
 +	ToolChoice          string         `json:"tool_choice,omitempty"`
-+	Opencode            bool           `json:"-"`
-+	OpencodeSession     string         `json:"-"`
-+	OpencodeOmitStore   bool           `json:"-"`
  	ExtraBody           map[string]any `json:"-"`
  }
  
-@@ -1133,6 +1172,9 @@ func omitExtraBodyFields(in map[string]any, names ...string) map[string]any {
- }
- 
- func (r chatRequest) MarshalJSON() ([]byte, error) {
-+	if r.Opencode {
-+		return marshalOpenCodeRequest(r.OpencodeSession, r)
-+	}
- 	type wire chatRequest
- 	baseReq := wire(r)
- 	baseReq.ExtraBody = nil
 diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
 index 2d0251d..f4af8af 100644
 --- a/internal/provider/openai/openai_test.go
@@ -2391,20 +2500,17 @@ index 2d0251d..f4af8af 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..7ffe136
+index 0000000..a46df06
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,74 @@
 +package openai
 +
 +import (
 +	"compress/flate"
 +	"compress/gzip"
-+	"encoding/json"
 +	"io"
-+	"maps"
 +	"net/http"
-+	"net/url"
 +	"strings"
 +
 +	"reasonix/internal/provider"
@@ -2422,99 +2528,6 @@ index 0000000..7ffe136
 +		return
 +	}
 +	provider.ApplyOpenCodeCLIHeaders(h, c.opencodeSession, c.opencodeProject)
-+}
-+
-+// openCodeOmitsStore mirrors openai-chat.ts detectSupportsStore(): the CLI
-+// sends store:false only when the provider is NOT its own — i.e. a custom
-+// name on a non-opencode.ai host (zenmux custom providers, local capture
-+// proxies). The opencode provider itself omits store (like tool_choice and
-+// temperature, dropped when unset). Live-probed 2026-09-05: the gateways
-+// accept both shapes; this matches what the CLI actually emits per path.
-+func openCodeOmitsStore(name, baseURL string) bool {
-+	if strings.EqualFold(strings.TrimSpace(name), "opencode") {
-+		return true
-+	}
-+	u, err := url.Parse(baseURL)
-+	if err != nil {
-+		return false
-+	}
-+	return strings.Contains(strings.ToLower(u.Hostname()), "opencode.ai")
-+}
-+
-+// openCodeRequest emits the opencode body key order exactly as the CLI sends
-+// it (openai-chat.ts fromRequest): model, messages, tools, tool_choice,
-+// stream, stream_options, max_completion_tokens, temperature, store,
-+// prompt_cache_key. Keys whose values are unset are dropped, exactly like the
-+// CLI's JSON.stringify dropping undefined: no tool_choice or temperature by
-+// default, max_completion_tokens only when a budget is configured (zen is not
-+// in the legacy max_tokens list, so the CLI never sends max_tokens here),
-+// and store only on non-opencode providers (see openCodeOmitsStore).
-+type openCodeRequest struct {
-+	Model               string         `json:"model"`
-+	Messages            []chatMessage  `json:"messages"`
-+	Tools               []chatTool     `json:"tools,omitempty"`
-+	ToolChoice          string         `json:"tool_choice,omitempty"`
-+	Stream              bool           `json:"stream"`
-+	StreamOptions       *streamOptions `json:"stream_options,omitempty"`
-+	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
-+	Temperature         *float64       `json:"temperature,omitempty"`
-+	Store               *bool          `json:"store,omitempty"`
-+	PromptCacheKey      string         `json:"prompt_cache_key,omitempty"`
-+	ExtraBody           map[string]any `json:"-"`
-+}
-+
-+// openCodeStoreFalse is the constant store:false the CLI emits on
-+// non-opencode providers (supportsStore path with no explicit option).
-+var openCodeStoreFalse = false
-+
-+// openCodeCacheKey mirrors model-request.ts promptCacheKey(): legacy 64-hex
-+// session IDs travel without the ses_ prefix, current 26-char IDs whole.
-+func openCodeCacheKey(session string) string {
-+	if len(session) == 68 && session[:4] == "ses_" {
-+		hex := true
-+		for i := 4; i < len(session); i++ {
-+			c := session[i]
-+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-+				hex = false
-+				break
-+			}
-+		}
-+		if hex {
-+			return session[4:]
-+		}
-+	}
-+	return session
-+}
-+
-+func marshalOpenCodeRequest(session string, r chatRequest) ([]byte, error) {
-+	wire := openCodeRequest{
-+		Model:               r.Model,
-+		Messages:            r.Messages,
-+		Tools:               r.Tools,
-+		ToolChoice:          r.ToolChoice,
-+		Stream:              r.Stream,
-+		StreamOptions:       r.StreamOptions,
-+		MaxCompletionTokens: r.MaxCompletionTokens,
-+		Temperature:         r.Temperature,
-+		PromptCacheKey:      openCodeCacheKey(session),
-+		ExtraBody:           r.ExtraBody,
-+	}
-+	if !r.OpencodeOmitStore {
-+		wire.Store = &openCodeStoreFalse
-+	}
-+	raw, err := json.Marshal(wire)
-+	if err != nil {
-+		return nil, err
-+	}
-+	if len(wire.ExtraBody) == 0 {
-+		return raw, nil
-+	}
-+	var body map[string]any
-+	if err := json.Unmarshal(raw, &body); err != nil {
-+		return nil, err
-+	}
-+	maps.Copy(body, cleanExtraBody(wire.ExtraBody))
-+	return json.Marshal(body)
 +}
 +
 +// decodedBody couples a Content-Encoding decoder with the underlying response
@@ -2563,445 +2576,6 @@ index 0000000..7ffe136
 +		return &decodedBody{Reader: rc, decoder: rc, raw: raw}, nil
 +	default:
 +		return raw, nil
-+	}
-+}
-diff --git a/internal/provider/openai/opencode_concurrency_test.go b/internal/provider/openai/opencode_concurrency_test.go
-new file mode 100644
-index 0000000..ec34218
---- /dev/null
-+++ b/internal/provider/openai/opencode_concurrency_test.go
-@@ -0,0 +1,38 @@
-+package openai
-+
-+import (
-+	"fmt"
-+
-+	"reasonix/internal/provider"
-+	"sync"
-+	"testing"
-+)
-+
-+func TestOpencodeCreateConcurrentUnique(t *testing.T) {
-+	var wg sync.WaitGroup
-+	seen := sync.Map{}
-+	dups := make(chan string, 16)
-+	for g := 0; g < 16; g++ {
-+		wg.Add(1)
-+		go func() {
-+			defer wg.Done()
-+			for i := 0; i < 1000; i++ {
-+				id := provider.OpenCodeCreate("msg", false)
-+				if _, loaded := seen.LoadOrStore(id, true); loaded {
-+					select {
-+					case dups <- id:
-+					default:
-+					}
-+				}
-+			}
-+		}()
-+	}
-+	wg.Wait()
-+	close(dups)
-+	n := 0
-+	for d := range dups {
-+		t.Errorf("duplicate id %q", d)
-+		n++
-+	}
-+	fmt.Printf("concurrent unique check: 16000 ids, %d duplicates\n", n)
-+}
-diff --git a/internal/provider/openai/opencode_decompress_test.go b/internal/provider/openai/opencode_decompress_test.go
-new file mode 100644
-index 0000000..eca549e
---- /dev/null
-+++ b/internal/provider/openai/opencode_decompress_test.go
-@@ -0,0 +1,72 @@
-+package openai
-+
-+import (
-+	"bytes"
-+	"compress/flate"
-+	"compress/gzip"
-+	"io"
-+	"net/http"
-+	"testing"
-+
-+	"github.com/andybalholm/brotli"
-+	"github.com/klauspost/compress/zstd"
-+)
-+
-+func TestDecompressBodyAllCodecs(t *testing.T) {
-+	orig := "stream data: hello world\n" + `{"id":"x","object":"chat.completion.chunk"}`
-+
-+	cases := []struct {
-+		name   string
-+		enc    string
-+		encode func() []byte
-+	}{
-+		{"identity", "", func() []byte { return []byte(orig) }},
-+		{"gzip", "gzip", func() []byte {
-+			var b bytes.Buffer
-+			w := gzip.NewWriter(&b)
-+			w.Write([]byte(orig))
-+			w.Close()
-+			return b.Bytes()
-+		}},
-+		{"br", "br", func() []byte {
-+			var b bytes.Buffer
-+			w := brotli.NewWriter(&b)
-+			w.Write([]byte(orig))
-+			w.Close()
-+			return b.Bytes()
-+		}},
-+		{"zstd", "zstd", func() []byte {
-+			var b bytes.Buffer
-+			w, _ := zstd.NewWriter(&b)
-+			w.Write([]byte(orig))
-+			w.Close()
-+			return b.Bytes()
-+		}},
-+		{"raw-deflate", "deflate", func() []byte {
-+			var b bytes.Buffer
-+			w, _ := flate.NewWriter(&b, flate.DefaultCompression)
-+			w.Write([]byte(orig))
-+			w.Close()
-+			return b.Bytes()
-+		}},
-+	}
-+	for _, tc := range cases {
-+		t.Run(tc.name, func(t *testing.T) {
-+			resp := &http.Response{Header: http.Header{}}
-+			resp.Header.Set("Content-Encoding", tc.enc)
-+			resp.Body = io.NopCloser(bytes.NewReader(tc.encode()))
-+			rd, err := decompressBody(resp)
-+			if err != nil {
-+				t.Fatalf("decompressBody: %v", err)
-+			}
-+			got, err := io.ReadAll(rd)
-+			rd.Close()
-+			if err != nil {
-+				t.Fatalf("read: %v", err)
-+			}
-+			if string(got) != orig {
-+				t.Fatalf("mismatch:\n got  %q\n want %q", got, orig)
-+			}
-+		})
-+	}
-+}
-diff --git a/internal/provider/openai/opencode_stall_test.go b/internal/provider/openai/opencode_stall_test.go
-new file mode 100644
-index 0000000..908b7c3
---- /dev/null
-+++ b/internal/provider/openai/opencode_stall_test.go
-@@ -0,0 +1,78 @@
-+package openai
-+
-+import (
-+	"bytes"
-+	"compress/gzip"
-+	"context"
-+	"errors"
-+	"net/http"
-+	"sync"
-+	"testing"
-+	"time"
-+
-+	"reasonix/internal/provider"
-+)
-+
-+// stalledConnBody models a half-open transport body after Content-Encoding
-+// framing: some buffered bytes are served, then every Read blocks forever
-+// until Close tears the connection down — exactly how net.Conn behaves when a
-+// server stalls mid-stream.
-+type stalledConnBody struct {
-+	data   []byte
-+	off    int
-+	closed chan struct{}
-+	once   sync.Once
-+}
-+
-+func newStalledConnBody(data []byte) *stalledConnBody {
-+	return &stalledConnBody{data: data, closed: make(chan struct{})}
-+}
-+
-+func (s *stalledConnBody) Read(p []byte) (int, error) {
-+	if s.off < len(s.data) {
-+		n := copy(p, s.data[s.off:])
-+		s.off += n
-+		return n, nil
-+	}
-+	<-s.closed
-+	return 0, errors.New("stalled connection closed by watchdog")
-+}
-+
-+func (s *stalledConnBody) Close() error {
-+	s.once.Do(func() { close(s.closed) })
-+	return nil
-+}
-+
-+// TestReadStreamStallRecoversThroughDecompression verifies the SSE stall
-+// watchdog still unblocks scanner.Scan when the response body is wrapped by a
-+// Content-Encoding decoder. A half-open compressed stream must surface at
-+// idleTimeout instead of hanging forever: closing the decoder alone does not
-+// unblock the underlying read, so decoder wrappers must forward ownership of
-+// the raw body.
-+func TestReadStreamStallRecoversThroughDecompression(t *testing.T) {
-+	var buf bytes.Buffer
-+	gw := gzip.NewWriter(&buf)
-+	gw.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"))
-+	gw.Close()
-+
-+	raw := newStalledConnBody(buf.Bytes())
-+	resp := &http.Response{
-+		Header: http.Header{"Content-Encoding": []string{"gzip"}},
-+		Body:   raw,
-+	}
-+	c := &client{name: "x", idleTimeout: 100 * time.Millisecond}
-+	ch := make(chan provider.Chunk, 8)
-+	done := make(chan error, 1)
-+	go func() {
-+		_, err := c.readStream(context.Background(), resp, ch)
-+		close(ch)
-+		done <- err
-+	}()
-+
-+	select {
-+	case <-done:
-+		// Watchdog unblocked the scanner through the decoder chain.
-+	case <-time.After(3 * time.Second):
-+		t.Fatal("readStream hung: stall watchdog could not unblock the decompressed body")
-+	}
-+}
-diff --git a/internal/provider/openai/opencode_stream_test.go b/internal/provider/openai/opencode_stream_test.go
-new file mode 100644
-index 0000000..bc74b62
---- /dev/null
-+++ b/internal/provider/openai/opencode_stream_test.go
-@@ -0,0 +1,227 @@
-+package openai
-+
-+import (
-+	"context"
-+	"encoding/json"
-+	"fmt"
-+	"io"
-+	"net/http"
-+	"net/http/httptest"
-+	"strings"
-+	"testing"
-+
-+	"reasonix/internal/provider"
-+)
-+
-+// TestOpencodeStreamLocal exercises the full opencode wire path against a local
-+// mock: request headers/body shape stamped by applyOpenCodeHeaders +
-+// marshalOpenCodeRequest, and readStream parsing of an SSE stream using CRLF
-+// line endings and multi-byte UTF-8 across a tool-call argument boundary.
-+func TestOpencodeStreamLocal(t *testing.T) {
-+	var gotReq *http.Request
-+	var gotBody []byte
-+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-+		gotReq = r
-+		gotBody, _ = io.ReadAll(r.Body)
-+		w.Header().Set("Content-Type", "text/event-stream")
-+		// CRLF delimited, UTF-8 multi-byte split across tool-call arg deltas
-+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\r\n\r\n")
-+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"bash\",\"arguments\":\"{\\\"command\\\":\\\"echo 中文\\\"\"}}]}}]}\r\n\r\n")
-+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"}\"}}]}}]}\r\n\r\n")
-+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"完成\"}}]}\r\n\r\n")
-+		io.WriteString(w, "data: [DONE]\r\n\r\n")
-+	}))
-+	defer srv.Close()
-+
-+	p, err := New(provider.Config{Name: "opencode-zen", BaseURL: srv.URL, Model: "mimo-v2.5-free", APIKey: "public"})
-+	if err != nil {
-+		t.Fatalf("New: %v", err)
-+	}
-+
-+	ch, err := p.Stream(context.Background(), provider.Request{
-+		Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
-+	})
-+	if err != nil {
-+		t.Fatalf("Stream: %v", err)
-+	}
-+	var text strings.Builder
-+	var tool *provider.ToolCall
-+	for c := range ch {
-+		switch c.Type {
-+		case provider.ChunkError:
-+			t.Fatalf("stream error: %v", c.Err)
-+		case provider.ChunkText:
-+			text.WriteString(c.Text)
-+		case provider.ChunkToolCallStart, provider.ChunkToolCallArgsDelta:
-+			if tool == nil || c.ToolCall.Name != "" {
-+				tool = c.ToolCall
-+			}
-+		case provider.ChunkToolCall:
-+			tool = c.ToolCall
-+		}
-+	}
-+
-+	// Request wire shape
-+	if gotReq == nil {
-+		t.Fatal("server saw no request")
-+	}
-+	if got := gotReq.Header.Get("User-Agent"); got != provider.OpenCodeUserAgent {
-+		t.Errorf("User-Agent = %q", got)
-+	}
-+	for _, k := range []string{"x-opencode-client", "x-opencode-project", "x-opencode-session", "x-opencode-request"} {
-+		if got := gotReq.Header.Get(k); got == "" {
-+			t.Errorf("missing header %s", k)
-+		}
-+	}
-+	if got := gotReq.Header.Get("x-opencode-request"); got == "" || len(got) != 30 || got[:4] != "msg_" {
-+		t.Errorf("x-opencode-request = %q, want fresh msg_ ID (v1.18.31)", got)
-+	}
-+	for _, k := range []string{"x-session-affinity", "x-session-id"} {
-+		if got := gotReq.Header.Get(k); got != "" {
-+			t.Errorf("header %s = %q, want absent on opencode path (v1.18.31)", k, got)
-+		}
-+	}
-+	var wire struct {
-+		Keys []string
-+	}
-+	var top map[string]any
-+	if err := json.Unmarshal(gotBody, &top); err != nil {
-+		t.Fatalf("body: %v", err)
-+	}
-+	var order []string
-+	for k := range top {
-+		order = append(order, k)
-+	}
-+	_ = wire
-+	if len(top) == 0 {
-+		t.Error("empty body")
-+	}
-+	fmt.Printf("  body keys: %v\n", order)
-+
-+	// Stream output
-+	if text.String() != "完成" {
-+		t.Errorf("text = %q, want 完成", text.String())
-+	}
-+	if tool == nil || tool.Name != "bash" || tool.Arguments != `{"command":"echo 中文"}` {
-+		t.Errorf("tool = %+v, want bash with UTF-8 args", tool)
-+	} else {
-+		fmt.Printf("  tool parsed OK: %s %s\n", tool.Name, tool.Arguments)
-+	}
-+}
-+
-+// TestOpencodeBodyKeyOrder pins the exact wire key order against the v1 CLI
-+// source (openai-chat.ts fromRequest, v1.18.31): model, messages, tools, tool_choice,
-+// stream, stream_options, max_completion_tokens, temperature, store,
-+// prompt_cache_key. Unset keys are dropped like the CLI's JSON.stringify
-+// dropping undefined. In particular the output budget travels as
-+// max_completion_tokens (zen is not in the legacy max_tokens list) and never
-+// as max_tokens.
-+func TestOpencodeBodyKeyOrder(t *testing.T) {
-+	temp := 0.7
-+	raw, err := marshalOpenCodeRequest("ses_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", chatRequest{
-+		Model:               "qwen/qwen3-max",
-+		Messages:            []chatMessage{{Role: "user", Content: "hi"}},
-+		Tools:               []chatTool{{Type: "function", Function: chatFunction{Name: "bash"}}},
-+		ToolChoice:          "auto",
-+		Stream:              true,
-+		StreamOptions:       &streamOptions{IncludeUsage: true},
-+		MaxCompletionTokens: 32000,
-+		Temperature:         &temp,
-+	})
-+	if err != nil {
-+		t.Fatalf("marshal: %v", err)
-+	}
-+	body := string(raw)
-+	wantOrder := []string{"model", "messages", "tools", "tool_choice", "stream", "stream_options",
-+		"max_completion_tokens", "temperature", "store", "prompt_cache_key"}
-+	last := -1
-+	for _, k := range wantOrder {
-+		idx := strings.Index(body, `"`+k+`"`)
-+		if idx < 0 {
-+			t.Fatalf("body missing key %q: %s", k, body)
-+		}
-+		if idx < last {
-+			t.Fatalf("key %q out of order: %s", k, body)
-+		}
-+		last = idx
-+	}
-+	for _, absent := range []string{`"max_tokens"`, `"reasoning_effort"`, `"thinking"`, `"top_p"`} {
-+		if strings.Contains(body, absent+":") {
-+			t.Fatalf("body must not contain %s: %s", absent, body)
-+		}
-+	}
-+
-+	// Omit path (the opencode provider itself): store dropped like the CLI.
-+	raw, err = marshalOpenCodeRequest("ses_005e126cdffeuWNYZDAFCJK61s", chatRequest{
-+		Model:             "qwen/qwen3-max",
-+		Messages:          []chatMessage{{Role: "user", Content: "hi"}},
-+		Stream:            true,
-+		StreamOptions:     &streamOptions{IncludeUsage: true},
-+		OpencodeOmitStore: true,
-+	})
-+	if err != nil {
-+		t.Fatalf("marshal: %v", err)
-+	}
-+	var top map[string]any
-+	if err := json.Unmarshal(raw, &top); err != nil {
-+		t.Fatalf("body: %v", err)
-+	}
-+	for k := range map[string]bool{"model": true, "messages": true, "stream": true, "stream_options": true, "prompt_cache_key": true} {
-+		if _, ok := top[k]; !ok {
-+			t.Errorf("default body missing key %q: %s", k, raw)
-+		}
-+	}
-+	for k := range top {
-+		switch k {
-+		case "model", "messages", "stream", "stream_options", "prompt_cache_key":
-+		default:
-+			t.Errorf("default body has unexpected key %q: %s", k, raw)
-+		}
-+	}
-+	if top["prompt_cache_key"] != "ses_005e126cdffeuWNYZDAFCJK61s" {
-+		t.Errorf("prompt_cache_key = %v, want whole session ID", top["prompt_cache_key"])
-+	}
-+}
-+
-+// TestOpenCodeOmitsStore mirrors detectSupportsStore(): only the opencode
-+// provider itself (by name, or any name on an opencode.ai host) omits store;
-+// custom names on other hosts (zenmux, capture proxies) send store:false.
-+func TestOpenCodeOmitsStore(t *testing.T) {
-+	cases := []struct {
-+		name, baseURL string
-+		want          bool
-+	}{
-+		{"opencode", "https://opencode.ai/zen/v1", true},
-+		{"Opencode", "https://zenmux.ai/api/v1", true},
-+		{"custom-name", "https://opencode.ai/zen/v1/chat/completions", true},
-+		{"custom-name", "https://zenmux.ai/api/v1/chat/completions", false},
-+		{"custom-name", "http://127.0.0.1:8080/zen/v1/chat/completions", false},
-+		{"opencode-go", "https://opencode.ai/zen/go/v1", true},
-+		{"other", "https://api.deepseek.com", false},
-+		{"", "::not-a-url::", false},
-+	}
-+	for _, tc := range cases {
-+		if got := openCodeOmitsStore(tc.name, tc.baseURL); got != tc.want {
-+			t.Errorf("openCodeOmitsStore(%q, %q) = %v, want %v", tc.name, tc.baseURL, got, tc.want)
-+		}
-+	}
-+}
-+
-+// TestOpenCodeCacheKey mirrors model-request.ts promptCacheKey(): only legacy
-+// 64-hex session IDs shed the ses_ prefix.
-+func TestOpenCodeCacheKey(t *testing.T) {
-+	legacy := "ses_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-+	if got := openCodeCacheKey(legacy); got != legacy[4:] {
-+		t.Errorf("legacy cache key = %q, want prefix stripped", got)
-+	}
-+	for _, whole := range []string{
-+		"ses_005e126cdffeuWNYZDAFCJK61s",
-+		"ses_0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef",
-+		"other",
-+		"",
-+	} {
-+		if got := openCodeCacheKey(whole); got != whole {
-+			t.Errorf("openCodeCacheKey(%q) = %q, want unchanged", whole, got)
-+		}
 +	}
 +}
 diff --git a/internal/provider/openai/output_budget.go b/internal/provider/openai/output_budget.go
@@ -3064,12 +2638,48 @@ index bf3aca8..c4470b2 100644
 +	}
  	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
  }
+diff --git a/internal/provider/openai/tool_search_wire.go b/internal/provider/openai/tool_search_wire.go
+index c172869..91fffb2 100644
+--- a/internal/provider/openai/tool_search_wire.go
++++ b/internal/provider/openai/tool_search_wire.go
+@@ -2,8 +2,9 @@ package openai
+ 
+ import "reasonix/internal/provider"
+ 
+-func encodeChatTools(req provider.Request, mimo bool) []chatTool {
++func encodeChatTools(req provider.Request, mimo bool, name, baseURL string) []chatTool {
+ 	var tools []chatTool
++	names := make([]string, 0, len(req.Tools))
+ 	for _, t := range req.Tools {
+ 		parameters := t.Parameters
+ 		if len(parameters) == 0 {
+@@ -15,6 +16,20 @@ func encodeChatTools(req provider.Request, mimo bool) []chatTool {
+ 		item := chatTool{Type: "function", Function: chatFunction{Name: t.Name, Description: t.Description, Parameters: parameters, Strict: t.Strict}}
+ 		item.DeferLoading = t.Deferred
+ 		tools = append(tools, item)
++		names = append(names, t.Name)
++	}
++	// The zen free-tier gate requires an opencode-native `read` tool. Emit the
++	// local read_file a second time under that name; calls come back as `read`
++	// and are mapped back in parseToolCall, so execution is unaffected.
++	if provider.OpencodeReadAliasNeeded(name, baseURL, names) {
++		for i := range tools {
++			if tools[i].Function.Name == "read_file" {
++				alias := tools[i]
++				alias.Function.Name = provider.OpencodeReadWireName
++				tools = append(tools, alias)
++				break
++			}
++		}
+ 	}
+ 	return tools
+ }
 diff --git a/internal/provider/opencode_cli.go b/internal/provider/opencode_cli.go
 new file mode 100644
-index 0000000..c3089d7
+index 0000000..2b7ff52
 --- /dev/null
 +++ b/internal/provider/opencode_cli.go
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,303 @@
 +package provider
 +
 +import (
@@ -3339,9 +2949,43 @@ index 0000000..c3089d7
 +	}
 +	return string(out)
 +}
++
++// OpencodeReadWireName is the opencode-native tool name the zen free-tier
++// gate requires alongside `bash`. The local implementation is read_file.
++const OpencodeReadWireName = "read"
++
++const opencodeReadLocalName = "read_file"
++
++// OpencodeReadAliasNeeded reports whether to also emit the local read_file
++// tool under the opencode-native `read` name: opencode endpoint, read_file
++// present, no `read` already listed. Extra tools are ignored by the gate.
++func OpencodeReadAliasNeeded(name, baseURL string, names []string) bool {
++	if !IsOpenCode(name, baseURL) {
++		return false
++	}
++	hasRead, hasReadFile := false, false
++	for _, n := range names {
++		if n == OpencodeReadWireName {
++			hasRead = true
++		}
++		if n == opencodeReadLocalName {
++			hasReadFile = true
++		}
++	}
++	return hasReadFile && !hasRead
++}
++
++// UnaliasOpencodeTool maps the wire alias back to the local implementation
++// so aliased calls execute against the real tool. Unknown names pass through.
++func UnaliasOpencodeTool(name string) string {
++	if name == OpencodeReadWireName {
++		return opencodeReadLocalName
++	}
++	return name
++}
 diff --git a/internal/provider/opencode_cli_test.go b/internal/provider/opencode_cli_test.go
 new file mode 100644
-index 0000000..5315dfa
+index 0000000..530d61f
 --- /dev/null
 +++ b/internal/provider/opencode_cli_test.go
 @@ -0,0 +1,110 @@
@@ -3637,242 +3281,6 @@ index 3454610..db5904c 100644
  					item["id"] = message.ReasoningID
  				}
  				if message.ReasoningStatus != "" {
-diff --git a/internal/provider/responses/opencode_summary_test.go b/internal/provider/responses/opencode_summary_test.go
-new file mode 100644
-index 0000000..905b85f
---- /dev/null
-+++ b/internal/provider/responses/opencode_summary_test.go
-@@ -0,0 +1,230 @@
-+package responses
-+
-+import (
-+	"context"
-+	"encoding/json"
-+	"io"
-+	"net/http"
-+	"net/http/httptest"
-+	"strings"
-+	"testing"
-+	"time"
-+
-+	"reasonix/internal/provider"
-+)
-+
-+// muse-spark encrypts raw reasoning: the Console returns visible thinking
-+// only when the request asks for a summary (live-probed 2026-09-05: effort
-+// alone yields encrypted_content with an empty summary list and no
-+// reasoning_summary deltas; summary:auto streams them). These tests pin the
-+// opencode request shape and the stateless replay rule (prior-turn ids are
-+// unresolvable without previous_response_id: 400 "not found or has expired").
-+
-+func TestOpencodeReasoningRequestsSummary(t *testing.T) {
-+	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free", Effort: "xhigh"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-+	reasoning, ok := body["reasoning"].(map[string]any)
-+	if !ok {
-+		t.Fatalf("reasoning missing: %#v", body)
-+	}
-+	if reasoning["effort"] != "xhigh" || reasoning["summary"] != "auto" {
-+		t.Fatalf("reasoning = %#v, want {effort:xhigh summary:auto}", reasoning)
-+	}
-+	include, ok := body["include"].([]string)
-+	if !ok || len(include) != 1 || include[0] != "reasoning.encrypted_content" {
-+		t.Fatalf("include = %#v, want [reasoning.encrypted_content]", body["include"])
-+	}
-+}
-+
-+func TestNonOpencodeReasoningUnchanged(t *testing.T) {
-+	client := New(Config{Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash", Effort: "high"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-+	reasoning, ok := body["reasoning"].(map[string]any)
-+	if !ok {
-+		t.Fatalf("reasoning missing: %#v", body)
-+	}
-+	if len(reasoning) != 1 || reasoning["effort"] != "high" {
-+		t.Fatalf("reasoning = %#v, want effort-only", reasoning)
-+	}
-+	if _, ok := body["include"]; ok {
-+		t.Fatalf("include leaked to non-opencode request: %#v", body)
-+	}
-+}
-+
-+func TestOpencodeNoEffortSendsNoReasoning(t *testing.T) {
-+	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-+	if _, ok := body["reasoning"]; ok {
-+		t.Fatalf("reasoning sent without effort: %#v", body)
-+	}
-+}
-+
-+func replayFixture() []provider.Message {
-+	return []provider.Message{
-+		{Role: provider.RoleUser, Content: "first"},
-+		{Role: provider.RoleAssistant, Content: "answer", ReasoningContent: "think", ReasoningID: "rs_prior", ReasoningStatus: "completed"},
-+		{Role: provider.RoleUser, Content: "second"},
-+	}
-+}
-+
-+func findReasoningItem(t *testing.T, body map[string]any) map[string]any {
-+	t.Helper()
-+	items, ok := body["input"].([]map[string]any)
-+	if !ok {
-+		t.Fatalf("input = %#v", body["input"])
-+	}
-+	for _, item := range items {
-+		if item["type"] == "reasoning" {
-+			return item
-+		}
-+	}
-+	t.Fatalf("no reasoning item in %#v", items)
-+	return nil
-+}
-+
-+func TestStatelessReplayOmitsReasoningID(t *testing.T) {
-+	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free", Mode: "stateless", Effort: "xhigh"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: replayFixture()})
-+	item := findReasoningItem(t, body)
-+	if _, ok := item["id"]; ok {
-+		t.Fatalf("stateless replay must omit reasoning id: %#v", item)
-+	}
-+	if item["summary"] == nil {
-+		t.Fatalf("stateless replay must keep summary: %#v", item)
-+	}
-+}
-+
-+// Raw replayed items kept their provider-issued id even on stateless
-+// requests: the Console 400s them with "Referenced reasoning item ... was
-+// not found or has expired" (muse-spark-1.3-contributor-free, live 2026-09).
-+// The omit rule now covers raw items too; summary/encrypted_content survive.
-+func TestStatelessReplayOmitsRawReasoningID(t *testing.T) {
-+	raw := json.RawMessage(`{"id":"rs_prior","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"prior thought"}],"encrypted_content":"opaque-prior"}`)
-+	msgs := []provider.Message{
-+		{Role: provider.RoleUser, Content: "first"},
-+		{Role: provider.RoleAssistant, Content: "answer", ResponsesItems: []json.RawMessage{raw}},
-+		{Role: provider.RoleUser, Content: "second"},
-+	}
-+	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free", Mode: "stateless", Effort: "xhigh"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: msgs})
-+	item := findReasoningItem(t, body)
-+	if _, ok := item["id"]; ok {
-+		t.Fatalf("stateless replay must omit raw reasoning id: %#v", item)
-+	}
-+	encoded, _ := json.Marshal(item)
-+	if !strings.Contains(string(encoded), "opaque-prior") || !strings.Contains(string(encoded), "prior thought") {
-+		t.Fatalf("stateless replay must keep blob+summary: %s", encoded)
-+	}
-+}
-+
-+func TestNonOpencodeReplayKeepsRawReasoningID(t *testing.T) {
-+	raw := json.RawMessage(`{"id":"rs_prior","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"prior thought"}]}`)
-+	msgs := []provider.Message{
-+		{Role: provider.RoleAssistant, Content: "answer", ResponsesItems: []json.RawMessage{raw}},
-+	}
-+	client := New(Config{Name: "deepseek", BaseURL: "https://api.deepseek.com", Model: "deepseek-v4", Mode: "stateless", Effort: "high"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: msgs})
-+	item := findReasoningItem(t, body)
-+	if item["id"] != "rs_prior" {
-+		t.Fatalf("non-opencode replay must keep raw reasoning id: %#v", item)
-+	}
-+}
-+
-+func TestStatefulReplayKeepsReasoningID(t *testing.T) {
-+	client := New(Config{Name: "opencode-responses", BaseURL: "https://opencode.ai/zen/v1", Model: "muse-spark-1.3-contributor-free", Mode: "stateful", Effort: "xhigh"}).(*client)
-+	body, _, _ := client.buildRequestBody(provider.Request{Messages: replayFixture()})
-+	item := findReasoningItem(t, body)
-+	if item["id"] != "rs_prior" {
-+		t.Fatalf("stateful replay must keep reasoning id: %#v", item)
-+	}
-+}
-+
-+func TestSummaryDeltasStreamAsReasoningChunks(t *testing.T) {
-+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-+		writeEvents(w,
-+			`{"type":"response.output_item.added","item":{"id":"rs_1","type":"reasoning"}}`,
-+			`{"type":"response.reasoning_summary_text.delta","item_id":"rs_1","content_index":0,"delta":"summarizing"}`,
-+			`{"type":"response.reasoning_summary_text.done","item_id":"rs_1","content_index":0,"text":"summarizing"}`,
-+			`{"type":"response.output_text.delta","item_id":"msg_1","content_index":0,"delta":"hi"}`,
-+			`{"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":10,"output_tokens":4,"total_tokens":14}}}`,
-+		)
-+	}))
-+	defer server.Close()
-+
-+	p := New(Config{Name: "opencode-responses", APIKey: "key", BaseURL: server.URL, Model: "muse-spark", Mode: "stateless", Effort: "xhigh", Extra: map[string]any{"supported_efforts": []string{"minimal", "low", "medium", "high", "xhigh"}}})
-+	chunks := collect(t, p, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
-+	var reasoning string
-+	for _, chunk := range chunks {
-+		if chunk.Type == provider.ChunkReasoning {
-+			reasoning += chunk.Text
-+		}
-+	}
-+	if reasoning != "summarizing" {
-+		t.Fatalf("reasoning chunks = %q, want %q", reasoning, "summarizing")
-+	}
-+}
-+
-+func TestOpencodeResponsesWireIdentity(t *testing.T) {
-+	var gotReq *http.Request
-+	var gotBody []byte
-+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-+		gotReq = r
-+		gotBody, _ = io.ReadAll(r.Body)
-+		w.Header().Set("Content-Type", "application/json")
-+		w.WriteHeader(http.StatusBadRequest)
-+		_, _ = w.Write([]byte(`{"error":{"message":"capture-only"}}`))
-+	}))
-+	defer server.Close()
-+
-+	p := New(Config{Name: "opencode-responses", APIKey: "public", BaseURL: server.URL + "/zen/v1", Model: "muse-spark-1.3-contributor-free", Mode: "stateless", Effort: "xhigh", Extra: map[string]any{"supported_efforts": []string{"minimal", "low", "medium", "high", "xhigh"}}})
-+	client, ok := p.(*client)
-+	if !ok {
-+		t.Fatal("provider is not a responses client")
-+	}
-+	if !client.opencode || client.opencodeSession == "" {
-+		t.Fatal("opencode Zen responses client must carry a session identity")
-+	}
-+	transport, ok := client.http.Transport.(*http.Transport)
-+	if !ok || transport.DialTLSContext == nil {
-+		t.Fatal("opencode Zen responses client must use the CLI TLS fingerprint dialer")
-+	}
-+
-+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-+	defer cancel()
-+	if _, err := p.Stream(ctx, provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}}); err == nil {
-+		t.Fatal("capture server must fail the request")
-+	}
-+	if gotReq == nil {
-+		t.Fatal("server saw no request")
-+	}
-+	if got := gotReq.Header.Get("User-Agent"); got != provider.OpenCodeUserAgent {
-+		t.Errorf("User-Agent = %q", got)
-+	}
-+	for key, want := range map[string]string{
-+		"x-opencode-client":  "cli",
-+		"x-opencode-project": client.opencodeProject,
-+		"x-opencode-session": client.opencodeSession,
-+	} {
-+		if got := gotReq.Header.Get(key); got != want {
-+			t.Errorf("header %s = %q, want %q", key, got, want)
-+		}
-+	}
-+	if got := gotReq.Header.Get("x-opencode-request"); got == "" || len(got) != 30 || got[:4] != "msg_" {
-+		t.Errorf("x-opencode-request = %q, want fresh msg_ ID (v1.18.31)", got)
-+	}
-+	for _, key := range []string{"x-session-affinity", "x-session-id"} {
-+		if got := gotReq.Header.Get(key); got != "" {
-+			t.Errorf("header %s = %q, want absent on opencode path (v1.18.31)", key, got)
-+		}
-+	}
-+	var body map[string]any
-+	if err := json.Unmarshal(gotBody, &body); err != nil {
-+		t.Fatalf("decode request body: %v", err)
-+	}
-+	if body["store"] != false {
-+		t.Errorf("store = %v, want false", body["store"])
-+	}
-+	if body["prompt_cache_key"] != client.opencodeSession {
-+		t.Errorf("prompt_cache_key = %v, want the session ID", body["prompt_cache_key"])
-+	}
-+}
 diff --git a/internal/provider/responses/reasoning_snapshots.go b/internal/provider/responses/reasoning_snapshots.go
 index 3a805c7..bd62c1f 100644
 --- a/internal/provider/responses/reasoning_snapshots.go
@@ -3922,7 +3330,7 @@ index 7f70b37..bea7982 100644
  	var got, want any
  	_ = json.Unmarshal(encoded, &got)
 diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
-index df43b71..4bb1ad4 100644
+index df43b71..5f7ba7f 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
 @@ -95,6 +95,9 @@ type client struct {
@@ -3935,7 +3343,7 @@ index df43b71..4bb1ad4 100644
  	caps                               vendorCapabilities
  	sessionCache                       bool
  	search                             provider.SearchPolicy
-@@ -147,17 +149,31 @@ func New(cfg Config) provider.Provider {
+@@ -147,17 +150,31 @@ func New(cfg Config) provider.Provider {
  	// Official DeepSeek image input is pinned to one SKU. Ignore metadata or
  	// Extra["vision"] for Flash/Pro.
  	vision = openai.DeepSeekImageInputAllowed(vendor == "deepseek", cfg.RequestURL, cfg.Model, cfg.ModelInfo != nil, vision)
@@ -3971,7 +3379,7 @@ index df43b71..4bb1ad4 100644
  	requestURL := strings.TrimSpace(cfg.RequestURL)
  	if requestURL == "" {
  		requestURL = baseURL + "/responses"
-@@ -184,6 +198,7 @@ func New(cfg Config) provider.Provider {
+@@ -184,6 +201,7 @@ func New(cfg Config) provider.Provider {
  		reasoning: ReasoningForConfig(provider.Config{BaseURL: cfg.BaseURL, Model: cfg.Model, Extra: cfg.Extra}),
  		baseURL:   baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
  		vendor: vendor, caps: cap, mode: cfg.mode(), sessionCache: sessionCache, search: provider.SearchPolicy{NativeEnabled: cfg.WebSearch, ClientEnabled: clientWebSearch}, maxOutputTokens: maxOutputTokens,
@@ -3979,7 +3387,7 @@ index df43b71..4bb1ad4 100644
  		vision:    vision,
  		modelInfo: modelInfo,
  		http:      httpClient, idleTimeout: defaultStreamIdleTimeout,
-@@ -264,6 +279,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -264,6 +282,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  		body, _, wireMessages = c.buildRequestBody(req)
  		resp, err = c.send(requestCtx, body)
  	}
@@ -3998,9 +3406,14 @@ index df43b71..4bb1ad4 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -286,6 +313,9 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -284,8 +314,13 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+ 			return nil, err
+ 		}
  		req.Header.Set("Content-Type", "application/json")
- 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
++		if !(c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey), "public")) {
++			req.Header.Set("Authorization", "Bearer "+c.apiKey)
++		}
  		provider.ApplyOpenCodeGoHeaders(req, c.baseURL, c.identityHeaders)
 +		if c.opencode {
 +			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject)
@@ -4008,7 +3421,7 @@ index df43b71..4bb1ad4 100644
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")
  		}
-@@ -305,9 +335,68 @@ func isStalePreviousResponseError(err error) bool {
+@@ -305,6 +340,58 @@ func isStalePreviousResponseError(err error) bool {
  		(strings.Contains(body, "not found") || strings.Contains(body, "invalid") || strings.Contains(body, "expired"))
  }
  
@@ -4067,17 +3480,7 @@ index df43b71..4bb1ad4 100644
  func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, []provider.Message) {
  	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
  	body := map[string]any{"model": c.model, "stream": true}
-+	if c.opencode {
-+		// The CLI always sends these two Responses fields explicitly (live
-+		// opencode capture): store:false keeps the turn stateless and the
-+		// session ID stays the prompt cache key.
-+		body["store"] = false
-+		body["prompt_cache_key"] = c.opencodeSession
-+	}
- 
- 	effort := c.effort
- 	if req.EffortOverride != "" {
-@@ -321,7 +410,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -321,7 +408,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		effort = "none"
  	}
  	if effort != "" {
@@ -4096,7 +3499,7 @@ index df43b71..4bb1ad4 100644
  	}
  	maxOutputTokens := req.MaxTokens
  	if maxOutputTokens == 0 {
-@@ -363,7 +462,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -363,7 +460,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		return body, true, messages
  	}
  
@@ -4105,7 +3508,7 @@ index df43b71..4bb1ad4 100644
  	return body, false, messages
  }
  
-@@ -410,7 +509,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
+@@ -410,7 +507,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
  	payload, _ := json.Marshal(struct {
  		Instructions string           `json:"instructions,omitempty"`
  		Input        []map[string]any `json:"input"`
@@ -4237,6 +3640,48 @@ index 3547d50..5723bd0 100644
  	// MiMo/DeepSeek/unknown endpoints do not define `summary` in their
  	// reasoning-item schema; sending it leaks the reasoning text into an
  	// extra field the server may echo back into the model context (the
+diff --git a/internal/provider/responses/tool_search_wire.go b/internal/provider/responses/tool_search_wire.go
+index a50a79e..2829627 100644
+--- a/internal/provider/responses/tool_search_wire.go
++++ b/internal/provider/responses/tool_search_wire.go
+@@ -2,12 +2,14 @@ package responses
+ 
+ import (
+ 	"encoding/json"
++	"maps"
+ 
+ 	"reasonix/internal/provider"
+ )
+ 
+ func encodeResponsesTools(c *client, req provider.Request) []map[string]any {
+ 	tools := make([]map[string]any, 0, len(req.Tools)+1)
++	names := make([]string, 0, len(req.Tools))
+ 	if c.search.NativeEnabled && !c.search.ClientEnabled {
+ 		tools = append(tools, map[string]any{"type": "web_search"})
+ 	}
+@@ -27,9 +29,22 @@ func encodeResponsesTools(c *client, req provider.Request) []map[string]any {
+ 			item["defer_loading"] = true
+ 		}
+ 		tools = append(tools, item)
++		names = append(names, tool.Name)
+ 	}
+ 	if req.ToolSearch != nil && req.ToolSearch.Enabled && provider.IsFirstPartyOpenAI(c.baseURL) {
+ 		tools = append([]map[string]any{{"type": "tool_search"}}, tools...)
+ 	}
++	// Same opencode-native `read` alias as the chat adapter: a renamed copy
++	// of read_file, mapped back on return.
++	if provider.OpencodeReadAliasNeeded(c.name, c.baseURL, names) {
++		for _, item := range tools {
++			if item["name"] == "read_file" {
++				alias := maps.Clone(item)
++				alias["name"] = provider.OpencodeReadWireName
++				tools = append(tools, alias)
++				break
++			}
++		}
++	}
+ 	return tools
+ }
 diff --git a/internal/provider/responses/vendor.go b/internal/provider/responses/vendor.go
 index 6200e4f..7aca23b 100644
 --- a/internal/provider/responses/vendor.go
@@ -4326,3 +3771,31 @@ index ddfa8e3..6931631 100644
  		{name: "scoped PR", instruction: "Do not modify PR #10. Create a branch and implement the repair."},
  		{name: "scoped product", instruction: "Do not modify Strategy Lab. Commit the Battleboard fix."},
  		{name: "scoped list", instruction: "Do not modify:\n- main\n- PR #10\nCreate feature/fix and commit."},
+diff --git a/internal/tool/builtin/bash_write.go b/internal/tool/builtin/bash_write.go
+index 3bfe98d..85afea7 100644
+--- a/internal/tool/builtin/bash_write.go
++++ b/internal/tool/builtin/bash_write.go
+@@ -14,7 +14,7 @@ import (
+ )
+ 
+ func (bash) Schema() json.RawMessage {
+-	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"run_in_background":{"type":"boolean","description":"Run detached: returns a job id immediately and keeps running across turns (no foreground timeout). Read new output with bash_output, wait with wait, stop it with kill_shell. Use for long-running commands like servers, watchers, or builds you don't need to block on."},"preserve_background_processes":{"type":"boolean","description":"After the shell command exits normally, keep any process-group members it intentionally left behind. Use only for deliberate daemonization, browser/GUI/session launchers such as playwright-cli open, or nohup/disown/setsid; cancellation and timeouts still kill the process group."},"additional_write_dirs":{"type":"array","items":{"type":"string"},"description":"Directories this command must write outside the workspace. Directories only, no globs. Accepts absolute paths, workspace-relative paths, ~, and ${HOME}. Request the smallest set needed; the host will not infer paths from the command text."},"sandbox_permissions":{"type":"string","enum":["workspace-write","danger-full-access"],"description":"Optional per-call permission escalation. Use workspace-write for an authorized write while the session is read-only. danger-full-access is accepted only after a host-recorded denial and explicit authorization."},"justification":{"type":"string","description":"Required when additional_write_dirs or sandbox_permissions is set. Explain why the access is needed."},"denial_id":{"type":"string","description":"Host-issued denial identifier required when retrying with danger-full-access."}},"required":["command"]}`)
++	return json.RawMessage(`{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"run_in_background":{"type":"boolean","description":"Run detached: returns a job id immediately and keeps running across turns (no foreground timeout). Read new output with bash_output, wait with wait, stop it with kill_shell. Use for long-running commands like servers, watchers, or builds you don't need to block on."},"preserve_background_processes":{"type":"boolean","description":"After the shell command exits normally, keep any process-group members it intentionally left behind. Use only for deliberate daemonization, browser/GUI/session launchers such as playwright-cli open, or nohup/disown/setsid; cancellation and timeouts still kill the process group."},"additional_write_dirs":{"type":"array","items":{"type":"string"},"description":"Directories this command must write outside the workspace. Directories only, no globs. Accepts absolute paths, workspace-relative paths, ~, and ${HOME}. Request the smallest set needed; the host will not infer paths from the command text."},"sandbox_permissions":{"type":"string","enum":["workspace-write","danger-full-access"],"description":"Optional per-call permission escalation. Use workspace-write for an authorized write while the session is read-only. danger-full-access is accepted only after a host-recorded denial and explicit authorization."},"justification":{"type":"string","description":"Required when additional_write_dirs is set, when sandbox_permissions is danger-full-access, or when requesting workspace-write from a read-only session. Not needed for workspace-write when the session already allows it. Explain why the access is needed."},"denial_id":{"type":"string","description":"Host-issued denial identifier required when retrying with danger-full-access."}},"required":["command"]}`)
+ }
+ 
+ func (b bash) DeclareWriteAccess(args json.RawMessage) (tool.WriteAccessDeclaration, error) {
+@@ -38,8 +38,12 @@ func validateBashWriteDirs(p bashParams) error {
+ 	if preset != "" && preset != string(permissionpreset.WorkspaceWrite) && preset != string(permissionpreset.DangerFullAccess) {
+ 		return fmt.Errorf("sandbox_permissions must be workspace-write or danger-full-access")
+ 	}
+-	if preset != "" && strings.TrimSpace(p.Justification) == "" {
+-		return fmt.Errorf("justification is required when sandbox_permissions is set")
++	// workspace-write without additional_write_dirs is a no-op when the session
++	// already runs at workspace-write or higher (ACP default): allow per config
++	// without forcing a justification. True escalation (read-only -> workspace-write)
++	// is still gated in control.CheckWriteAccess where the session mode is known.
++	if preset == string(permissionpreset.DangerFullAccess) && strings.TrimSpace(p.Justification) == "" {
++		return fmt.Errorf("justification is required when sandbox_permissions is danger-full-access")
+ 	}
+ 	if preset == string(permissionpreset.DangerFullAccess) && strings.TrimSpace(p.DenialID) == "" {
+ 		return fmt.Errorf("denial_id is required when sandbox_permissions is danger-full-access")

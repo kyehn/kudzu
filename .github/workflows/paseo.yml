@@ -53,12 +53,15 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent
+            ~/.pi/agent/sessions
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix
-            ~/.gradle/caches/
-            ~/.gradle/wrapper/
-            ~/.cargo/registry
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/*/transforms
+            ~/.gradle/caches/jars-*
+            ~/.gradle/wrapper/dists
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
             ~/.cargo/git
           key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
           restore-keys: |
@@ -130,17 +133,20 @@ jobs:
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         run: |
           paseo daemon stop
-          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/mcp-state ~/.reasonix/commands ~/.reasonix/AGENTS.md ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/mcp-cache.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
+          rm -rf ~/.reasonix/logs ~/.reasonix/config.toml* ~/.reasonix/.env ~/.reasonix/skills ~/.reasonix/mcp-state ~/.reasonix/state ~/.reasonix/stats ~/.reasonix/commands ~/.reasonix/AGENTS.md ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.pi/agent/AGENTS.md ~/.pi/agent/models-store.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json ~/.pi/agent/mcp-cache.json ~/.pi/agent/npm ~/.pi/agent/skills ~/.pi/agent/extensions
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         uses: actions/cache/save@main
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent
+            ~/.pi/agent/sessions
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix
-            ~/.gradle/caches/
-            ~/.gradle/wrapper/
-            ~/.cargo/registry
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/*/transforms
+            ~/.gradle/caches/jars-*
+            ~/.gradle/wrapper/dists
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
             ~/.cargo/git
           key: ${{ github.workflow }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
