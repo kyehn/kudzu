@@ -2,6 +2,7 @@
   lib,
   linkFarm,
   writeText,
+  formats,
   mcp-nixos,
   context7-mcp,
   uv,
@@ -27,10 +28,6 @@ linkFarm "maki" [
             allowed_models = [
               "opencode-*/*"
               "nvidia-*/*"
-            ];
-            excluded_models = [
-              "openai/*"
-              "anthropic/*"
             ];
             max_retries = 10;
             max_timeout_retries = 15;
