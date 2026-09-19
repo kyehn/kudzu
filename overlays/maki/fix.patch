@@ -140,7 +140,7 @@ index 181fec0..de8491b 100644
          }
 +        if self.slug.as_str() == opencode::ZEN_SLUG {
 +            // Opencode Zen expects the CLI wire identity on the free tier
-+            // (captures in overlays/reasonix/opencode/). The User-Agent
++            // (captures in overlays/maki/opencode/). The User-Agent
 +            // rides along from nix-managed [opencode.headers] and the
 +            // session keeps flowing through the quirk above (hence None
 +            // here); project emulation is deliberately omitted (no repo
@@ -304,7 +304,7 @@ index 0333c43..3ac542d 100644
  }
  
 +/// TLS 1.2 cipher suites from the opencode CLI capture
-+/// (overlays/reasonix/opencode/tls-fingerprint.json), OpenSSL names in wire
++/// (overlays/maki/opencode/tls-fingerprint.json), OpenSSL names in wire
 +/// order. Measured effect (local ClientHello probe, /tmp/tlsprobe): the
 +/// fourteen suites land byte-identical to the capture; the backend keeps its
 +/// own TLS 1.3 head order plus a trailing renegotiation SCSV, which curl's
