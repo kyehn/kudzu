@@ -28,7 +28,7 @@ jobs:
           nix flake update
       - uses: ./.github/actions/install-config
       - run: |
-          nix run nixpkgs#nix-update -- --build reasonix --flake
+          nix run nixpkgs#nix-update -- --build maki --flake
           nix run nixpkgs#nix-update -- --build --version=branch fast-nix-gc --flake
           nix fmt
           git add .

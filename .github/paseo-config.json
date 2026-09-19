@@ -3,10 +3,10 @@
 	"version": 1,
 	"agents": {
 		"providers": {
-			"reasonix": {
+			"Maki": {
 				"extends": "acp",
-				"label": "Reasonix",
-				"command": ["reasonix", "acp"]
+				"label": "Maki",
+				"command": ["maki", "acp", "--yolo"]
 			}
 		}
 	},
