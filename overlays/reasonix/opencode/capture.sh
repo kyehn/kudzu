@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Capture real opencode zen wire data for overlays/maki/opencode/.
+# Capture real opencode zen wire data for overlays/reasonix/opencode/.
 #
 # What this does, end to end:
 #   1. starts a mitmproxy CONNECT proxy on 127.0.0.1:8897
@@ -10,7 +10,7 @@
 #      so both zen wires get real captures
 #   4. saves the raw original request/response pairs + TLS fingerprint
 #
-# Raw original data only — no notes, no processing (per overlays/maki/README).
+# Raw original data only — no notes, no processing (per overlays/reasonix/README).
 # Custom attributes follow OpenTelemetry field naming + RFC original HTTP/TLS fields.
 #
 # Prerequisites:
@@ -18,7 +18,7 @@
 #   pip install mitmproxy
 #
 # Usage:
-#   cd overlays/maki/opencode && ./capture.sh
+#   cd overlays/reasonix/opencode && ./capture.sh
 #
 # Output files (written next to this script unless OUT_DIR is set):
 #   chat-completions.json       — chat-completions wire (mimo-v2.5-free)

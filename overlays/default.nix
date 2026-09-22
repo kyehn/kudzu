@@ -9,8 +9,6 @@ final: prev: {
   pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
-  maki-config = prev.callPackage ./maki/config.nix { };
-  maki = prev.callPackage ./maki { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
