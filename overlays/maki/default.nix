@@ -6,6 +6,7 @@
   perl,
   python3,
   openssl,
+  versionCheckHook,
 }:
 
 rustPlatform.buildRustPackage (finalAttrs: {
@@ -15,7 +16,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   src = fetchFromGitHub {
     owner = "tontinton";
     repo = "maki";
-    rev = "v${finalAttrs.version}";
+    tag = "v${finalAttrs.version}";
     hash = "sha256-6IEdSMLeL0dmDynBS3qCEPxrW8wN/FyJDgojjqmZn7g=";
   };
 
@@ -29,27 +30,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
     python3
   ];
 
-  buildInputs = [
-    openssl
-  ];
+  buildInputs = [ openssl ];
 
-  # isahc pulls openssl-sys with `static-ssl`, which would compile a vendored
-  # OpenSSL from source. Point it at nixpkgs openssl instead (same as the
-  # upstream devShell's OPENSSL_NO_VENDOR=1).
   env.OPENSSL_NO_VENDOR = "1";
 
   doInstallCheck = true;
 
-  installCheckPhase = ''
-    runHook preInstallCheck
-    "$out/bin/maki" --version
-    runHook postInstallCheck
-  '';
+  nativeInstallCheckInputs = [ versionCheckHook ];
 
-  meta = {
-    description = "AI coding agent with native Rust TUI";
-    homepage = "https://maki.sh";
-    license = lib.licenses.mit;
-    mainProgram = "maki";
-  };
+  meta.mainProgram = "maki";
 })

@@ -14,9 +14,7 @@ writeText "settings.json" (
     };
     packages = [
       "npm:pi-background-tasks"
-      "npm:pi-subagents"
       "npm:@dietrichgebert/ponytail"
-      "npm:pi-goal-list-loop-audit"
       "npm:context-mode"
       "npm:@cortexkit/pi-magic-context"
       "npm:pi-mcp-adapter"
