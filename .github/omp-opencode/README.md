@@ -1,0 +1,5 @@
+- 参考 `overlays/maki/README.md` 中对 opencode 模拟的要求
+- 只显示免费的 opencode-zen 模型（与宿主 catalog 同源，无漂移）
+- 只有一个 `opencode` provider，没有重复
+- 使用 omp 原生 API：`registerProvider` + 自定义 `streamSimple`，`api` 用自定义名（omp 保留内置 API 名，见 `Cannot register custom API` 校验）
+- 模型路由（completions/responses/anthropic）与 `baseUrl` 全部取自 `@oh-my-pi/pi-catalog`，与 `omp` 内置 `opencode-zen` 同源

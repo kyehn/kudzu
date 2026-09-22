@@ -11,18 +11,21 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 	streamSimple,
-} from "@earendil-works/pi-ai/compat";
-import { OPENCODE_MODELS } from "@earendil-works/pi-ai/providers/opencode.models";
+} from "@oh-my-pi/pi-ai";
+import catalog from "@oh-my-pi/pi-catalog/models.json";
 import type {
 	ExtensionAPI,
 	ProviderConfig,
 	ProviderModelConfig,
-} from "@earendil-works/pi-coding-agent";
+} from "@oh-my-pi/pi-coding-agent";
 
 // Makes Zen requests indistinguishable from the opencode CLI on the wire:
 // per-endpoint User-Agent plus x-opencode-project/session/request headers.
 // Wire captures live in overlays/maki/opencode/ (opencode-ai 1.18.31).
+// Model routing comes from the host catalog (@oh-my-pi/pi-catalog), so it
+// can never drift from omp's own opencode-zen definitions.
 
+const ZEN_ORIGIN = "https://opencode.ai/zen";
 const BASE_URL = "https://opencode.ai/zen/v1";
 const API_KEY = "public";
 const OPENCODE_VERSION = "1.18.31";
@@ -38,13 +41,28 @@ type EndpointApi =
 	| "openai-responses";
 
 function userAgentFor(api: EndpointApi): string {
-	return api === "openai-completions"
-		? USER_AGENT_OPENAI
-		: USER_AGENT_RESPONSES;
+	return api === "openai-completions" ? USER_AGENT_OPENAI : USER_AGENT_RESPONSES;
 }
 
-const RANDOM_CHARS =
-	"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+interface ZenCatalogEntry {
+	id: string;
+	name: string;
+	api: EndpointApi;
+	baseUrl: string;
+	reasoning: boolean;
+	thinking?: ProviderModelConfig["thinking"];
+	input: Array<"text" | "image">;
+	cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+	contextWindow: number;
+	maxTokens: number;
+	compat?: ProviderModelConfig["compat"];
+}
+
+const ZEN_CATALOG = (catalog as unknown as Record<string, Record<string, ZenCatalogEntry>>)[
+	"opencode-zen"
+];
+
+const RANDOM_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 let lastTimestamp = 0;
 let counter = 0;
@@ -72,7 +90,7 @@ function identifier(descending: boolean): string {
 	);
 }
 
-// One descending ses_ id per pi session, reused as prompt_cache_key;
+// One descending ses_ id per omp session, reused as prompt_cache_key;
 // each request carries a fresh ascending msg_ id.
 let sessionId = `ses_${identifier(true)}`;
 
@@ -177,51 +195,47 @@ function stripStainlessFetch(
 	}) as typeof globalThis.fetch;
 }
 
-function isFreeModel(id: string): boolean {
-	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
-	if (!model) return false;
-	return (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0;
+function isFreeModel(entry: ZenCatalogEntry): boolean {
+	return entry.cost.input === 0 && entry.cost.output === 0;
 }
 
-// Extension routing only calls streamSimple when model.api matches the
-// provider default, so the real per-model endpoint lives in this map.
-const endpoints = new Map<string, EndpointApi>();
+// Extension routing calls streamSimple with the provider-level custom api,
+// so the real per-model endpoint lives in this map, filled from the host
+// catalog at registration time.
+const endpoints = new Map<string, { api: EndpointApi; baseUrl: string; compat: unknown }>();
 
-function resolveEndpoint(modelId: string): EndpointApi {
-	const api = endpoints.get(modelId);
-	if (!api) {
+function resolveEndpoint(modelId: string): {
+	api: EndpointApi;
+	baseUrl: string;
+	compat: unknown;
+} {
+	const endpoint = endpoints.get(modelId);
+	if (!endpoint) {
 		throw new Error(
 			`opencode model ${modelId} was never registered; refusing to guess the endpoint`,
 		);
 	}
-	return api;
+	return endpoint;
 }
 
-function buildModelConfig(id: string): ProviderModelConfig {
-	const model = OPENCODE_MODELS[id as keyof typeof OPENCODE_MODELS];
-	if (!model) {
+function buildModelConfig(entry: ZenCatalogEntry): ProviderModelConfig {
+	if (!entry.baseUrl.startsWith(ZEN_ORIGIN)) {
 		throw new Error(
-			`opencode model ${id} is not in the built-in catalog; refusing to guess its wire shape`,
-		);
-	}
-	if (model.baseUrl !== BASE_URL) {
-		throw new Error(
-			`opencode model ${id} baseUrl drifted to ${model.baseUrl}; update BASE_URL routing`,
+			`opencode model ${entry.id} baseUrl left ${ZEN_ORIGIN}: ${entry.baseUrl}`,
 		);
 	}
 
-	endpoints.set(id, model.api as EndpointApi);
-	const thinkingLevelMap = (model as Model<Api>).thinkingLevelMap;
+	endpoints.set(entry.id, { api: entry.api, baseUrl: entry.baseUrl, compat: entry.compat });
 	return {
-		id,
-		name: model.name,
-		reasoning: model.reasoning,
-		input: model.input,
-		cost: model.cost,
-		contextWindow: model.contextWindow,
-		maxTokens: model.maxTokens,
-		...(model.compat ? { compat: model.compat } : {}),
-		...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+		id: entry.id,
+		name: entry.name,
+		reasoning: entry.reasoning,
+		...(entry.thinking ? { thinking: entry.thinking } : {}),
+		input: entry.input,
+		cost: entry.cost,
+		contextWindow: entry.contextWindow,
+		maxTokens: entry.maxTokens,
+		...(entry.compat ? { compat: entry.compat } : {}),
 	};
 }
 
@@ -331,15 +345,6 @@ function sanitizeZenContext(context: Context, api?: EndpointApi): Context {
 			const content: typeof message.content = [];
 			for (const block of message.content) {
 				if (block.type === "thinking") {
-					if (block.redacted) {
-						if (!block.thinking || block.thinking.trim() === "") {
-							messageChanged = true;
-							continue;
-						}
-						messageChanged = true;
-						content.push({ type: "text", text: block.thinking });
-						continue;
-					}
 					if (typeof block.thinkingSignature === "string") {
 						const stripped = stripEncryptedSignature(
 							block.thinkingSignature,
@@ -413,43 +418,45 @@ function streamOpencodeZen(
 	context: Context,
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
-	const api = resolveEndpoint(model.id);
-	if (model.baseUrl !== BASE_URL) {
-		throw new Error(
-			`opencode model ${model.id} baseUrl drifted to ${model.baseUrl}; update BASE_URL routing`,
-		);
-	}
+	const endpoint = resolveEndpoint(model.id);
 	const wrappedOptions: SimpleStreamOptions = {
 		...options,
-		headers: { ...options?.headers, ...opencodeHeaders(api) },
-		fetch: stripStainlessFetch(api, options?.fetch),
+		headers: { ...options?.headers, ...opencodeHeaders(endpoint.api) },
+		fetch: stripStainlessFetch(endpoint.api, options?.fetch),
 	};
 	const wrappedModel = {
 		...model,
-		api,
-		baseUrl: BASE_URL,
+		api: endpoint.api,
+		baseUrl: endpoint.baseUrl,
+		compat: endpoint.compat,
 	};
 	return streamSimple(
 		wrappedModel as Model<Api>,
-		sanitizeZenContext(context, api),
+		sanitizeZenContext(context, endpoint.api),
 		wrappedOptions,
 	);
 }
 
 export default async function (pi: ExtensionAPI): Promise<void> {
-	const modelIds = Object.keys(OPENCODE_MODELS).filter(isFreeModel).sort();
-	if (modelIds.length === 0) return;
+	const entries = Object.values(ZEN_CATALOG).filter(isFreeModel);
+	if (entries.length === 0) return;
 	projectId = await resolveProjectId(process.cwd());
 	pi.on("session_start", () => {
 		sessionId = `ses_${identifier(true)}`;
 	});
 
+	// Custom api name: omp reserves the built-in api names for its own
+	// handlers, so a custom streamSimple must register under a new one; the
+	// real per-model endpoint is restored inside streamOpencodeZen.
 	pi.registerProvider("opencode", {
 		baseUrl: BASE_URL,
 		apiKey: API_KEY,
-		api: "openai-completions",
+		api: "opencode" as Api,
 		streamSimple:
 			streamOpencodeZen as unknown as ProviderConfig["streamSimple"],
-		models: modelIds.map((id) => buildModelConfig(id)),
+		models: entries
+			.slice()
+			.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+			.map((entry) => buildModelConfig(entry)),
 	});
 }

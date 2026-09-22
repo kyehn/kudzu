@@ -74,7 +74,7 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.config/maki" "$HOME/.local/state/maki" "$HOME/.local/share/maki"
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/skills" "$HOME/.pi/agent/extensions" "$HOME/.pi/agent/sessions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.local/share/cortexkit/magic-context" "$HOME/.config/maki"
           nix profile add nixpkgs#openspec nixpkgs#rust-analyzer nixpkgs#ktlint nixpkgs#ruff nixpkgs#bun nixpkgs#skills nixpkgs#rtk .#maki
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
@@ -83,6 +83,20 @@ jobs:
           nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm -f /tmp/pi-agent-mcp
           cp -r .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
           pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
+          npm install --global --yes @oh-my-pi/pi-coding-agent@18.2.6
+          pushd .github/omp-opencode && npm install --yes && popd
+          omp plugin install ./.github/omp-opencode
+          npm install --global --yes deepseekharness-acp-interactive@1.3.0
+          mkdir -p ~/.dsh
+          install -m 0644 .github/dsh/settings.yaml ~/.dsh/settings.yaml
+          cat << 'EOF' > ~/.dsh/.credentials.yaml
+          version: 1
+          refs:
+            OPENCODE_PUBLIC: public
+            DEEPSEEK_API_KEY: unused-placeholder
+          EOF
+          chmod 600 ~/.dsh/.credentials.yaml
+          ./.github/dsh/apply-headers-patch.sh
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           npm install --global --yes open-websearch
@@ -104,8 +118,9 @@ jobs:
           }
           EOF
       - run: overlays/maki/providers-config.py
+        working-directory: ${{ github.event.repository.name }}
         env:
-          NVIDIA_API_KEY: secrets.NVIDIA_API_KEY
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}

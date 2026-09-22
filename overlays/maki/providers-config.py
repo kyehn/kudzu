@@ -94,27 +94,26 @@ def main(argv: list[str] | None = None) -> None:
                                 model_config["requires_thinking"] = (
                                     "none" not in effort_values
                                 )
-                                thinking_fields = {}
                                 non_none_values = [
                                     value for value in effort_values if value != "none"
                                 ]
+                                if not model_config.get("thinking_fields"):
+                                    model_config["thinking_fields"] = {}
                                 if "none" in effort_values:
-                                    thinking_fields["off"] = {
+                                    model_config["thinking_fields"]["off"] = {
                                         "reasoning_effort": "none",
                                         "chat_template_kwargs": {
                                             "enable_thinking": False
                                         },
                                     }
                                 if non_none_values:
-                                    thinking_fields["adaptive"] = {
+                                    model_config["thinking_fields"]["adaptive"] = {
                                         "reasoning_effort": non_none_values[-1]
                                     }
                                     for value in non_none_values:
-                                        thinking_fields[value] = {
+                                        model_config["thinking_fields"][value] = {
                                             "reasoning_effort": value
                                         }
-                                model_config["thinking_fields"] = thinking_fields
-                                break
                 input_modalities = (model.get("modalities") or {}).get("input", [])
                 if model.get("attachment") or "image" in input_modalities:
                     model_config["supports_vision"] = True

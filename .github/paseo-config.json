@@ -3,10 +3,18 @@
 	"version": 1,
 	"agents": {
 		"providers": {
-			"Maki": {
+			"maki": {
 				"extends": "acp",
 				"label": "Maki",
 				"command": ["maki", "acp", "--yolo"]
+			},
+			"dsh": {
+				"extends": "acp",
+				"label": "DSH",
+				"command": ["dsh-acp-interactive"]
+			},
+			"omp": {
+				"enabled": true
 			}
 		}
 	},
