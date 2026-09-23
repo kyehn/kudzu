@@ -1,0 +1,625 @@
+diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
+index 3b6280b..bd9c99d 100644
+--- a/maki-providers/src/providers/anthropic/mod.rs
++++ b/maki-providers/src/providers/anthropic/mod.rs
+@@ -27,7 +27,7 @@ use crate::{
+     AgentError, Message, ProviderEvent, ProviderUsage, RequestOptions, StreamResponse, UsageLimit,
+ };
+ 
+-use super::{KeyHeader, KeyPool, KeyRotation, ResolvedAuth, Timeouts};
++use super::{KeyHeader, KeyPool, KeyRotation, ResolvedAuth, Timeouts, opencode_tls};
+ 
+ const API_VERSION: &str = "2023-06-01";
+ const API_ORIGIN: &str = "https://api.anthropic.com";
+@@ -378,13 +378,14 @@ impl Anthropic {
+         let auth = self.auth.lock().unwrap();
+         let base = auth.base_url.as_deref().unwrap_or(API_ORIGIN);
+         let url = format!("{}{path}", origin(base));
+-        auth.configure_request(
++        auth.configure_request(opencode_tls(
++            &auth,
+             Request::builder()
+                 .method(method)
+                 .uri(url)
+                 .header("anthropic-version", API_VERSION)
+                 .header("user-agent", super::user_agent()),
+-        )
++        ))
+     }
+ 
+     async fn do_stream_request(
+diff --git a/maki-providers/src/providers/catalog.rs b/maki-providers/src/providers/catalog.rs
+index 659c231..8249985 100644
+--- a/maki-providers/src/providers/catalog.rs
++++ b/maki-providers/src/providers/catalog.rs
+@@ -29,7 +29,7 @@ use crate::model::{Model, ModelInfo, ModelPricing};
+ use crate::provider::{BoxFuture, Provider};
+ use crate::providers::anthropic::shared;
+ use crate::providers::openai_compat::{OpenAiCompatConfig, OpenAiCompatProvider};
+-use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, user_agent};
++use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, opencode_tls, user_agent};
+ use crate::{AgentError, Message, ProviderEvent, RequestOptions, StreamResponse, dialect};
+ 
+ const MESSAGES_PATH: &str = "/messages";
+@@ -187,6 +187,14 @@ impl ProviderData {
+         mut auth: ResolvedAuth,
+         session_id: Option<&SessionRef>,
+     ) -> ResolvedAuth {
++        if self.slug.as_str() == opencode::ZEN_SLUG {
++            // The Zen free tier speaks the CLI wire identity (see
++            // `ResolvedAuth::configure_request`): the maki nanoID the quirk
++            // below would stamp is a shape the gateway rejects, so it is
++            // never stored for zen — the wire carries a CLI `ses_` instead.
++            auth.opencode_wire = true;
++            return auth;
++        }
+         if let (Some(header), Some(sid)) = (self.quirks.session_header, session_id) {
+             auth.set_header(header, sid.to_string());
+         }
+@@ -766,7 +774,8 @@ impl CatalogTransport {
+                 body["model"] = serde_json::json!(model.id);
+                 body["stream"] = serde_json::json!(true);
+                 let request = auth
+-                    .configure_request(
++                    .configure_request(opencode_tls(
++                        auth,
+                         Request::builder()
+                             .method("POST")
+                             .uri(format!(
+@@ -777,7 +786,7 @@ impl CatalogTransport {
+                             .header("user-agent", user_agent())
+                             .header("content-type", "application/json")
+                             .header("anthropic-version", ANTHROPIC_VERSION),
+-                    )
++                    ))
+                     .body(serde_json::to_vec(&body)?)?;
+                 debug!(model = %model.id, "sending Anthropic-format request via catalog");
+                 let response = self.client.send_async(request).await?;
+@@ -1077,11 +1086,12 @@ mod tests {
+         assert!(matches!(result, Err(AgentError::Config { .. })));
+     }
+ 
+-    #[test_case("opencode",    true,  true  ; "zen_with_session")]
+-    #[test_case("opencode-go", true,  true  ; "go_with_session")]
+-    #[test_case("opencode-go", false, false ; "go_without_session")]
+-    #[test_case("anthropic",   true,  false ; "other_provider_never")]
+-    fn request_auth_sets_opencode_session_header(slug: &str, with_session: bool, expected: bool) {
++    #[test_case("opencode",    true,  true,  false ; "zen_with_session")]
++    #[test_case("opencode",    false, true,  false ; "zen_without_session")]
++    #[test_case("opencode-go", true,  false, true  ; "go_with_session")]
++    #[test_case("opencode-go", false, false, false ; "go_without_session")]
++    #[test_case("anthropic",   true,  false, false ; "other_provider_never")]
++    fn request_auth_zen_wire_flag(slug: &str, with_session: bool, wire: bool, stored: bool) {
+         let data = ProviderData {
+             slug: slug.into(),
+             quirks: quirks_for(slug),
+@@ -1092,12 +1102,20 @@ mod tests {
+             ResolvedAuth::for_test(None, Vec::new()),
+             with_session.then_some(&session),
+         );
++        assert_eq!(auth.opencode_wire, wire);
+         let header = auth
+             .headers
+             .iter()
+             .find(|(key, _)| key == SESSION_HEADER)
+             .map(|(_, value)| value.as_str());
+-        assert_eq!(header, expected.then(|| session.to_string()).as_deref());
++        if slug == opencode::ZEN_SLUG {
++            // Zen never stores the maki nanoID: the wire carries a CLI `ses_`
++            // stamped per request in `configure_request` instead.
++            assert_eq!(header, None);
++        } else {
++            // Everywhere else the quirk passthrough is untouched.
++            assert_eq!(header, stored.then(|| session.to_string()).as_deref());
++        }
+     }
+ 
+     /// Limits are published so nothing under test reads a default; only the
+diff --git a/maki-providers/src/providers/custom.rs b/maki-providers/src/providers/custom.rs
+index 83f5210..f72e36f 100644
+--- a/maki-providers/src/providers/custom.rs
++++ b/maki-providers/src/providers/custom.rs
+@@ -92,6 +92,13 @@ pub fn create(slug: &str, timeouts: Timeouts) -> Result<Box<dyn Provider>, Agent
+         })?;
+     let resolved = resolve_custom_auth(slug)?;
+     let auth = Arc::new(Mutex::new(resolved));
++    // Zen-pointed custom slugs get the CLI wire identity by base URL match;
++    // the flag rides the shared auth into whichever codec (openai, responses,
++    // anthropic, google) serves the request, and `configure_request` stamps
++    // the headers per request. Everything else is byte-identical to before.
++    if super::is_zen_base_url(auth.lock().unwrap().base_url.as_deref()) {
++        auth.lock().unwrap().opencode_wire = true;
++    }
+ 
+     match protocol {
+         Protocol::Anthropic => Ok(Box::new(super::anthropic::Anthropic::with_auth(
+diff --git a/maki-providers/src/providers/google.rs b/maki-providers/src/providers/google.rs
+index f02599d..ea96f1c 100644
+--- a/maki-providers/src/providers/google.rs
++++ b/maki-providers/src/providers/google.rs
+@@ -23,7 +23,9 @@ use crate::{
+     StreamResponse, ThinkingConfig, TokenUsage,
+ };
+ 
+-use super::{KeyHeader, KeyPool, KeyRotation, ResolvedAuth, http_client, next_sse_line};
++use super::{
++    KeyHeader, KeyPool, KeyRotation, ResolvedAuth, http_client, next_sse_line, opencode_tls,
++};
+ 
+ pub(crate) const SLUG: &str = "google";
+ const DISPLAY_NAME: &str = "Google";
+@@ -149,12 +151,13 @@ impl Google {
+ 
+     fn build_request(&self, method: &str, url: &str) -> isahc::http::request::Builder {
+         let auth = self.auth.lock().unwrap();
+-        auth.configure_request(
++        auth.configure_request(opencode_tls(
++            &auth,
+             Request::builder()
+                 .method(method)
+                 .uri(url)
+                 .header("user-agent", super::user_agent()),
+-        )
++        ))
+     }
+ 
+     fn api_key(&self) -> String {
+diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
+index 0333c43..24c32e1 100644
+--- a/maki-providers/src/providers/mod.rs
++++ b/maki-providers/src/providers/mod.rs
+@@ -1,7 +1,7 @@
+ use std::collections::BTreeMap;
+-use std::sync::atomic::{AtomicUsize, Ordering};
++use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+ use std::sync::{Arc, Mutex};
+-use std::time::{Duration, Instant};
++use std::time::{Duration, Instant, SystemTime};
+ 
+ use futures_lite::StreamExt;
+ use futures_lite::io::AsyncBufRead;
+@@ -61,6 +61,134 @@ pub(crate) fn user_agent() -> &'static str {
+     )
+ }
+ 
++/// CLI wire identity for the opencode Zen free tier
++/// (`packages/schema/src/identifier.ts` + `session/llm/request.ts`):
++/// `msg_`/`ses_` + 12 lowercase hex time chars + 14 base62 chars. Packs
++/// `(now_ms << 12 | per_ms_counter)` with the counter starting at 1, exactly
++/// like upstream's `create()`; `ses_` inverts the packed value so it sorts
++/// newest-first, like `descending()`. One sequence shared by both prefixes,
++/// like upstream's single module-level counter.
++static OPENCODE_ID_SEQ: AtomicU64 = AtomicU64::new(0);
++
++/// The base62 tail alphabet (`identifier.ts` `chars`), also the set used to
++/// recognize CLI-shaped session ids.
++pub(crate) const OPENCODE_ID_ALPHABET: &[u8] =
++    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
++
++const OPENCODE_CLIENT_HEADER: &str = "x-opencode-client";
++const OPENCODE_PROJECT_HEADER: &str = "x-opencode-project";
++const OPENCODE_REQUEST_HEADER: &str = "x-opencode-request";
++const OPENCODE_SESSION_HEADER: &str = "x-opencode-session";
++
++fn opencode_random_tail(id: &mut String) {
++    let mut rand = [0u8; 14];
++    if getrandom::fill(&mut rand).is_err() {
++        for b in rand.iter_mut() {
++            *b = fastrand::u8(..);
++        }
++    }
++    for b in rand {
++        id.push(OPENCODE_ID_ALPHABET[(b % 62) as usize] as char);
++    }
++}
++
++fn opencode_id(prefix: &str, descending: bool) -> String {
++    let now_ms = SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .map(|d| d.as_millis() as u64)
++        .unwrap_or(0);
++    let mut seq = OPENCODE_ID_SEQ.load(Ordering::Relaxed);
++    seq = loop {
++        let next = if seq >> 12 == now_ms {
++            seq + 1
++        } else {
++            (now_ms << 12) | 1
++        };
++        match OPENCODE_ID_SEQ.compare_exchange_weak(seq, next, Ordering::Relaxed, Ordering::Relaxed)
++        {
++            Ok(_) => break next,
++            Err(cur) => seq = cur,
++        }
++    };
++    let packed = if descending { !seq } else { seq };
++    let mut id = String::with_capacity(30);
++    id.push_str(prefix);
++    for i in 0..6 {
++        id.push_str(&format!("{:02x}", ((packed >> (40 - 8 * i)) & 0xff) as u8));
++    }
++    opencode_random_tail(&mut id);
++    id
++}
++
++pub(crate) fn opencode_request_id() -> String {
++    opencode_id("msg_", false)
++}
++
++pub(crate) fn opencode_session_id() -> String {
++    opencode_id("ses_", true)
++}
++
++/// TLS 1.2 cipher suites from the opencode CLI capture
++/// (overlays/maki/opencode/tls-fingerprint.json), OpenSSL names in wire
++/// order. The fourteen suites land byte-identical to the capture; the backend
++/// keeps its own TLS 1.3 head order plus a trailing renegotiation SCSV, which
++/// curl's API surface cannot reorder (no TLS 1.3 cipher-list knob in
++/// isahc 1.8.3). ALPN already rides as http/1.1 via the pinned HTTP/1.1
++/// negotiation, matching the capture too. Extension/group/signature ordering
++/// stays the backend's own: strictly closer to the CLI, not JA3 parity.
++pub(crate) const OPENCODE_TLS12_CIPHERS: &[&str] = &[
++    "ECDHE-ECDSA-AES128-GCM-SHA256",
++    "ECDHE-RSA-AES128-GCM-SHA256",
++    "ECDHE-ECDSA-AES256-GCM-SHA384",
++    "ECDHE-RSA-AES256-GCM-SHA384",
++    "ECDHE-ECDSA-CHACHA20-POLY1305",
++    "ECDHE-RSA-CHACHA20-POLY1305",
++    "ECDHE-ECDSA-AES128-SHA",
++    "ECDHE-RSA-AES128-SHA",
++    "ECDHE-ECDSA-AES256-SHA",
++    "ECDHE-RSA-AES256-SHA",
++    "AES128-GCM-SHA256",
++    "AES256-GCM-SHA384",
++    "AES128-SHA",
++    "AES256-SHA",
++];
++
++/// Pin the opencode CLI TLS shape on Zen free-tier requests. No-op for every
++/// other provider: the pin is per-request, never on the shared client, so a
++/// Zen request cannot leak its fingerprint onto unrelated providers.
++pub(crate) fn opencode_tls(auth: &ResolvedAuth, builder: Builder) -> Builder {
++    if auth.opencode_wire {
++        builder.ssl_ciphers(OPENCODE_TLS12_CIPHERS.iter().copied())
++    } else {
++        builder
++    }
++}
++
++/// Custom zen-wire slugs live outside the builtin flow: any custom provider
++/// pointed at the zen gateway gets the CLI wire identity by path match, so
++/// renames — and local forward proxies to the real gateway — keep working
++/// (the gateway still checks the headers; a fake just ignores them). The go
++/// gateway (`/zen/go`) is a different product and never matches.
++pub(crate) fn is_zen_base_url(url: Option<&str>) -> bool {
++    let Some(u) = url else { return false };
++    (u.contains("/zen/") || u.ends_with("/zen")) && !u.contains("/zen/go")
++}
++
++/// CLI session ids are `ses_` + 12 hex + 14 base62 chars
++/// (`identifier.ts` `create(descending)`). Anything else — maki's base58
++/// nanoID, or a bare string — is not a CLI session id.
++fn is_cli_session_id(s: &str) -> bool {
++    let Some(rest) = s.strip_prefix("ses_") else {
++        return false;
++    };
++    if rest.len() != 26 {
++        return false;
++    }
++    let (hex, tail) = rest.split_at(12);
++    hex.bytes().all(|b| b.is_ascii_hexdigit())
++        && tail.bytes().all(|b| OPENCODE_ID_ALPHABET.contains(&b))
++}
++
+ #[derive(Debug, Clone, Copy)]
+ pub struct Timeouts {
+     pub connect: Duration,
+@@ -137,6 +265,12 @@ pub struct ResolvedAuth {
+     /// the provider sets afterwards, so a key rotation cannot drop a gateway
+     /// credential that replaced the built-in auth header.
+     config_headers: Vec<String>,
++    /// Opencode Zen free-tier wire identity. Set by the catalog `request_auth`
++    /// choke point or for zen-pointed custom slugs (never by user config).
++    /// Requests carrying it stamp the CLI headers in `configure_request` and
++    /// pin the TLS 1.2 cipher order to the opencode CLI capture (see
++    /// `opencode_tls`).
++    pub(crate) opencode_wire: bool,
+ }
+ 
+ impl ResolvedAuth {
+@@ -149,6 +283,7 @@ impl ResolvedAuth {
+             base_url: None,
+             headers,
+             config_headers: Vec::new(),
++            opencode_wire: false,
+         };
+         if let Some(def) = maki_config::providers::ProvidersConfig::load().get(slug) {
+             auth.apply_config_headers(slug, &def.headers)?;
+@@ -226,11 +361,43 @@ impl ResolvedAuth {
+         }
+     }
+ 
+-    /// Apply all auth headers to an HTTP request builder.
++    /// Apply all auth headers to an HTTP request builder. Every provider
++    /// request path funnels through here, so it is also where the Zen
++    /// free-tier wire identity lands: static client tag, `x-opencode-project`
++    /// (`global` — maki has no per-project context, exactly what the CLI sends
++    /// for the global project), a fresh ascending `msg_` request id per call,
++    /// and a CLI-shaped `ses_` session id. A stored session survives only when
++    /// it is already CLI-shaped; maki's own base58 nanoID never reaches the
++    /// wire because the free tier rejects non-CLI session shapes. Like the
++    /// CLI (`...input.model.headers` spread last), an explicitly configured
++    /// header always wins over the stamped default.
+     pub fn configure_request(&self, builder: Builder) -> Builder {
+-        self.headers.iter().fold(builder, |b, (key, value)| {
++        let mut cli_session_kept = false;
++        let mut builder = self.headers.iter().fold(builder, |b, (key, value)| {
++            if self.opencode_wire && key.eq_ignore_ascii_case(OPENCODE_SESSION_HEADER) {
++                if is_cli_session_id(value) {
++                    cli_session_kept = true;
++                    return b.header(key.as_str(), value.as_str());
++                }
++                return b;
++            }
+             b.header(key.as_str(), value.as_str())
+-        })
++        });
++        if self.opencode_wire {
++            if !has_header(&self.headers, OPENCODE_CLIENT_HEADER) {
++                builder = builder.header(OPENCODE_CLIENT_HEADER, "cli");
++            }
++            if !has_header(&self.headers, OPENCODE_PROJECT_HEADER) {
++                builder = builder.header(OPENCODE_PROJECT_HEADER, "global");
++            }
++            if !cli_session_kept {
++                builder = builder.header(OPENCODE_SESSION_HEADER, opencode_session_id());
++            }
++            if !has_header(&self.headers, OPENCODE_REQUEST_HEADER) {
++                builder = builder.header(OPENCODE_REQUEST_HEADER, opencode_request_id());
++            }
++        }
++        builder
+     }
+ 
+     #[cfg(test)]
+@@ -239,10 +406,15 @@ impl ResolvedAuth {
+             base_url,
+             headers,
+             config_headers: Vec::new(),
++            opencode_wire: false,
+         }
+     }
+ }
+ 
++fn has_header(headers: &[(String, String)], name: &str) -> bool {
++    headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name))
++}
++
+ pub(crate) fn with_prefix<'a>(
+     prefix: &Option<String>,
+     system: &'a str,
+@@ -765,6 +937,135 @@ mod tests {
+         ResolvedAuth::for_test(None, vec![(AUTHORIZATION_HEADER.into(), bearer_value(key))])
+     }
+ 
++    fn wire_auth() -> ResolvedAuth {
++        let mut auth = test_bearer("public");
++        auth.opencode_wire = true;
++        auth
++    }
++
++    /// Read a header off a built request, the way the gateway would see it.
++    fn wire_header(auth: &ResolvedAuth, name: &str) -> Option<String> {
++        use isahc::http::Request;
++        let request = auth
++            .configure_request(
++                Request::builder()
++                    .method("POST")
++                    .uri("https://opencode.ai/zen/v1"),
++            )
++            .body(())
++            .unwrap();
++        request
++            .headers()
++            .get(name)
++            .and_then(|v| v.to_str().ok())
++            .map(str::to_string)
++    }
++
++    #[test_case(Some("https://opencode.ai/zen/v1"), true  ; "zen v1")]
++    #[test_case(Some("https://opencode.ai/zen"), true  ; "bare zen")]
++    #[test_case(Some("http://127.0.0.1:8080/zen/v1/chat/completions"), true  ; "local forward proxy")]
++    #[test_case(Some("https://opencode.ai/zen/go/v1"), false  ; "go gateway excluded")]
++    #[test_case(Some("https://api.deepseek.com"), false  ; "other vendor")]
++    #[test_case(None, false ; "no base url")]
++    fn zen_base_url_match(url: Option<&str>, expected: bool) {
++        assert_eq!(is_zen_base_url(url), expected);
++    }
++
++    #[test]
++    fn zen_wire_stamp() {
++        let auth = wire_auth();
++        assert_eq!(
++            wire_header(&auth, "x-opencode-client").as_deref(),
++            Some("cli")
++        );
++        assert_eq!(
++            wire_header(&auth, "x-opencode-project").as_deref(),
++            Some("global")
++        );
++        let req = wire_header(&auth, "x-opencode-request").expect("request id");
++        assert!(req.starts_with("msg_") && req.len() == 30, "{req}");
++        assert!(req[4..16].chars().all(|c| c.is_ascii_hexdigit()));
++        assert!(
++            req[16..].chars().all(|c| c.is_ascii_alphanumeric()),
++            "{req}"
++        );
++        let ses = wire_header(&auth, "x-opencode-session").expect("session id");
++        assert!(ses.starts_with("ses_") && ses.len() == 30, "{ses}");
++        // Fresh per request: a second build rotates both ids.
++        assert_ne!(
++            wire_header(&auth, "x-opencode-request").as_deref(),
++            Some(req.as_str())
++        );
++        assert_ne!(
++            wire_header(&auth, "x-opencode-session").as_deref(),
++            Some(ses.as_str())
++        );
++        // The pinned fourteen TLS 1.2 suites match the CLI capture
++        // (tls-fingerprint.json) in order verbatim (probe-measured; the
++        // backend's own TLS 1.3 head order and SCSV tail stay outside curl's
++        // control).
++        assert_eq!(
++            OPENCODE_TLS12_CIPHERS.join(":"),
++            "ECDHE-ECDSA-AES128-GCM-SHA256:\
++             ECDHE-RSA-AES128-GCM-SHA256:\
++             ECDHE-ECDSA-AES256-GCM-SHA384:\
++             ECDHE-RSA-AES256-GCM-SHA384:\
++             ECDHE-ECDSA-CHACHA20-POLY1305:\
++             ECDHE-RSA-CHACHA20-POLY1305:\
++             ECDHE-ECDSA-AES128-SHA:\
++             ECDHE-RSA-AES128-SHA:\
++             ECDHE-ECDSA-AES256-SHA:\
++             ECDHE-RSA-AES256-SHA:\
++             AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA:AES256-SHA"
++        );
++    }
++
++    #[test]
++    fn zen_wire_config_wins_and_nanoid_never_leaks() {
++        // A maki nanoID session never reaches the wire: the free tier 403s
++        // non-CLI shapes, so it is dropped in favour of a fresh CLI `ses_`.
++        let mut auth = wire_auth();
++        auth.set_header("x-opencode-session", "maki-nanoid-session".into());
++        let ses = wire_header(&auth, "x-opencode-session").expect("session id");
++        assert!(ses.starts_with("ses_") && ses.len() == 30, "{ses}");
++        // A CLI-shaped session is kept as-is (caller proves provenance),
++        // like the CLI's `...input.model.headers` override.
++        let cli_ses = "ses_f49234eddffebehf12R5EmDUnc";
++        auth.set_header("x-opencode-session", cli_ses.into());
++        assert_eq!(
++            wire_header(&auth, "x-opencode-session").as_deref(),
++            Some(cli_ses)
++        );
++        // Configured client/project tags win over the stamped defaults too.
++        auth.set_header("x-opencode-client", "custom".into());
++        auth.set_header("x-opencode-project", "prj_mine".into());
++        assert_eq!(
++            wire_header(&auth, "x-opencode-client").as_deref(),
++            Some("custom")
++        );
++        assert_eq!(
++            wire_header(&auth, "x-opencode-project").as_deref(),
++            Some("prj_mine")
++        );
++    }
++
++    #[test]
++    fn non_zen_wire_is_byte_identical() {
++        use isahc::http::Request;
++        let auth = test_bearer("sk-1");
++        assert!(!auth.opencode_wire);
++        let request = auth
++            .configure_request(
++                Request::builder()
++                    .method("POST")
++                    .uri("https://api.example.com"),
++            )
++            .body(())
++            .unwrap();
++        let names: Vec<_> = request.headers().keys().map(|k| k.as_str()).collect();
++        assert_eq!(names, ["authorization"]);
++    }
++
+     #[test]
+     fn config_headers_append_unknown_and_replace_same_name() {
+         let mut auth = test_bearer("sk-1");
+diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
+index 3aebf9e..f650aca 100644
+--- a/maki-providers/src/providers/openai/responses.rs
++++ b/maki-providers/src/providers/openai/responses.rs
+@@ -229,13 +229,14 @@ async fn post_responses(
+     let json_body = serde_json::to_vec(body)?;
+ 
+     let request = auth
+-        .configure_request(
++        .configure_request(super::super::opencode_tls(
++            auth,
+             Request::builder()
+                 .method("POST")
+                 .uri(format!("{base}{RESPONSES_PATH}"))
+                 .header("content-type", "application/json")
+                 .header("user-agent", super::super::user_agent()),
+-        )
++        ))
+         .body(json_body)?;
+ 
+     debug!(
+diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
+index 6ac740c..f95b1d3 100644
+--- a/maki-providers/src/providers/openai_compat.rs
++++ b/maki-providers/src/providers/openai_compat.rs
+@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
+ use serde_json::{Value, json};
+ use tracing::{debug, warn};
+ 
+-use super::ResolvedAuth;
++use super::{ResolvedAuth, opencode_tls};
+ use crate::{
+     AgentError, ContentBlock, Message, ProviderEvent, Role, StopReason, StreamResponse, TokenUsage,
+ };
+@@ -91,12 +91,13 @@ impl OpenAiCompatProvider {
+         url: &str,
+     ) -> Result<String, AgentError> {
+         let request = auth
+-            .configure_request(
++            .configure_request(opencode_tls(
++                auth,
+                 Request::builder()
+                     .method("GET")
+                     .uri(url)
+                     .header("user-agent", super::user_agent()),
+-            )
++            ))
+             .body(())?;
+         let mut response = self.client.send_async(request).await?;
+         if response.status().as_u16() != 200 {
+@@ -112,13 +113,16 @@ impl OpenAiCompatProvider {
+         content_type: &str,
+         body: &[u8],
+     ) -> Result<String, AgentError> {
+-        let mut builder = Request::builder()
+-            .method("POST")
+-            .uri(url)
+-            .header("user-agent", super::user_agent());
+-        for (key, value) in &auth.headers {
+-            builder = builder.header(key.as_str(), value.as_str());
+-        }
++        // Same header order as before (user-agent, auth, content-type):
++        // `configure_request` folds `auth.headers` in order, so routing the
++        // manual loop through it only adds the Zen wire stamp on zen wires.
++        let builder = auth.configure_request(opencode_tls(
++            auth,
++            Request::builder()
++                .method("POST")
++                .uri(url)
++                .header("user-agent", super::user_agent()),
++        ));
+         let request = builder
+             .header("content-type", content_type)
+             .body(body.to_vec())?;
+@@ -175,12 +179,13 @@ impl OpenAiCompatProvider {
+         auth: &ResolvedAuth,
+     ) -> isahc::http::request::Builder {
+         let base = self.base_url(auth);
+-        auth.configure_request(
++        auth.configure_request(opencode_tls(
++            auth,
+             Request::builder()
+                 .method(method)
+                 .uri(format!("{base}{path}"))
+                 .header("user-agent", super::user_agent()),
+-        )
++        ))
+     }
+ 
+     pub async fn do_stream(

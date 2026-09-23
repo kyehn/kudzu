@@ -53,7 +53,10 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.reasonix/sessions-v4
+            ~/.local/share/opencode/opencode.db
+            ~/.local/share/cortexkit/magic-context
+            ~/.local/share/maki
+            ~/.local/state/maki
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*
@@ -71,31 +74,53 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.reasonix"
-          nix profile add nixpkgs#openspec nixpkgs#skills .#reasonix
+          mkdir -p "$HOME/.paseo" "$HOME/.config/opencode" "$HOME/.config/cortexkit" "$HOME/.config/maki"
+          nix profile add nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
-          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
-          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
+          npm install --global --yes @opencode/cli
+          nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config
+          install -m 0644 .github/AGENTS.md ~/.config/opencode/AGENTS.md
+          curl -sL https://raw.githubusercontent.com/mksglu/context-mode/main/configs/opencode/AGENTS.md >> ~/.config/opencode/AGENTS.md
           npm install --global --yes open-websearch
-      - run: |
-          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
-          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
-      - run: overlays/reasonix/providers-config.py
+          nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
+          install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
+      - run: overlays/maki/providers-config.py
         working-directory: ${{ github.event.repository.name }}
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENCODE_DISABLE_AUTOUPDATE: true
+          OPENCODE_DISABLE_DEFAULT_PLUGINS: true
+          OPENCODE_EXPERIMENTAL_PARALLEL: true
+          OPENCODE_ENABLE_EXPERIMENTAL_MODELS: true
+          OPENCODE_DISABLE_CLAUDE_CODE: 1
+          OPENCODE_DISABLE_CLAUDE_CODE_PROMPT: 1
+          OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: 1
+          OPENCODE_ENABLE_EXA: false
+          OPENCODE_AUTO_SHARE: false
+          OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: true
+          OPENCODE_EXPERIMENTAL_PLAN_MODE: true
+          OPENCODE_EXPERIMENTAL_NATIVE_LLM: true
+          OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT: true
+          OPENCODE_EXPERIMENTAL_LSP_TOOL: false
+          OPENCODE_EXPERIMENTAL_OXFMT: false
+          OPENCODE_EXPERIMENTAL_LSP_TY: false
+          OPENCODE_EXPERIMENTAL_SCOUT: true
         run: |
           set -euo pipefail
-          skills add mattpocock/skills --agent reasonix --global --yes
-          skills add addyosmani/agent-skills --agent reasonix --global --yes
-          skills add Fission-AI/OpenSpec --agent reasonix --global --yes
-          skills add blader/humanizer --agent reasonix --global --yes
-          git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp -r /tmp/compose-skill/skills/compose-expert $HOME/.pi/agent/skills/ && rm -rf /tmp/compose-skill
-          skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent reasonix --global --yes
-          skills add getpaseo/paseo --agent reasonix --global --yes
-          skills add levi-qiao/longgraph-skill --full-depth --skill '*' --agent reasonix --global --yes
+          skills add mattpocock/skills --agent opencode --global --yes
+          skills add addyosmani/agent-skills --agent opencode --global --yes
+          skills add Fission-AI/OpenSpec --agent opencode --global --yes
+          skills add blader/humanizer --agent opencode --global --yes
+          git clone --depth 1 --single-branch https://github.com/aldefy/compose-skill.git /tmp/compose-skill && cp -r /tmp/compose-skill/skills/compose-expert $HOME/.config/opencode/skills/ && rm -rf /tmp/compose-skill
+          skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent opencode --global --yes
+          skills add getpaseo/paseo --agent opencode --global --yes
+          skills add levi-qiao/longgraph-skill --full-depth --skill '*' --agent opencode --global --yes
           export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
             paseo onboard --relay --voice disable
@@ -112,7 +137,10 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.reasonix/sessions-v4
+            ~/.local/share/opencode/opencode.db
+            ~/.local/share/cortexkit/magic-context
+            ~/.local/share/maki
+            ~/.local/state/maki
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*

@@ -1,21 +1,45 @@
 {
-    "$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
-    "version": 1,
-    "agents": {
-        "providers": {
-            "reasonix": {
-                "extends": "acp",
-                "label": "Reasonix",
-                "command": [
-                    "reasonix",
-                    "acp"
-                ]
-            }
-        }
-    },
-    "daemon": {
-        "relay": {
-            "enabled": true
-        }
-    }
+	"$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
+	"version": 1,
+	"agents": {
+		"providers": {
+			"maki": {
+				"extends": "acp",
+				"label": "Maki",
+				"command": ["maki", "acp", "--yolo"]
+			},
+			"opencode2": {
+				"extends": "acp",
+				"label": "OpenCode",
+				"command": ["opencode", "acp"]
+			},
+			"omp": {
+				"enabled": false
+			},
+			"copilot": {
+				"enabled": false
+			},
+			"codex": {
+				"enabled": false
+			},
+			"pi": {
+				"enabled": false
+			},
+			"opencode": {
+				"enabled": false
+			},
+			"claude": {
+				"enabled": false
+			}
+		}
+	},
+	"daemon": {
+		"relay": {
+			"enabled": true
+		},
+		"mcp": {
+			"enabled": false,
+			"injectIntoAgents": false
+		}
+	}
 }
