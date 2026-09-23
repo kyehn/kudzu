@@ -5,15 +5,11 @@
 	"execute_threshold_percentage": 45,
 	"cache_ttl": "3m",
 	"clear_reasoning_age": 25,
-	"protected_tags": 10,
 	"historian": {
 		"temperature": 0.1
 	},
 	"dreamer": {
 		"disable": true
-	},
-	"sidekick": {
-		"enabled": true
 	},
 	"embedding": {
 		"provider": "off"

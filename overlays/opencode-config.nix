@@ -3,7 +3,6 @@
   writeText,
   mcp-nixos,
   context7-mcp,
-  nodejs-slim,
   codegraph,
 }:
 
@@ -100,11 +99,7 @@ writeText "opencode.json" (
       };
       mobile-mcp = {
         type = "local";
-        command = [
-          (lib.getExe' nodejs-slim "npx")
-          "--yes"
-          "@mobilenext/mobile-mcp@latest"
-        ];
+        command = [ "mcp-server-mobile" ];
       };
       open-websearch = {
         type = "local";

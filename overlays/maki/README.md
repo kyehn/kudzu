@@ -1,6 +1,6 @@
 - 可靠 极致 优雅 先进 激进的实现，不故意复杂，最低兜底，不隐藏错误，代码重复率低
 - `patches = [ ./fix.patch ];` 只有一个 patch 文件，无 postPatch，patch 文件使用 git 命令生成
-- 对 `https://opencode.ai/zen/v1` 或对所有 providers 修改模拟成 opencode 发送的请求（根据修改的 复杂度/可靠性 判断某个步骤的修改是应该针对 opencode provider 还是对所有的 providers 修改，避免重复代码，以低复杂高可靠为目标，其他 providers 如 `https://opencode.ai/zen/go/v1` 或 `https://opencode.ai/zen` 不是目标 provider，不需要过于针对性考虑，需要避免不必要的复杂度），目的是使用 `https://opencode.ai/zen/v1` 提供的免费模型，参考 `https://github.com/anomalyco/opencode`，不进行不必要的修改。参考 overlays/reasonix/opencode/ 收集的 http 和 tls 信息
+- 对 `https://opencode.ai/zen/v1` 或对所有 providers 修改模拟成 opencode 发送的请求（根据修改的 复杂度/可靠性 判断某个步骤的修改是应该针对 opencode provider 还是对所有的 providers 修改，避免重复代码，以低复杂高可靠为目标，其他 providers 如 `https://opencode.ai/zen/go/v1` 或 `https://opencode.ai/zen` 不是目标 provider，不需要过于针对性考虑，需要避免不必要的复杂度），目的是使用 `https://opencode.ai/zen/v1` 提供的免费模型，参考 `https://github.com/anomalyco/opencode`，不进行不必要的修改。参考 overlays/maki/opencode/ 收集的 http 和 tls 信息
   - 针对 openai/responses/anthropic 三种 kind 都要修改
   - `Authorization: Bearer public`，不得在代码中应编码，遵循用户设置
   - `User-Agent` 按 endpoint 区分：`openai` 为 `opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`，`responses` 为 `opencode/1.18.32 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14`，`anthropic` 为 `opencode/1.18.32 ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14`
@@ -14,4 +14,4 @@
   - 对于 git rev 或其他类似数据，如果服务器无法判断真实性则应当使用 fake 数据
 - 正确处理 `encrypted_content` 参数
 - `context_window` 以 `config.toml` 为准
-- overlays/reasonix/opencode/ 只保存 `npm i -g opencode-ai@latest` 发送到 `https://opencode.ai/zen/v1` 的真实原始数据，不得添加 `note` 等信息，不得加工数据，保存足够的数据即可，不得故意重复，使用 JSON / JSONL 格式，对于需要自定义命名的属性根据 “OpenTelemetry 的字段命名习惯 + RFC 定义的原始 HTTP/TLS 字段” 进行合理命名
+- overlays/maki/opencode/ 只保存 `npm i -g opencode-ai@latest` 发送到 `https://opencode.ai/zen/v1` 的真实原始数据，不得添加 `note` 等信息，不得加工数据，保存足够的数据即可，不得故意重复，使用 JSON / JSONL 格式，对于需要自定义命名的属性根据 “OpenTelemetry 的字段命名习惯 + RFC 定义的原始 HTTP/TLS 字段” 进行合理命名

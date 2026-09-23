@@ -1,5 +1,129 @@
+diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
+index 4ce2be7..88727a8 100644
+--- a/maki-agent/src/agent/compaction.rs
++++ b/maki-agent/src/agent/compaction.rs
+@@ -76,6 +76,11 @@ pub(super) fn continue_message(config: &AgentConfig) -> String {
+ /// after it, so input no turn has answered yet survives verbatim without ever
+ /// leaving `history`. Anything less and the mirror would publish a transcript
+ /// missing that input for the length of the summary request.
++///
++/// `tools` is the same catalog the session's own requests carry: the summary
++/// describes a session whose next turn declares those tools, and the Zen free
++/// tier rejects a request whose `tools` are empty or missing outright, so an
++/// empty array would end the session at its first compaction.
+ #[allow(clippy::too_many_arguments)]
+ pub(super) async fn compact_history(
+     provider: &dyn maki_providers::provider::Provider,
+@@ -86,6 +91,7 @@ pub(super) async fn compact_history(
+     config: &AgentConfig,
+     instructions: Option<&str>,
+     carry_len: usize,
++    tools: &Value,
+     session_id: Option<&SessionRef>,
+     retry: RetryPolicy,
+ ) -> Result<TokenUsage, AgentError> {
+@@ -98,7 +104,6 @@ pub(super) async fn compact_history(
+     collapse_tool_results(&mut compaction_history, RECENT_TOOL_RESULT_BUDGET);
+     compaction_history.push(Message::user(summary_prompt(config, instructions)));
+ 
+-    let empty_tools = serde_json::json!([]);
+     let max_attempts = 3;
+     let mut last_error = None;
+ 
+@@ -109,7 +114,7 @@ pub(super) async fn compact_history(
+                 model,
+                 messages: &compaction_history,
+                 system: crate::prompt::COMPACTION_SYSTEM,
+-                tools: &empty_tools,
++                tools,
+                 opts: RequestOptions::default(),
+                 output_budget: SUMMARY_OUTPUT_BUDGET,
+                 session_id,
+@@ -227,6 +232,7 @@ pub async fn compact(
+         config,
+         instructions,
+         0,
++        tools,
+         session_id,
+         retry,
+     )
+@@ -529,6 +535,7 @@ mod tests {
+             &AgentConfig::default(),
+             None,
+             carry_len,
++            &no_tools(),
+             session_id,
+             RetryPolicy::default(),
+         )
+diff --git a/maki-agent/src/agent/run.rs b/maki-agent/src/agent/run.rs
+index a912da2..fe8c108 100644
+--- a/maki-agent/src/agent/run.rs
++++ b/maki-agent/src/agent/run.rs
+@@ -689,6 +689,7 @@ impl<'h> Agent<'h> {
+             self.timeouts,
+             &self.model_policy,
+         );
++        let tools = request_tools(&self.tools, self.mcp.as_ref());
+         let compaction_usage = compaction::compact_history(
+             &*compact_provider,
+             &compact_model,
+@@ -698,6 +699,7 @@ impl<'h> Agent<'h> {
+             &self.config,
+             instructions,
+             carry_len,
++            tools.as_ref(),
+             self.session_id.as_ref(),
+             self.timeouts.retry,
+         )
+@@ -712,11 +714,7 @@ impl<'h> Agent<'h> {
+             .add(compaction_usage, compact_cost, compact_list_cost);
+         // The measurement the gauge holds describes the transcript that was
+         // just summarized away, so what is left is all it may count.
+-        self.gauge.reset(
+-            self.history.as_slice(),
+-            &self.system,
+-            request_tools(&self.tools, self.mcp.as_ref()).as_ref(),
+-        );
++        self.gauge.reset(self.history.as_slice(), &self.system, tools.as_ref());
+         let context_size_after = self.gauge.size();
+         let carry_from = self.history.len().saturating_sub(carry_len);
+         self.rollback_len = carry_from;
+@@ -1755,6 +1753,33 @@ mod tests {
+         });
+     }
+ 
++    /// The summariser request carries the session's tool catalog. An empty
++    /// tool list is what the Zen free tier answers with `FreeTierError`, so a
++    /// session would die at its first auto-compaction instead of continuing.
++    #[test]
++    fn compaction_request_carries_the_session_tools() {
++        smol::block_on(async {
++            let mut history = History::new(vec![Message::user("go".into())]);
++            let mock = MockProvider::new(vec![text_response(StopReason::EndTurn)]);
++            let requests = Arc::clone(&mock.requests);
++            let (mut agent, _event_rx) = make_agent(mock, &mut history);
++            agent.tools = RequestTools::assembled(
++                serde_json::json!([{ "name": "bash" }, { "name": "read" }]),
++                &AgentConfig::default(),
++                &default_model(),
++            );
++            agent.carry_from = agent.history.len();
++            agent.do_compact(None).await.unwrap();
++            drop(agent);
++
++            let captured = match requests.lock() {
++                Ok(guard) => guard,
++                Err(poisoned) => poisoned.into_inner(),
++            };
++            assert_eq!(tool_names(&captured[0].tools), ["bash", "read"]);
++        });
++    }
++
+     #[test]
+     fn cancel_token_aborts_during_api_call() {
+         smol::block_on(async {
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
-index 3b6280b..bd9c99d 100644
+index 3b6280b..dda6adf 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
 +++ b/maki-providers/src/providers/anthropic/mod.rs
 @@ -27,7 +27,7 @@ use crate::{
@@ -11,20 +135,24 @@ index 3b6280b..bd9c99d 100644
  
  const API_VERSION: &str = "2023-06-01";
  const API_ORIGIN: &str = "https://api.anthropic.com";
-@@ -378,13 +378,14 @@ impl Anthropic {
+@@ -378,13 +378,15 @@ impl Anthropic {
          let auth = self.auth.lock().unwrap();
          let base = auth.base_url.as_deref().unwrap_or(API_ORIGIN);
          let url = format!("{}{path}", origin(base));
 -        auth.configure_request(
-+        auth.configure_request(opencode_tls(
-+            &auth,
++        let builder = super::with_user_agent(
              Request::builder()
                  .method(method)
-                 .uri(url)
-                 .header("anthropic-version", API_VERSION)
-                 .header("user-agent", super::user_agent()),
+-                .uri(url)
+-                .header("anthropic-version", API_VERSION)
+-                .header("user-agent", super::user_agent()),
 -        )
-+        ))
++                .uri(url.as_str())
++                .header("anthropic-version", API_VERSION),
++            &auth,
++            &url,
++        );
++        auth.configure_request(opencode_tls(&auth, builder))
      }
  
      async fn do_stream_request(
@@ -165,7 +293,7 @@ index f02599d..ea96f1c 100644
  
      fn api_key(&self) -> String {
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 0333c43..24c32e1 100644
+index 0333c43..0051c54 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
@@ -178,10 +306,65 @@ index 0333c43..24c32e1 100644
  
  use futures_lite::StreamExt;
  use futures_lite::io::AsyncBufRead;
-@@ -61,6 +61,134 @@ pub(crate) fn user_agent() -> &'static str {
+@@ -47,6 +47,7 @@ const EMPTY_SSE_ERROR_MESSAGE: &str = "provider sent an error frame with no deta
+ const UNAUTHORIZED_STATUS: u16 = 401;
+ const AUTHORIZATION_HEADER: &str = "authorization";
+ const BEARER_PREFIX: &str = "Bearer ";
++const USER_AGENT_HEADER: &str = "user-agent";
+ 
+ fn bearer_value(api_key: &str) -> String {
+     format!("{BEARER_PREFIX}{api_key}")
+@@ -61,6 +62,181 @@ pub(crate) fn user_agent() -> &'static str {
      )
  }
  
++/// The CLI's `User-Agent` per endpoint family (`README`; `provider-utils`
++/// ships a different version per wire kind, so the pin names the kind):
++/// openai (`chat/completions`, `models`), responses, anthropic.
++const OPENCODE_UA_OPENAI: &str =
++    "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
++const OPENCODE_UA_RESPONSES: &str =
++    "opencode/1.18.32 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14";
++const OPENCODE_UA_ANTHROPIC: &str =
++    "opencode/1.18.32 ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14";
++
++/// The `user-agent` a request about to leave a provider builder carries: the
++/// CLI pin for the endpoint `url` names when the Zen wire is active, maki's
++/// own tag otherwise. `None` when `[<slug>.headers]` sets `user-agent` -
++/// skipping the stamp lets `configure_request`'s config fold deliver that one
++/// value alone, like every other stamp (explicit config wins over the wire
++/// default).
++pub(crate) fn request_user_agent<'a>(
++    auth: &'a ResolvedAuth,
++    url: &str,
++) -> Option<&'a str> {
++    if has_header(&auth.headers, USER_AGENT_HEADER) {
++        return None;
++    }
++    Some(if !auth.opencode_wire {
++        user_agent()
++    } else if url.contains("/messages") {
++        OPENCODE_UA_ANTHROPIC
++    } else if url.contains("/responses") {
++        OPENCODE_UA_RESPONSES
++    } else {
++        OPENCODE_UA_OPENAI
++    })
++}
++
++/// Builder form of [`request_user_agent`]: stamps the `user-agent` only when
++/// one is due, so call sites stay a single expression.
++pub(crate) fn with_user_agent(
++    builder: Builder,
++    auth: &ResolvedAuth,
++    url: &str,
++) -> Builder {
++    match request_user_agent(auth, url) {
++        Some(ua) => builder.header(USER_AGENT_HEADER, ua),
++        None => builder,
++    }
++}
++
 +/// CLI wire identity for the opencode Zen free tier
 +/// (`packages/schema/src/identifier.ts` + `session/llm/request.ts`):
 +/// `msg_`/`ses_` + 12 lowercase hex time chars + 14 base62 chars. Packs
@@ -313,7 +496,7 @@ index 0333c43..24c32e1 100644
  #[derive(Debug, Clone, Copy)]
  pub struct Timeouts {
      pub connect: Duration,
-@@ -137,6 +265,12 @@ pub struct ResolvedAuth {
+@@ -137,6 +313,12 @@ pub struct ResolvedAuth {
      /// the provider sets afterwards, so a key rotation cannot drop a gateway
      /// credential that replaced the built-in auth header.
      config_headers: Vec<String>,
@@ -326,7 +509,7 @@ index 0333c43..24c32e1 100644
  }
  
  impl ResolvedAuth {
-@@ -149,6 +283,7 @@ impl ResolvedAuth {
+@@ -149,6 +331,7 @@ impl ResolvedAuth {
              base_url: None,
              headers,
              config_headers: Vec::new(),
@@ -334,7 +517,7 @@ index 0333c43..24c32e1 100644
          };
          if let Some(def) = maki_config::providers::ProvidersConfig::load().get(slug) {
              auth.apply_config_headers(slug, &def.headers)?;
-@@ -226,11 +361,43 @@ impl ResolvedAuth {
+@@ -226,11 +409,43 @@ impl ResolvedAuth {
          }
      }
  
@@ -381,7 +564,7 @@ index 0333c43..24c32e1 100644
      }
  
      #[cfg(test)]
-@@ -239,10 +406,15 @@ impl ResolvedAuth {
+@@ -239,10 +454,15 @@ impl ResolvedAuth {
              base_url,
              headers,
              config_headers: Vec::new(),
@@ -397,7 +580,7 @@ index 0333c43..24c32e1 100644
  pub(crate) fn with_prefix<'a>(
      prefix: &Option<String>,
      system: &'a str,
-@@ -765,6 +937,135 @@ mod tests {
+@@ -765,6 +985,187 @@ mod tests {
          ResolvedAuth::for_test(None, vec![(AUTHORIZATION_HEADER.into(), bearer_value(key))])
      }
  
@@ -513,6 +696,58 @@ index 0333c43..24c32e1 100644
 +        );
 +    }
 +
++    /// The CLI's per-endpoint `User-Agent` pins: `provider-utils` ships a
++    /// different version per wire kind, so the URL names which pin goes out.
++    #[test_case(
++        "https://opencode.ai/zen/v1/chat/completions",
++        "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++        ; "chat completions"
++    )]
++    #[test_case(
++        "https://opencode.ai/zen/v1/models",
++        "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
++        ; "models"
++    )]
++    #[test_case(
++        "https://opencode.ai/zen/v1/responses",
++        "opencode/1.18.32 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14"
++        ; "responses"
++    )]
++    #[test_case(
++        "https://opencode.ai/zen/v1/messages",
++        "opencode/1.18.32 ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14"
++        ; "anthropic"
++    )]
++    fn zen_user_agent_pins_the_endpoint_family(url: &str, expected: &str) {
++        let auth = wire_auth();
++        assert_eq!(request_user_agent(&auth, url), Some(expected));
++        // Off the zen wire maki keeps its own tag, byte for byte.
++        let plain = test_bearer("sk-1");
++        assert_eq!(request_user_agent(&plain, url), Some(user_agent()));
++    }
++
++    /// An explicit `[<slug>.headers]` `user-agent` reaches the wire alone:
++    /// the builder skips its stamp, so the config fold in `configure_request`
++    /// delivers the single configured line instead of a duplicate.
++    #[test]
++    fn configured_user_agent_wins_with_one_line() {
++        use isahc::http::Request;
++        let mut auth = wire_auth();
++        auth.set_header(USER_AGENT_HEADER, "custom/ua".into());
++        let url = "https://opencode.ai/zen/v1/chat/completions";
++        let request = auth
++            .configure_request(with_user_agent(
++                Request::builder().method("POST").uri(url),
++                &auth,
++                url,
++            ))
++            .body(())
++            .unwrap();
++        let user_agents: Vec<_> = request.headers().get_all(USER_AGENT_HEADER).collect();
++        assert_eq!(user_agents.len(), 1);
++        assert_eq!(user_agents[0], "custom/ua");
++    }
++
 +    #[test]
 +    fn non_zen_wire_is_byte_identical() {
 +        use isahc::http::Request;
@@ -534,28 +769,36 @@ index 0333c43..24c32e1 100644
      fn config_headers_append_unknown_and_replace_same_name() {
          let mut auth = test_bearer("sk-1");
 diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
-index 3aebf9e..f650aca 100644
+index 3aebf9e..822d425 100644
 --- a/maki-providers/src/providers/openai/responses.rs
 +++ b/maki-providers/src/providers/openai/responses.rs
-@@ -229,13 +229,14 @@ async fn post_responses(
+@@ -228,14 +228,17 @@ async fn post_responses(
+ ) -> Result<StreamResponse, AgentError> {
      let json_body = serde_json::to_vec(body)?;
  
++    let url = format!("{base}{RESPONSES_PATH}");
      let request = auth
 -        .configure_request(
+-            Request::builder()
+-                .method("POST")
+-                .uri(format!("{base}{RESPONSES_PATH}"))
+-                .header("content-type", "application/json")
+-                .header("user-agent", super::super::user_agent()),
+-        )
 +        .configure_request(super::super::opencode_tls(
 +            auth,
-             Request::builder()
-                 .method("POST")
-                 .uri(format!("{base}{RESPONSES_PATH}"))
-                 .header("content-type", "application/json")
-                 .header("user-agent", super::super::user_agent()),
--        )
++            super::super::with_user_agent(
++                Request::builder().method("POST").uri(url.as_str()),
++                auth,
++                &url,
++            ),
 +        ))
++        .header("content-type", "application/json")
          .body(json_body)?;
  
      debug!(
 diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
-index 6ac740c..f95b1d3 100644
+index 6ac740c..4015499 100644
 --- a/maki-providers/src/providers/openai_compat.rs
 +++ b/maki-providers/src/providers/openai_compat.rs
 @@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
@@ -567,23 +810,28 @@ index 6ac740c..f95b1d3 100644
  use crate::{
      AgentError, ContentBlock, Message, ProviderEvent, Role, StopReason, StreamResponse, TokenUsage,
  };
-@@ -91,12 +91,13 @@ impl OpenAiCompatProvider {
+@@ -91,12 +91,14 @@ impl OpenAiCompatProvider {
          url: &str,
      ) -> Result<String, AgentError> {
          let request = auth
 -            .configure_request(
+-                Request::builder()
+-                    .method("GET")
+-                    .uri(url)
+-                    .header("user-agent", super::user_agent()),
+-            )
 +            .configure_request(opencode_tls(
 +                auth,
-                 Request::builder()
-                     .method("GET")
-                     .uri(url)
-                     .header("user-agent", super::user_agent()),
--            )
++                super::with_user_agent(
++                    Request::builder().method("GET").uri(url),
++                    auth,
++                    url,
++                ),
 +            ))
              .body(())?;
          let mut response = self.client.send_async(request).await?;
          if response.status().as_u16() != 200 {
-@@ -112,13 +113,16 @@ impl OpenAiCompatProvider {
+@@ -112,13 +114,17 @@ impl OpenAiCompatProvider {
          content_type: &str,
          body: &[u8],
      ) -> Result<String, AgentError> {
@@ -599,26 +847,33 @@ index 6ac740c..f95b1d3 100644
 +        // manual loop through it only adds the Zen wire stamp on zen wires.
 +        let builder = auth.configure_request(opencode_tls(
 +            auth,
-+            Request::builder()
-+                .method("POST")
-+                .uri(url)
-+                .header("user-agent", super::user_agent()),
++            super::with_user_agent(
++                Request::builder().method("POST").uri(url),
++                auth,
++                url,
++            ),
 +        ));
          let request = builder
              .header("content-type", content_type)
              .body(body.to_vec())?;
-@@ -175,12 +179,13 @@ impl OpenAiCompatProvider {
+@@ -175,12 +181,15 @@ impl OpenAiCompatProvider {
          auth: &ResolvedAuth,
      ) -> isahc::http::request::Builder {
          let base = self.base_url(auth);
 -        auth.configure_request(
+-            Request::builder()
+-                .method(method)
+-                .uri(format!("{base}{path}"))
+-                .header("user-agent", super::user_agent()),
+-        )
++        let url = format!("{base}{path}");
 +        auth.configure_request(opencode_tls(
 +            auth,
-             Request::builder()
-                 .method(method)
-                 .uri(format!("{base}{path}"))
-                 .header("user-agent", super::user_agent()),
--        )
++            super::with_user_agent(
++                Request::builder().method(method).uri(url.as_str()),
++                auth,
++                &url,
++            ),
 +        ))
      }
  

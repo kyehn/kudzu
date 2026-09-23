@@ -1,0 +1,27 @@
+# Allow deployment headers (settings.yaml `headers:`) to win case-insensitive
+# collisions with harness attribution; attribution still fills the rest.
+# Applies to @deepseek-ai/dsh-llm-pi-ai lib/index.js (requestHeaders).
+# Re-generate: npm pack @deepseek-ai/dsh-llm-pi-ai@<version>, diff -u against install.
+# Apply: patch --dry-run then patch, see apply-headers-patch.sh.
+--- lib/index.js
++++ lib/index.js
+@@ -1719,14 +1719,12 @@
+ 		...defaultLevel === void 0 ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) }
+ 	} };
+ }
+-/** Merge deployment headers while removing case-insensitive attribution collisions. */
++/** Merge deployment headers; a deployment header wins a case-insensitive collision, attribution fills the rest. */
+ function requestHeaders(headers) {
+-	const attribution = attributionHeaders();
+-	const reserved = new Set(Object.keys(attribution).map((name) => name.toLowerCase()));
+-	return {
+-		...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
+-		...attribution
+-	};
++	const deployment = Object.fromEntries(Object.entries(headers ?? {}));
++	const deployed = new Set(Object.keys(deployment).map((name) => name.toLowerCase()));
++	const fallback = Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !deployed.has(name.toLowerCase())));
++	return { ...fallback, ...deployment };
+ }
+ /**
+ * pi-ai-backed multi-provider adapter. Each operation reads the current

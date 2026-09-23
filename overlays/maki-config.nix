@@ -6,7 +6,6 @@
   mcp-nixos,
   context7-mcp,
   uv,
-  nodejs-slim,
   codegraph,
 }:
 
@@ -65,11 +64,7 @@ linkFarm "maki" [
       mcp = {
         mcp-nixos.command = [ (lib.getExe mcp-nixos) ];
         context7-mcp.command = [ (lib.getExe context7-mcp) ];
-        mobile-mcp.command = [
-          (lib.getExe' nodejs-slim "npx")
-          "--yes"
-          "@mobilenext/mobile-mcp@latest"
-        ];
+        mobile-mcp.command = [ "mcp-server-mobile" ];
         codegraph.command = [
           (lib.getExe codegraph)
           "serve"

@@ -8,13 +8,19 @@
 				"label": "Maki",
 				"command": ["maki", "acp", "--yolo"]
 			},
+			"dsh": {
+				"extends": "acp",
+				"label": "DSH",
+				"command": ["dsh-acp-interactive"],
+				"env": { "OPENCODE_PUBLIC": "public" }
+			},
+			"omp": {
+				"enabled": true
+			},
 			"opencode2": {
 				"extends": "acp",
 				"label": "OpenCode",
 				"command": ["opencode", "acp"]
-			},
-			"omp": {
-				"enabled": false
 			},
 			"copilot": {
 				"enabled": false
@@ -34,12 +40,18 @@
 		}
 	},
 	"daemon": {
+		"enableTerminalAgentHooks": false,
 		"relay": {
 			"enabled": true
 		},
 		"mcp": {
 			"enabled": false,
 			"injectIntoAgents": false
+		}
+	},
+	"features": {
+		"webUi": {
+			"enabled": false
 		}
 	}
 }
