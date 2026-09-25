@@ -404,6 +404,7 @@
         ".reasonix/"
         ".slim/*"
         ".workflow/"
+        ".sessions/"
         "omo/"
         "ultracode/"
         "ultragoal/"

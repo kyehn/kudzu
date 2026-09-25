@@ -1,57 +1,47 @@
 {
-	"$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
-	"version": 1,
-	"agents": {
-		"providers": {
-			"maki": {
-				"extends": "acp",
-				"label": "Maki",
-				"command": ["maki", "acp", "--yolo"]
-			},
-			"dsh": {
-				"extends": "acp",
-				"label": "DSH",
-				"command": ["dsh-acp-interactive"],
-				"env": { "OPENCODE_PUBLIC": "public" }
-			},
-			"omp": {
-				"enabled": true
-			},
-			"opencode2": {
-				"extends": "acp",
-				"label": "OpenCode",
-				"command": ["opencode", "acp"]
-			},
-			"copilot": {
-				"enabled": false
-			},
-			"codex": {
-				"enabled": false
-			},
-			"pi": {
-				"enabled": false
-			},
-			"opencode": {
-				"enabled": false
-			},
-			"claude": {
-				"enabled": false
-			}
-		}
-	},
-	"daemon": {
-		"enableTerminalAgentHooks": false,
-		"relay": {
-			"enabled": true
-		},
-		"mcp": {
-			"enabled": false,
-			"injectIntoAgents": false
-		}
-	},
-	"features": {
-		"webUi": {
-			"enabled": false
-		}
-	}
+    "$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
+    "version": 1,
+    "agents": {
+        "providers": {
+            "maki": {
+                "extends": "acp",
+                "label": "Maki",
+                "command": [
+                    "maki",
+                    "acp",
+                    "--yolo"
+                ]
+            },
+            "omp": {
+                "enabled": false
+            },
+            "copilot": {
+                "enabled": false
+            },
+            "codex": {
+                "enabled": false
+            },
+            "opencode": {
+                "enabled": false
+            },
+            "claude": {
+                "enabled": false
+            }
+        }
+    },
+    "daemon": {
+        "enableTerminalAgentHooks": false,
+        "relay": {
+            "enabled": true
+        },
+        "mcp": {
+            "enabled": false,
+            "injectIntoAgents": false
+        }
+    },
+    "features": {
+        "webUi": {
+            "enabled": false
+        }
+    }
 }

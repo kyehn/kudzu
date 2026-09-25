@@ -8,6 +8,8 @@ writeText "settings.json" (
     quietStartup = true;
     defaultProjectTrust = "always";
     enableInstallTelemetry = false;
+    fullscreenCopyOnSelect = false;
+    enableSkillCommands = false;
     retry = {
       maxRetries = 9;
       provider.maxRetries = 9;
@@ -23,8 +25,17 @@ writeText "settings.json" (
       "npm:@ff-labs/pi-fff"
       "npm:pi-memory"
       "npm:pi-rtk-optimizer"
+      "npm:@quintinshaw/pi-dynamic-workflows"
+      "npm:pi-subagents"
     ];
-    env.PI_LENS_STARTUP_MODE = "minimal";
+    env = {
+      PI_BG_DISABLE_PI_TELEMETRY = 1;
+      PI_BG_DISABLE_UPDATE_CHECK = 1;
+      PONYTAIL_DEFAULT_MODE = "lite";
+      PI_FFF_MODE = "override";
+      FFF_ENABLE_HOME_SCAN = 0;
+      FFF_WARN_HOME_SCAN = 0;
+    };
     defaultProvider = "opencode";
     defaultModel = "muse-spark-1.3-contributor-free";
     defaultThinkingLevel = "max";

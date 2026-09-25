@@ -17,11 +17,19 @@ linkFarm "maki" [
         lib.generators.toLua { } {
           ui.splash_animation = false;
           always_yolo = true;
-          agent.max_continuation_turns = 17;
+          always_thinking = "adaptive";
+          agent = {
+            max_continuation_turns = 19;
+            compaction_buffer = "40%";
+          };
           telemetry.enabled = false;
           plugins = {
             edit.insert_lines = true;
-            task.allow_model = true;
+            task = {
+              allow_model = true;
+              max_concurrent = 3;
+            };
+            skill.plugin_dev = false;
           };
           provider = {
             default_model = "opencode-openai-responses/muse-spark-1.3-contributor-free";
@@ -29,8 +37,8 @@ linkFarm "maki" [
               "opencode-*/*"
               "nvidia-*/*"
             ];
-            max_retries = 10;
-            max_timeout_retries = 15;
+            max_retries = 12;
+            max_timeout_retries = 17;
           };
           net.allowed_private_hosts = [
             "localhost"
@@ -51,6 +59,7 @@ linkFarm "maki" [
       bash.deny = [
         "git checkout -- *"
         "find /nix/store *"
+        "ls /nix/store"
         "ls /nix/store *"
         "find / *"
         "find /usr *"

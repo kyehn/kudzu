@@ -71,9 +71,7 @@
                   "*.jsonc"
                   "*.ts"
                 ];
-                excludes = [
-                  "**/package-lock.json"
-                ];
+                excludes = [ "**/package-lock.json" ];
               };
               ruff-format = {
                 command = "ruff";
@@ -98,9 +96,7 @@
               allowAliases = false;
               warnUndeclaredOptions = true;
             };
-            overlays = [
-              (import ./overlays { inherit inputs; })
-            ];
+            overlays = [ (import ./overlays { inherit inputs; }) ];
           };
 
           legacyPackages = pkgs;
