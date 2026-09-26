@@ -1,71 +1,55 @@
-import {
-    createHash,
-    randomBytes
-} from "node:crypto";
-import {
-    type Api,
-    type Model,
-    type Provider,
-    type ProviderHeaders,
-    type RefreshModelsContext,
-    type TranscriptContext,
-    createProvider,
-} from "@earendil-works/pi-ai";
-import {
-    opencodeProvider
-} from "@earendil-works/pi-ai/providers/opencode";
+import { randomBytes } from "node:crypto";
 import type {
-    ExtensionAPI,
-    ExtensionContext,
+	Api,
+	Model,
+	ProviderHeaders,
+	RefreshModelsContext,
+} from "@earendil-works/pi-ai";
+import type {
+	ExtensionAPI,
+	ModelRegistry,
+	ProviderModelConfig,
 } from "@earendil-works/pi-coding-agent";
 
-// Registers pi's `opencode` provider against the opencode zen gateway.
+// Simulates the OpenCode CLI on the wire so the zen gateway cannot tell pi
+// apart, per overlays/maki/README.md. Three jobs, each on a hook pi already
+// provides. No catalog is fetched and no wheel is reinvented:
 //
-// Three concerns, no overlap:
+//   1. Model list — one `registerProvider("opencode", …)` at discovery. The
+//      visible tier is the free tier only, through one projection shared by
+//      the registration snapshot and the `refreshModels` hook. The hook
+//      re-projects from `context.stored` — the pi.dev catalog pi itself
+//      synced into `models-store.json` — so `pi update --models` is the only
+//      refresh path and anything pi.dev dropped (a withdrawn baseline id
+//      included) disappears from the registered list on the next refresh.
+//      Entries carry pi's own catalog fields through (`findModelDefaults`
+//      only fills `api`/`baseUrl` fallbacks), because downstream readers need
+//      the rest; pi keeps owning baseline, overlay, storage and throttling,
+//      and no `pi.dev` or `models.dev` request is made from here.
+//   2. Wire identity — `before_provider_headers` rewrites the assembled
+//      headers: the per-endpoint `User-Agent`, the `x-opencode-*` trio, and a
+//      session id built with opencode's own algorithm. This hook covers every
+//      api, which a provider overlay cannot: `ProviderConfig` names a single
+//      `api`, and the capture table spans three.
+//   3. Transcript — `before_provider_request` edits the payload in place, the
+//      data-format level the maki overlay asks for, and again covers every api.
 //
-//   1. Catalog — a native provider built on pi's own `opencodeProvider()` and
-//      pi's `createProvider({ fetchModels })` transaction: pi restores
-//      `models-store.json`, throttles and persists, and the only thing this
-//      file supplies is the pi.dev fetch plus the free-model policy. The list
-//      is never assembled here, so a model published after the last pi release
-//      shows up without an extension update.
-//   2. Wire identity — zen rejects anything that does not look like the
-//      OpenCode CLI, so every request carries the per-endpoint User-Agent, the
-//      `x-opencode-*` headers and the SDK-free telemetry profile. The ids are
-//      generated with opencode's algorithm, never baked in.
-//   3. Transcript — encrypted reasoning blobs and empty tool ids are dropped
-//      before dispatch, because the gateway rejects them on replay.
-//
-// Credentials stay out of this file: `opencodeProvider()` declares
+// Credentials stay out of this file: pi's own `opencode` provider declares
 // `OPENCODE_API_KEY` and pi resolves it from `auth.json` before the
 // environment, so the bearer lives in pi's credential store only.
 
 const PROVIDER_ID = "opencode";
-const CATALOG_URL = "https://pi.dev/api/models/providers/opencode";
-const CATALOG_TIMEOUT_MS = 4_000;
-// Same freshness window pi's own remote catalog uses; `context.stored` carries
-// `checkedAt`, so a session start never costs more than one request per window.
-const CATALOG_REFRESH_INTERVAL_MS = 4 * 60 * 60 * 1000;
-const ZEN_ORIGIN = "https://opencode.ai/zen";
-/** The project scope opencode reports when it has no repository to name. */
-const OPENCODE_GLOBAL_PROJECT = "global";
-/**
- * Named headers pi's OpenAI/Responses adapters inject when `options.sessionId`
- * is set. opencode's capture contains none of them; the unnamed `x-stainless-*`
- * telemetry is matched by prefix in the fetch wrapper.
- */
-const NON_OPENCODE_HEADERS = new Set([
-    "x-client-request-id",
-    "x-session-affinity",
-    "session_id",
-]);
 
 // Per-endpoint provider-utils pins: chat-completions 4.0.23, responses 4.0.40,
-// anthropic 4.0.46 — the capture table in overlays/maki/README.md.
+// anthropic 4.0.46 — the capture table in overlays/maki/README.md. The
+// provider also serves `google-generative-ai`, which the table does not cover,
+// so no User-Agent is claimed for it rather than borrowing another pin.
 const OPENCODE_VERSION = "1.18.32";
-const USER_AGENT_OPENAI = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`;
-const USER_AGENT_RESPONSES = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14`;
-const USER_AGENT_ANTHROPIC = `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14`;
+const USER_AGENT_BY_API: Partial<Record<Api, string>> = {
+	"anthropic-messages": `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14`,
+	"openai-responses": `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14`,
+	"openai-completions": `opencode/${OPENCODE_VERSION} ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14`,
+};
 
 let sessionId = "";
 let counter = 0;
@@ -76,441 +60,271 @@ let lastTimestamp = 0;
 // in full for a descending id — as 12 hex chars, then 14 base62 chars drawn
 // from a CSPRNG. Never baked in: every request recomputes it.
 function identifier(descending: boolean): string {
-    const now = Date.now();
-    if (now !== lastTimestamp) {
-        lastTimestamp = now;
-        counter = 0;
-    }
-    // opencode bumps the counter before reading it, so the first id of a
-    // millisecond carries 1; one counter is shared by every id kind.
-    counter += 1;
-    const packed = (BigInt(now) * 0x1000n + BigInt(counter)) & 0xffffffffffffn;
-    const value = descending ? ~packed & 0xffffffffffffn : packed;
-    const scope = value.toString(16).padStart(12, "0");
-    const alphabet =
-        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-    const bytes = randomBytes(14);
-    let suffix = "";
-    for (let i = 0; i < 14; i++) {
-        suffix += alphabet[bytes[i] % alphabet.length];
-    }
-    return scope + suffix;
+	const now = Date.now();
+	if (now !== lastTimestamp) {
+		lastTimestamp = now;
+		counter = 0;
+	}
+	// opencode bumps the counter before reading it, so the first id of a
+	// millisecond carries 1; one counter is shared by every id kind.
+	counter += 1;
+	const packed = (BigInt(now) * 0x1000n + BigInt(counter)) & 0xffffffffffffn;
+	const value = descending ? ~packed & 0xffffffffffffn : packed;
+	const scope = value.toString(16).padStart(12, "0");
+	const alphabet =
+		"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	const bytes = randomBytes(14);
+	let suffix = "";
+	for (let i = 0; i < 14; i++) {
+		suffix += alphabet[bytes[i] % alphabet.length];
+	}
+	return scope + suffix;
 }
 
-function rotateSession(): void {
-    // Descending: opencode restarts the id space when a session begins so every
-    // later id of that session sorts before the previous one.
-    sessionId = `ses_${identifier(true)}`;
+// pi assembles these headers per request, so the request id is minted per call
+// and stays correct across retries. Literals stay inline: each is used once,
+// and an alias would only hide the wire value being claimed.
+function applyWireIdentity(headers: ProviderHeaders, api: Api): void {
+	const userAgent = USER_AGENT_BY_API[api];
+	if (userAgent !== undefined) headers["User-Agent"] = userAgent;
+	// pi sends `x-opencode-client: pi`; the CLI reports `cli`.
+	headers["x-opencode-client"] = "cli";
+	// The project scope opencode reports when it has no repository to name.
+	headers["x-opencode-project"] = "global";
+	// pi sends its own session id here; the CLI sends one from its algorithm.
+	headers["x-opencode-session"] = sessionId;
+	headers["x-opencode-request"] = `msg_${identifier(false)}`;
 }
 
-function userAgentFor(api: Api): string {
-    if (api === "anthropic-messages") return USER_AGENT_ANTHROPIC;
-    if (api === "openai-responses") return USER_AGENT_RESPONSES;
-    return USER_AGENT_OPENAI;
+const ENCRYPTED_REASONING_TYPE = "reasoning.encrypted";
+
+/**
+ * The id a tool call travels under, and the id its result travels under, for
+ * each of the three shapes pi builds:
+ *
+ *   - chat completions — `tool_calls[].id` and `tool_call_id`
+ *   - responses — `function_call.call_id` and `function_call_output.call_id`
+ *   - anthropic — `tool_use.id` and `tool_result.tool_use_id`
+ *
+ * `id` covers the call in all three; the result needs naming per shape, and
+ * `call_id` is shared by both, so the node's `type` decides there.
+ */
+const RESULT_ID_FIELDS = new Set(["tool_call_id", "tool_use_id"]);
+
+function isResultItem(record: Record<string, unknown>, field: string): boolean {
+	if (RESULT_ID_FIELDS.has(field)) return true;
+	const type = record.type;
+	return typeof type === "string" && type.endsWith("_output");
 }
 
-function opencodeHeaders(api: Api): ProviderHeaders {
-    return {
-        "User-Agent": userAgentFor(api),
-        "x-opencode-client": "cli",
-        "x-opencode-project": OPENCODE_GLOBAL_PROJECT,
-        "x-opencode-session": sessionId,
-        "x-opencode-request": `msg_${identifier(false)}`,
-    };
+// One pass over the payload for both transcript repairs, so the three request
+// shapes need no per-api branch. The rule set is deliberately tiny and each
+// entry is a place pi demonstrably replays issuer-bound data: the
+// `encrypted_content` a Responses reasoning item carries, the
+// `reasoning.encrypted` entries of a chat-completions `reasoning_details`
+// array, and a tool call id that collapsed to empty. Everything else, the
+// plaintext reasoning summary included, is left byte for byte alone.
+function sanitizeRequest(payload: unknown): void {
+	// pi emits exactly one result per call and it follows the call, and
+	// document order is the order `visit` walks, so a queue pairs them even
+	// when several calls share one assistant message.
+	const repairedCallIds: string[] = [];
+
+	function visit(value: unknown): void {
+		if (Array.isArray(value)) {
+			for (const entry of value) visit(entry);
+			return;
+		}
+		if (value === null || typeof value !== "object") return;
+		const record = value as Record<string, unknown>;
+
+		if (typeof record.encrypted_content === "string") {
+			// The blob and the reasoning item id are issued together and
+			// validated as a pair, so both go; pi omits the id elsewhere for
+			// the same reason.
+			delete record.encrypted_content;
+			delete record.id;
+		}
+
+		for (const field of ["id", "call_id", "tool_call_id", "tool_use_id"]) {
+			if (record[field] !== "") continue;
+			if (isResultItem(record, field)) {
+				// A result with no call to pair against is not repairable, so
+				// it is left as it is rather than given a fabricated partner.
+				const paired = repairedCallIds.shift();
+				if (paired !== undefined) record[field] = paired;
+				continue;
+			}
+			const repaired = `call_${repairedCallIds.length + 1}`;
+			repairedCallIds.push(repaired);
+			record[field] = repaired;
+		}
+
+		for (const [key, nested] of Object.entries(record)) {
+			if (key === "reasoning_details" && Array.isArray(nested)) {
+				// pi re-adds the key whenever the parsed signature yielded
+				// anything, so an emptied array has to be removed as well.
+				const kept = nested.filter(
+					(detail) =>
+						(detail as { type?: unknown } | null)?.type !==
+						ENCRYPTED_REASONING_TYPE,
+				);
+				if (kept.length === 0) {
+					delete record.reasoning_details;
+					continue;
+				}
+				record.reasoning_details = kept;
+				continue;
+			}
+			visit(nested);
+		}
+	}
+
+	visit(payload);
 }
 
-// opencode's own fetch layer emits none of the AI SDK's `x-stainless-*`
-// telemetry and none of pi's session-affinity trio, and zen cannot tell the
-// difference; collect the names first, because deleting from a live Headers
-// iteration skips the next entry. `options.headers` are merged last, so they
-// can override a header but never remove one — this is the only place that
-// can.
-function stripStainlessFetch(inner: typeof fetch = globalThis.fetch): typeof fetch {
-    return (input, init) => {
-        const headers = new Headers(
-            input instanceof Request ? input.headers : undefined,
-        );
-        if (init?.headers) {
-            new Headers(init.headers).forEach((value, name) =>
-                headers.set(name, value),
-            );
-        }
-        const telemetry: string[] = [];
-        headers.forEach((_value, name) => {
-            const key = name.toLowerCase();
-            if (key.startsWith("x-stainless-") || NON_OPENCODE_HEADERS.has(key)) {
-                telemetry.push(name);
-            }
-        });
-        for (const name of telemetry) headers.delete(name);
-        return inner(input, {
-            ...init,
-            headers
-        });
-    };
+// The anonymous zen key buys only the zero-cost tier, so cost is the whole
+// policy, and every opencode model is served from zen.
+function isFreeZenModel(model: Model<Api>): boolean {
+	return (
+		model.provider === PROVIDER_ID &&
+		model.cost?.input === 0 &&
+		model.cost?.output === 0
+	);
 }
 
-function isFreeZenModel(model: Model < Api > ): boolean {
-    return (
-        model.cost?.input === 0 &&
-        model.cost?.output === 0 &&
-        (model.baseUrl ?? ZEN_ORIGIN).startsWith(ZEN_ORIGIN)
-    );
+// The projection shared by the registration snapshot and the refresh hook, so
+// the two can never drift. Every field pi's own catalog entry carries is
+// passed through (only `headers` is left for pi to assemble per request and
+// `provider` for the composer to stamp); registering a thinner shape breaks
+// downstream readers that assume a catalog entry.
+function projectFreeTier(
+	models: ReadonlyArray<Model<Api>>,
+): ProviderModelConfig[] {
+	return models.filter(isFreeZenModel).map((model) => ({
+		id: model.id,
+		name: model.name,
+		api: model.api,
+		baseUrl: model.baseUrl,
+		reasoning: model.reasoning,
+		thinkingLevelMap: model.thinkingLevelMap,
+		input: model.input,
+		inputLimits: model.inputLimits,
+		cost: model.cost,
+		promptCache: model.promptCache,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+		compat: model.compat,
+	}));
 }
 
-// pi.dev publishes the registry pi itself reads: a map keyed by model id, but
-// accept the array and `{ models }` shapes too so a registry reshuffle fails
-// loudly at the HTTP layer instead of silently yielding an empty catalog.
-function parseCatalog(payload: unknown): Model < Api > [] {
-    let entries: unknown;
-    if (Array.isArray(payload)) {
-        entries = payload;
-    } else if (
-        payload !== null &&
-        typeof payload === "object" &&
-        "models" in payload &&
-        Array.isArray((payload as {
-            models: unknown
-        }).models)
-    ) {
-        entries = (payload as {
-            models: unknown
-        }).models;
-    } else if (payload !== null && typeof payload === "object") {
-        entries = Object.values(payload);
-    } else {
-        throw new Error(
-            `pi.dev catalog: unexpected payload ${JSON.stringify(payload)?.slice(0, 120) ?? typeof payload}`,
-        );
-    }
-    return (entries as Model < Api > []).map((model) => ({
-        ...model,
-        provider: PROVIDER_ID,
-    }));
+// ModelsStoreEntry shapes differ across pi builds (array or Map), so the
+// refresh hook reads through one helper instead of repeating the branch.
+// Entries pass through only with a string `id`: anything else cannot name a
+// model, and dropping it here beats registering an `id: undefined` entry
+// that would fail far from the cause. The remaining fields are pi's own
+// persisted catalog shape, resolved against the live entry by the composer.
+function storedModelsOf(stored: unknown): Array<Model<Api>> {
+	if (stored === null || typeof stored !== "object") return [];
+	const models = (stored as { models?: unknown }).models;
+	const entries = Array.isArray(models)
+		? models
+		: models instanceof Map
+			? [...models.values()]
+			: [];
+	return entries.filter(
+		(entry): entry is Model<Api> =>
+			typeof entry === "object" &&
+			entry !== null &&
+			typeof (entry as { id?: unknown }).id === "string",
+	);
 }
 
-async function fetchZenCatalog(
-    context: RefreshModelsContext,
-): Promise < readonly Model < Api > [] > {
-    const stored = context.stored?.models.filter(
-        (model) => model.provider === PROVIDER_ID,
-    );
-    if (
-        !context.force &&
-        stored !== undefined &&
-        context.stored?.checkedAt !== undefined &&
-        Date.now() - context.stored.checkedAt < CATALOG_REFRESH_INTERVAL_MS
-    ) {
-        return stored;
-    }
-    const response = await fetch(CATALOG_URL, {
-        signal: AbortSignal.any([
-            context.signal,
-            AbortSignal.timeout(CATALOG_TIMEOUT_MS),
-        ]),
-    });
-    if (!response.ok) {
-        throw new Error(`pi.dev catalog: HTTP ${response.status}`);
-    }
-    // Raw: the stored entry mirrors pi.dev so pi can still read it if the
-    // extension is ever uninstalled. Availability is a separate concern and
-    // lives on `getModels` below.
-    return parseCatalog(await response.json());
-}
+export default async function (pi: ExtensionAPI): Promise<void> {
+	// Descending: opencode restarts the id space when a session begins so every
+	// later id of that session sorts before the previous one.
+	sessionId = `ses_${identifier(true)}`;
 
-const COMPLETIONS_REASONING_FIELDS = new Set([
-    "reasoning",
-    "reasoning_content",
-    "reasoning_text",
-]);
+	// One registration no matter how often discovery fires: re-registering
+	// merges over itself, so the guard keeps startup to a single declaration.
+	// Registration runs on `resources_discover` — it fires after the runtime's
+	// own snapshot pass on every host (sessions, print, agents) and carries
+	// the composed registry. `session_start` is deliberately not used: the
+	// runtime is mid-refresh there and rejects provider calls.
+	let registered = false;
+	const registerFreeTier = (registry: ModelRegistry): void => {
+		if (registered) return;
 
-function hasReasoningPayload(item: Record < string, unknown > ): boolean {
-    const summary = item.summary;
-    if (Array.isArray(summary) && summary.length > 0) return true;
-    const content = item.content;
-    if (Array.isArray(content) && content.length > 0) return true;
-    if (typeof content === "string" && content.length > 0) return true;
-    const text = item.text;
-    if (typeof text === "string" && text.length > 0) return true;
-    return false;
-}
+		// `models` keeps the picker populated before the first refresh;
+		// `refreshModels` re-projects from pi's own persisted catalog on every
+		// refresh cycle. The empty set throws instead of registering a broken
+		// list: an empty projection is a broken catalog, and surfacing it
+		// here beats hiding the cause until the first request.
+		const models = projectFreeTier(registry.getAll());
+		if (models.length === 0) {
+			throw new Error(
+				`pi-opencode: pi's "${PROVIDER_ID}" catalog has no free zen model`,
+			);
+		}
+		pi.registerProvider(PROVIDER_ID, {
+			models,
+			refreshModels: async (
+				context: RefreshModelsContext,
+			): Promise<ProviderModelConfig[]> => {
+				const free = projectFreeTier(storedModelsOf(context.stored));
+				if (free.length === 0) {
+					throw new Error(
+						`pi-opencode: pi's persisted "${PROVIDER_ID}" catalog projects to no free zen model`,
+					);
+				}
+				return free;
+			},
+		});
+		registered = true;
+		// Trigger the cycle that makes the hook authoritative: without this,
+		// only a later `pi update --models` or refresh would replace the
+		// snapshot. The registry handle is used once, synchronously — a
+		// captured handle goes stale after a session replacement or reload
+		// and pi throws on any later use, so nothing here is awaited or
+		// retried. Both failure paths report: a rejected refresh and a
+		// resolved one carrying this provider in its error map.
+		void registry.refresh({ providers: [PROVIDER_ID] }).then(
+			(result) => {
+				const failure = result.errors.get(PROVIDER_ID);
+				if (failure !== undefined) {
+					console.error(
+						`pi-opencode: free-tier refresh failed: ${failure.message}`,
+					);
+				}
+			},
+			(error: unknown) => {
+				console.error(
+					`pi-opencode: free-tier refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			},
+		);
+	};
+	// A failed first attempt leaves `registered` false, so the next
+	// discovery pass retries the whole declaration from a fresh `ctx`.
+	pi.on("resources_discover", (_event, ctx) => {
+		try {
+			registerFreeTier(ctx.modelRegistry);
+		} catch (error) {
+			console.error(
+				`pi-opencode: free-tier registration failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	});
 
-// Drops issuer-bound reasoning blobs the gateway rejects on replay with
-// "was not issued to this caller": reasoning.encrypted details and
-// encrypted_content plus its cross-turn id. Plaintext summary replays
-// cleanly, so only that survives; empty remainders return undefined.
-function stripEncryptedSignature(
-    signature: string | undefined,
-    api ? : Api,
-): string | undefined {
-    if (!signature) return signature;
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(signature);
-    } catch {
-        return COMPLETIONS_REASONING_FIELDS.has(signature) ? signature : undefined;
-    }
-    if (Array.isArray(parsed)) {
-        const kept = parsed.filter(
-            (detail) =>
-            typeof detail !== "object" ||
-            detail === null ||
-            (detail as {
-                type ? : unknown
-            }).type !== "reasoning.encrypted",
-        );
-        if (kept.length === parsed.length) return signature;
-        if (kept.length === 0) return undefined;
-        return JSON.stringify(kept);
-    }
-    if (typeof parsed === "object" && parsed !== null) {
-        const record = parsed as Record < string,
-            unknown > ;
-        if (record.type === "reasoning.encrypted") return undefined;
-        if ("encrypted_content" in record) {
-            const {
-                encrypted_content: _encrypted,
-                id: _id,
-                ...rest
-            } = record;
-            void _encrypted;
-            void _id;
-            if (!hasReasoningPayload(rest)) return undefined;
-            return JSON.stringify(rest);
-        }
-        if (api === "openai-responses" && typeof record.id === "string") {
-            const {
-                id: _id,
-                ...rest
-            } = record;
-            void _id;
-            if (!hasReasoningPayload(rest)) return undefined;
-            return JSON.stringify(rest);
-        }
-        return signature;
-    }
-    return signature;
-}
+	// Both request hooks fire for every provider, so each is scoped to the one
+	// this extension exists for.
+	pi.on("before_provider_headers", async (event, ctx) => {
+		if (ctx.model?.provider !== PROVIDER_ID) return;
+		applyWireIdentity(event.headers, ctx.model.api);
+	});
 
-// Same normalization the host applies: an id collapsing to empty fails the
-// gateway with "call_id length must be >= 1", so repair it deterministically.
-function isEmptyCallIdPart(callId: string): boolean {
-    const sanitized = callId
-        .replace(/[^a-zA-Z0-9_-]/g, "_")
-        .slice(0, 64)
-        .replace(/_+$/, "");
-    return sanitized.length === 0;
-}
-
-function fallbackCallId(seed: string): string {
-    return `call_repaired_${createHash("sha1").update(seed).digest("hex").slice(0, 8)}`;
-}
-
-function repairToolId(
-    fullId: string,
-    seedHint: string,
-    repairs: Map < string, string > ,
-    index: number,
-): string {
-    const cached = repairs.get(fullId);
-    if (cached) return cached;
-    const separator = fullId.indexOf("|");
-    const callId = separator === -1 ? fullId : fullId.slice(0, separator);
-    const itemPart = separator === -1 ? "" : fullId.slice(separator + 1);
-    if (!isEmptyCallIdPart(callId)) return fullId;
-    const repairedCall = fallbackCallId(`${seedHint}:${index}:${fullId}`);
-    const repaired = itemPart ? `${repairedCall}|${itemPart}` : repairedCall;
-    repairs.set(fullId, repaired);
-    return repaired;
-}
-
-function sanitizeZenContext(
-    context: TranscriptContext,
-    api ? : Api,
-): TranscriptContext {
-    const repairs = new Map < string,
-        string > ();
-    let toolIndex = 0;
-    let changed = false;
-    const messages = context.messages.map((message) => {
-        if (message.role === "assistant") {
-            let messageChanged = false;
-            const content: typeof message.content = [];
-            for (const block of message.content) {
-                if (block.type === "thinking") {
-                    if (block.redacted) {
-                        if (!block.thinking || block.thinking.trim() === "") {
-                            messageChanged = true;
-                            continue;
-                        }
-                        messageChanged = true;
-                        content.push({
-                            type: "text",
-                            text: block.thinking
-                        });
-                        continue;
-                    }
-                    if (typeof block.thinkingSignature === "string") {
-                        const stripped = stripEncryptedSignature(
-                            block.thinkingSignature,
-                            api,
-                        );
-                        if (stripped !== block.thinkingSignature) {
-                            messageChanged = true;
-                            if (
-                                stripped === undefined &&
-                                (!block.thinking || block.thinking.trim() === "")
-                            ) {
-                                continue;
-                            }
-                            content.push({
-                                ...block,
-                                thinkingSignature: stripped
-                            });
-                            continue;
-                        }
-                    }
-                    content.push(block);
-                } else if (block.type === "toolCall") {
-                    let nextBlock = block;
-                    if (typeof block.thoughtSignature === "string") {
-                        const stripped = stripEncryptedSignature(
-                            block.thoughtSignature,
-                            api,
-                        );
-                        if (stripped !== block.thoughtSignature) {
-                            messageChanged = true;
-                            nextBlock = {
-                                ...nextBlock,
-                                thoughtSignature: stripped
-                            };
-                        }
-                    }
-                    const repairedId = repairToolId(
-                        block.id,
-                        `${block.name}:${JSON.stringify(block.arguments)}`,
-                        repairs,
-                        toolIndex++,
-                    );
-                    if (repairedId !== block.id) {
-                        messageChanged = true;
-                        nextBlock = {
-                            ...nextBlock,
-                            id: repairedId
-                        };
-                    }
-                    content.push(nextBlock);
-                } else {
-                    content.push(block);
-                }
-            }
-            if (!messageChanged) return message;
-            changed = true;
-            return {
-                ...message,
-                content
-            };
-        }
-        if (message.role === "toolResult") {
-            const repairedId = repairToolId(
-                message.toolCallId,
-                `${message.toolName}:${message.toolCallId}`,
-                repairs,
-                toolIndex++,
-            );
-            if (repairedId !== message.toolCallId) {
-                changed = true;
-                return {
-                    ...message,
-                    toolCallId: repairedId
-                };
-            }
-            return message;
-        }
-        return message;
-    });
-    if (!changed) return context;
-    return {
-        ...context,
-        messages
-    };
-}
-
-// Headers plus the fetch layer, applied at the only point that knows both the
-// request's real api (for the right User-Agent) and the options object that
-// pi's own `withOpenCodeSessionHeader` will consult before overwriting.
-function wireRequest(
-    model: Model < Api > ,
-    options:
-    |
-    {
-        headers ? : ProviderHeaders;fetch ? : typeof globalThis.fetch
-    } |
-    undefined,
-) {
-    return {
-        headers: {
-            ...options?.headers,
-            ...opencodeHeaders(model.api)
-        },
-        fetch: stripStainlessFetch(options?.fetch),
-    };
-}
-
-// pi owns every refresh pass; this only reports failures instead of letting
-// them die inside the registry's error map.
-async function onSessionStart(ctx: ExtensionContext): Promise < void > {
-    rotateSession();
-    const {
-        errors
-    } = await ctx.modelRegistry.refresh({
-        providers: [PROVIDER_ID],
-        allowNetwork: true,
-    });
-    for (const [providerId, error] of errors) {
-        console.warn(
-            `pi-opencode: model refresh for ${providerId} failed: ${error.message}`,
-        );
-    }
-}
-
-export default async function(pi: ExtensionAPI): Promise < void > {
-    // The builtin carries pi's model metadata and every stream implementation;
-    // only its catalog and wire behavior are replaced.
-    const builtin = opencodeProvider() as Provider < Api > ;
-    if (builtin.getModels().filter(isFreeZenModel).length === 0) {
-        // The bundled catalog is pi's own build data; an empty free projection
-        // is a bug, and registering an unusable provider would hide it until
-        // the first request failed.
-        throw new Error(
-            "pi-opencode: bundled catalog carries no free zen model; refusing to register an unusable provider",
-        );
-    }
-    pi.on("session_start", (_event, ctx) => onSessionStart(ctx));
-    const provider = createProvider < Api > ({
-        id: PROVIDER_ID,
-        name: builtin.name,
-        auth: builtin.auth,
-        models: builtin.getModels(),
-        fetchModels: fetchZenCatalog,
-        api: {
-            stream: (model, context, options) =>
-                builtin.stream(model, sanitizeZenContext(context, model.api), {
-                    ...options,
-                    ...wireRequest(model, options),
-                }),
-            streamSimple: (model, context, options) =>
-                builtin.streamSimple(model, sanitizeZenContext(context, model.api), {
-                    ...options,
-                    ...wireRequest(model, options),
-                }),
-        },
-    });
-    pi.registerProvider({
-        ...provider,
-        // pi merges the bundled catalog with its pi.dev entry; the merged list
-        // is then cut down to what the anonymous zen key can actually buy, so
-        // every surface (list, picker, request lookup) sees the same set.
-        getModels: () => provider.getModels().filter(isFreeZenModel),
-    });
+	pi.on("before_provider_request", async (event, ctx) => {
+		if (ctx.model?.provider !== PROVIDER_ID) return;
+		sanitizeRequest(event.payload);
+	});
 }

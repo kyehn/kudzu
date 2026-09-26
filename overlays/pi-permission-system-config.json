@@ -1,0 +1,22 @@
+{
+	"permission": {
+		"*": "allow",
+		"path": {
+			"*": "allow",
+			"*.env": "deny",
+			"*.env.*": "deny",
+			"*.env.example": "allow"
+		},
+		"bash": {
+			"*": "allow",
+			"git checkout -- *": "ask",
+			"find /nix/store *": "deny",
+			"ls /nix/store": "deny",
+			"ls /nix/store *": "deny",
+			"find / *": "deny",
+			"find /usr *": "deny",
+			"find /home/runner *": "deny"
+		},
+		"external_directory": "allow"
+	}
+}

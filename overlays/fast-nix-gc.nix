@@ -9,13 +9,13 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "fast-nix-gc";
-  version = "0-unstable-2026-09-19";
+  version = "0-unstable-2026-09-24";
 
   src = fetchFromGitHub {
     owner = "Mic92";
     repo = "fast-nix-gc";
-    rev = "b4eb644e0868ce4f93d9f2747940d4cfcbce62c7";
-    hash = "sha256-+UU7dEd9Cxx+s3rdQWhx059L5Y2FkNCj3kSWMRFrKXY=";
+    rev = "de33bdb8a5ca304d443252dd61702f8649dcc26b";
+    hash = "sha256-EbXqCoQYMtNBjbPOW+6A5wp8Xn9d2wcnyUq2OJ6qXKY=";
   };
 
   cargoHash = "sha256-bHMR29uAAy0lUkqRIxv0GFqCe2ljA/UEsmzVillidkU=";
