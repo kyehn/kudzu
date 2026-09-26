@@ -57,6 +57,7 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
+            ~/.reasonix/sessions-*
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*
@@ -74,8 +75,8 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki .#reasonix
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
@@ -90,6 +91,8 @@ jobs:
           npm install --global --yes @mobilenext/mobile-mcp
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
+          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
+          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -107,6 +110,11 @@ jobs:
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      - run: overlays/reasonix/providers-config.py
+        working-directory: ${{ github.event.repository.name }}
+      - run: |
+          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
+          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
@@ -149,6 +157,7 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
+            ~/.reasonix/sessions-*
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*

@@ -1,5 +1,139 @@
+diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
+index 4ce2be75..b0a2ade8 100644
+--- a/maki-agent/src/agent/compaction.rs
++++ b/maki-agent/src/agent/compaction.rs
+@@ -85,6 +85,7 @@ pub(super) async fn compact_history(
+     cancel: &CancelToken,
+     config: &AgentConfig,
+     instructions: Option<&str>,
++    tools: &Value,
+     carry_len: usize,
+     session_id: Option<&SessionRef>,
+     retry: RetryPolicy,
+@@ -98,7 +99,10 @@ pub(super) async fn compact_history(
+     collapse_tool_results(&mut compaction_history, RECENT_TOOL_RESULT_BUDGET);
+     compaction_history.push(Message::user(summary_prompt(config, instructions)));
+ 
+-    let empty_tools = serde_json::json!([]);
++    // The summary rides the session's own tool declarations: providers that
++    // only serve CLI-shaped traffic (e.g. the opencode Zen free tier) reject
++    // tool-less requests, so an empty declaration would fail the compaction
++    // instead of just saving tokens.
+     let max_attempts = 3;
+     let mut last_error = None;
+ 
+@@ -109,7 +113,7 @@ pub(super) async fn compact_history(
+                 model,
+                 messages: &compaction_history,
+                 system: crate::prompt::COMPACTION_SYSTEM,
+-                tools: &empty_tools,
++                tools,
+                 opts: RequestOptions::default(),
+                 output_budget: SUMMARY_OUTPUT_BUDGET,
+                 session_id,
+@@ -226,6 +230,7 @@ pub async fn compact(
+         cancel,
+         config,
+         instructions,
++        tools,
+         0,
+         session_id,
+         retry,
+@@ -419,6 +424,7 @@ mod tests {
+         responses: Mutex<Vec<Result<StreamResponse, AgentError>>>,
+         requests: Mutex<Vec<Vec<Message>>>,
+         sessions: Mutex<Vec<Option<String>>>,
++        seen_tools: Mutex<Vec<Value>>,
+     }
+ 
+     impl MockProvider {
+@@ -427,6 +433,7 @@ mod tests {
+                 responses: Mutex::new(responses),
+                 requests: Mutex::new(Vec::new()),
+                 sessions: Mutex::new(Vec::new()),
++                seen_tools: Mutex::new(Vec::new()),
+             }
+         }
+     }
+@@ -437,7 +444,7 @@ mod tests {
+             _: &'a Model,
+             messages: &'a [Message],
+             _: &'a str,
+-            _: &'a Value,
++            tools: &'a Value,
+             _: &'a flume::Sender<ProviderEvent>,
+             _: RequestOptions,
+             session_id: Option<&'a SessionRef>,
+@@ -448,6 +455,7 @@ mod tests {
+                     .lock()
+                     .unwrap()
+                     .push(session_id.map(|s| s.as_str().to_string()));
++                self.seen_tools.lock().unwrap().push(tools.clone());
+                 let mut responses = self.responses.lock().unwrap();
+                 assert!(!responses.is_empty(), "MockProvider: no more responses");
+                 responses.remove(0)
+@@ -528,6 +536,7 @@ mod tests {
+             &CancelToken::none(),
+             &AgentConfig::default(),
+             None,
++            &no_tools(),
+             carry_len,
+             session_id,
+             RetryPolicy::default(),
+@@ -1057,6 +1066,39 @@ mod tests {
+         });
+     }
+ 
++    /// Providers that only serve CLI-shaped traffic (e.g. the opencode Zen
++    /// free tier) reject tool-less requests with a `FreeTierError`, so the
++    /// summariser must ride the session's own tool declarations.
++    #[test]
++    fn compact_history_sends_the_sessions_tools() {
++        smol::block_on(async {
++            let provider = MockProvider::new(vec![Ok(text_response(StopReason::EndTurn))]);
++            let mut history = History::new(vec![Message::user("work".into())]);
++            let tools = serde_json::json!([{ "name": "read", "description": "Read a file" }]);
++            let (raw_tx, _rx) = flume::unbounded();
++            compact_history(
++                &provider,
++                &default_model(),
++                &mut history,
++                &EventSender::new(raw_tx, 0),
++                &CancelToken::none(),
++                &AgentConfig::default(),
++                None,
++                &tools,
++                0,
++                None,
++                RetryPolicy::default(),
++            )
++            .await
++            .unwrap();
++
++            let seen = provider.seen_tools.lock().unwrap();
++            assert_eq!(seen.len(), 1);
++            assert_eq!(seen[0], tools);
++            assert!(seen[0].as_array().is_some_and(|a| !a.is_empty()));
++        });
++    }
++
+     const CARRIED: &str = "answer this next";
+     const CARRY_UNSENT_MSG: &str = "carried input is not the summariser's to read";
+     const CARRY_KEPT_MSG: &str = "carried input must outlive the summary verbatim";
+diff --git a/maki-agent/src/agent/run.rs b/maki-agent/src/agent/run.rs
+index a912da2d..b78a04c7 100644
+--- a/maki-agent/src/agent/run.rs
++++ b/maki-agent/src/agent/run.rs
+@@ -697,6 +697,7 @@ impl<'h> Agent<'h> {
+             &self.cancel,
+             &self.config,
+             instructions,
++            request_tools(&self.tools, self.mcp.as_ref()).as_ref(),
+             carry_len,
+             self.session_id.as_ref(),
+             self.timeouts.retry,
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
-index 3b6280b..dda6adf 100644
+index 3b6280b0..dda6adfe 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
 +++ b/maki-providers/src/providers/anthropic/mod.rs
 @@ -27,7 +27,7 @@ use crate::{
@@ -33,7 +167,7 @@ index 3b6280b..dda6adf 100644
  
      async fn do_stream_request(
 diff --git a/maki-providers/src/providers/catalog.rs b/maki-providers/src/providers/catalog.rs
-index 659c231..f81e9f4 100644
+index 659c2315..f81e9f47 100644
 --- a/maki-providers/src/providers/catalog.rs
 +++ b/maki-providers/src/providers/catalog.rs
 @@ -29,7 +29,7 @@ use crate::model::{Model, ModelInfo, ModelPricing};
@@ -143,7 +277,7 @@ index 659c231..f81e9f4 100644
  
      /// Limits are published so nothing under test reads a default; only the
 diff --git a/maki-providers/src/providers/custom.rs b/maki-providers/src/providers/custom.rs
-index 83f5210..f72e36f 100644
+index 83f52102..f72e36f1 100644
 --- a/maki-providers/src/providers/custom.rs
 +++ b/maki-providers/src/providers/custom.rs
 @@ -92,6 +92,13 @@ pub fn create(slug: &str, timeouts: Timeouts) -> Result<Box<dyn Provider>, Agent
@@ -161,7 +295,7 @@ index 83f5210..f72e36f 100644
      match protocol {
          Protocol::Anthropic => Ok(Box::new(super::anthropic::Anthropic::with_auth(
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 0333c43..7f80164 100644
+index 0333c43b..7f801645 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
@@ -657,7 +791,7 @@ index 0333c43..7f80164 100644
      fn config_headers_append_unknown_and_replace_same_name() {
          let mut auth = test_bearer("sk-1");
 diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
-index 3aebf9e..822d425 100644
+index 3aebf9e0..822d4259 100644
 --- a/maki-providers/src/providers/openai/responses.rs
 +++ b/maki-providers/src/providers/openai/responses.rs
 @@ -228,14 +228,17 @@ async fn post_responses(
@@ -686,7 +820,7 @@ index 3aebf9e..822d425 100644
  
      debug!(
 diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
-index 6ac740c..4015499 100644
+index 6ac740c1..40154997 100644
 --- a/maki-providers/src/providers/openai_compat.rs
 +++ b/maki-providers/src/providers/openai_compat.rs
 @@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
