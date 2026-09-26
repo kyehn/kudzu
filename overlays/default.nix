@@ -9,6 +9,15 @@ final: prev: {
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   maki = prev.callPackage ./maki { };
   maki-config = prev.callPackage ./maki-config.nix { };
+  dsh =
+    let
+      # dsh's node-addon-require-builtin probes V8 machine code and rejects
+      # nix-compiled Node (24 and nix's 22.23.3 verified crashing at host
+      # preparation); the official 22.23.2 binary boots cleanly.
+      nodejs-official = prev.callPackage ./dsh/nodejs-official.nix { };
+    in
+    prev.callPackage ./dsh { nodejs = nodejs-official; };
+  dsh-config = prev.callPackage ./dsh/dsh-config.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   reasonix = prev.callPackage ./reasonix { };

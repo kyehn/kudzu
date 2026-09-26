@@ -75,8 +75,8 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki .#reasonix
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix" "$HOME/.dsh/profiles/kudzu"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki .#reasonix .#dsh
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
@@ -93,6 +93,10 @@ jobs:
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
           install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
+          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && install -m 0644 /tmp/dsh-config/cordis.patch.yml ~/.dsh/cordis.patch.yml && install -m 0644 /tmp/dsh-config/package.json ~/.dsh/profiles/kudzu/package.json && rm -rf /tmp/dsh-config
+          printf 'OPENCODE_API_KEY=public\nNVIDIA_API_KEY=%s\n' "${{ secrets.NVIDIA_API_KEY }}" > ~/.dsh/.env
+          dsh plugin --profile kudzu add dsh-acp-enhanced billion-context-dsh
+          install -m 0644 .github/AGENTS.md ~/.dsh/AGENTS.md
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -112,6 +116,10 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - run: overlays/reasonix/providers-config.py
         working-directory: ${{ github.event.repository.name }}
+      - run: overlays/dsh/providers-config.py
+        working-directory: ${{ github.event.repository.name }}
+        env:
+          DSH_PROVIDERS_PATCH: $HOME/.dsh/profiles/kudzu/providers.patch.yml
       - run: |
           echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
           echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
