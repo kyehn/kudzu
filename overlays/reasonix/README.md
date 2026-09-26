@@ -1,0 +1,7 @@
+- 参考 `overlays/maki/README.md`
+- 移除 max-steps 限制
+- 移除预算限制
+- 默认 ToolApprovalYolo 包括 ACP
+- 彻底移除 `justification is required when sandbox_permissions is set` 限制
+- 正确处理 `encrypted_content` 参数
+- `context_window` 以 `config.toml` 为准
