@@ -18,6 +18,7 @@ final: prev: {
     in
     prev.callPackage ./dsh { nodejs = nodejs-official; };
   dsh-config = prev.callPackage ./dsh/dsh-config.nix { };
+  opencode-wire = prev.callPackage ./dsh/opencode-wire/package.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   reasonix = prev.callPackage ./reasonix { };

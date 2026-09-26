@@ -1,0 +1,12 @@
+# opencode-wire bundle patch: mounts the wire-identity adapter row.
+#
+# The `providers` dict is owned by `overlays/dsh/providers-config.py`
+# (models.dev + the official /models listing, free tier only); an empty dict
+# keeps the row dormant until that script writes the real routes. No static
+# headers anywhere: every request's wire identity is computed at stream time
+# in src/index.js.
+- insert:
+    - id: opencode-wire
+      name: opencode-wire
+      config:
+        providers: {}

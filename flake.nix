@@ -112,6 +112,7 @@
               reasonix
               dsh
               dsh-config
+              opencode-wire
               ;
           };
         };

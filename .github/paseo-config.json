@@ -13,6 +13,11 @@
 				"label": "Reasonix",
 				"command": ["reasonix", "acp"]
 			},
+			"dsh": {
+				"extends": "acp",
+				"label": "DeepSeek Harness",
+				"command": ["dsh", "--profile", "default"]
+			},
 			"omp": {
 				"enabled": false
 			},
