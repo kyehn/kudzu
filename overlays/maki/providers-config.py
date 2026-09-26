@@ -11,7 +11,20 @@ from typing import Any
 import httpx
 import tomli_w
 
-USER_AGENT = "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
+OPENCODE_VERSION = "1.18.32"
+BUN_VERSION = "1.3.14"
+USER_AGENTS = {
+    protocol: (
+        f"opencode/{OPENCODE_VERSION} ai-sdk/provider-utils/{utils} "
+        f"runtime/bun/{BUN_VERSION}"
+    )
+    for protocol, utils in (
+        ("openai", "4.0.23"),
+        ("openai-responses", "4.0.40"),
+        ("anthropic", "4.0.46"),
+    )
+}
+USER_AGENT = USER_AGENTS["openai"]
 MAKI_PROVIDERS = Path.home() / ".config" / "maki" / "providers.toml"
 PROVIDER_NAMES = ("opencode", "nvidia")
 
@@ -130,21 +143,10 @@ def main(argv: list[str] | None = None) -> None:
                 "default_model": provider_models[0][0],
             }
             if provider == "opencode":
-                if protocol == "openai-responses":
-                    provider_config["headers"] = {
-                        "User-Agent": "opencode/1.18.32 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14",
-                        "x-opencode-client": "cli",
-                    }
-                elif protocol == "anthropic":
-                    provider_config["headers"] = {
-                        "User-Agent": "opencode/1.18.32 ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14",
-                        "x-opencode-client": "cli",
-                    }
-                else:
-                    provider_config["headers"] = {
-                        "User-Agent": USER_AGENT,
-                        "x-opencode-client": "cli",
-                    }
+                provider_config["headers"] = {
+                    "User-Agent": USER_AGENTS[protocol],
+                    "x-opencode-client": "cli",
+                }
             else:
                 provider_config["api_key"] = os.getenv(entry["env"][0])
             new_providers[f"{provider}-{protocol}"] = provider_config

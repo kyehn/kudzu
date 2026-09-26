@@ -25,8 +25,6 @@ writeText "settings.json" (
       "npm:@ff-labs/pi-fff"
       "npm:pi-memory"
       "npm:pi-rtk-optimizer"
-      "npm:@quintinshaw/pi-dynamic-workflows"
-      "npm:pi-subagents"
     ];
     env = {
       PI_BG_DISABLE_PI_TELEMETRY = 1;

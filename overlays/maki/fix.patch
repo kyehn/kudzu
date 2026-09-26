@@ -1,127 +1,3 @@
-diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
-index 4ce2be7..88727a8 100644
---- a/maki-agent/src/agent/compaction.rs
-+++ b/maki-agent/src/agent/compaction.rs
-@@ -76,6 +76,11 @@ pub(super) fn continue_message(config: &AgentConfig) -> String {
- /// after it, so input no turn has answered yet survives verbatim without ever
- /// leaving `history`. Anything less and the mirror would publish a transcript
- /// missing that input for the length of the summary request.
-+///
-+/// `tools` is the same catalog the session's own requests carry: the summary
-+/// describes a session whose next turn declares those tools, and the Zen free
-+/// tier rejects a request whose `tools` are empty or missing outright, so an
-+/// empty array would end the session at its first compaction.
- #[allow(clippy::too_many_arguments)]
- pub(super) async fn compact_history(
-     provider: &dyn maki_providers::provider::Provider,
-@@ -86,6 +91,7 @@ pub(super) async fn compact_history(
-     config: &AgentConfig,
-     instructions: Option<&str>,
-     carry_len: usize,
-+    tools: &Value,
-     session_id: Option<&SessionRef>,
-     retry: RetryPolicy,
- ) -> Result<TokenUsage, AgentError> {
-@@ -98,7 +104,6 @@ pub(super) async fn compact_history(
-     collapse_tool_results(&mut compaction_history, RECENT_TOOL_RESULT_BUDGET);
-     compaction_history.push(Message::user(summary_prompt(config, instructions)));
- 
--    let empty_tools = serde_json::json!([]);
-     let max_attempts = 3;
-     let mut last_error = None;
- 
-@@ -109,7 +114,7 @@ pub(super) async fn compact_history(
-                 model,
-                 messages: &compaction_history,
-                 system: crate::prompt::COMPACTION_SYSTEM,
--                tools: &empty_tools,
-+                tools,
-                 opts: RequestOptions::default(),
-                 output_budget: SUMMARY_OUTPUT_BUDGET,
-                 session_id,
-@@ -227,6 +232,7 @@ pub async fn compact(
-         config,
-         instructions,
-         0,
-+        tools,
-         session_id,
-         retry,
-     )
-@@ -529,6 +535,7 @@ mod tests {
-             &AgentConfig::default(),
-             None,
-             carry_len,
-+            &no_tools(),
-             session_id,
-             RetryPolicy::default(),
-         )
-diff --git a/maki-agent/src/agent/run.rs b/maki-agent/src/agent/run.rs
-index a912da2..fe8c108 100644
---- a/maki-agent/src/agent/run.rs
-+++ b/maki-agent/src/agent/run.rs
-@@ -689,6 +689,7 @@ impl<'h> Agent<'h> {
-             self.timeouts,
-             &self.model_policy,
-         );
-+        let tools = request_tools(&self.tools, self.mcp.as_ref());
-         let compaction_usage = compaction::compact_history(
-             &*compact_provider,
-             &compact_model,
-@@ -698,6 +699,7 @@ impl<'h> Agent<'h> {
-             &self.config,
-             instructions,
-             carry_len,
-+            tools.as_ref(),
-             self.session_id.as_ref(),
-             self.timeouts.retry,
-         )
-@@ -712,11 +714,7 @@ impl<'h> Agent<'h> {
-             .add(compaction_usage, compact_cost, compact_list_cost);
-         // The measurement the gauge holds describes the transcript that was
-         // just summarized away, so what is left is all it may count.
--        self.gauge.reset(
--            self.history.as_slice(),
--            &self.system,
--            request_tools(&self.tools, self.mcp.as_ref()).as_ref(),
--        );
-+        self.gauge.reset(self.history.as_slice(), &self.system, tools.as_ref());
-         let context_size_after = self.gauge.size();
-         let carry_from = self.history.len().saturating_sub(carry_len);
-         self.rollback_len = carry_from;
-@@ -1755,6 +1753,33 @@ mod tests {
-         });
-     }
- 
-+    /// The summariser request carries the session's tool catalog. An empty
-+    /// tool list is what the Zen free tier answers with `FreeTierError`, so a
-+    /// session would die at its first auto-compaction instead of continuing.
-+    #[test]
-+    fn compaction_request_carries_the_session_tools() {
-+        smol::block_on(async {
-+            let mut history = History::new(vec![Message::user("go".into())]);
-+            let mock = MockProvider::new(vec![text_response(StopReason::EndTurn)]);
-+            let requests = Arc::clone(&mock.requests);
-+            let (mut agent, _event_rx) = make_agent(mock, &mut history);
-+            agent.tools = RequestTools::assembled(
-+                serde_json::json!([{ "name": "bash" }, { "name": "read" }]),
-+                &AgentConfig::default(),
-+                &default_model(),
-+            );
-+            agent.carry_from = agent.history.len();
-+            agent.do_compact(None).await.unwrap();
-+            drop(agent);
-+
-+            let captured = match requests.lock() {
-+                Ok(guard) => guard,
-+                Err(poisoned) => poisoned.into_inner(),
-+            };
-+            assert_eq!(tool_names(&captured[0].tools), ["bash", "read"]);
-+        });
-+    }
-+
-     #[test]
-     fn cancel_token_aborts_during_api_call() {
-         smol::block_on(async {
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
 index 3b6280b..dda6adf 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
@@ -157,7 +33,7 @@ index 3b6280b..dda6adf 100644
  
      async fn do_stream_request(
 diff --git a/maki-providers/src/providers/catalog.rs b/maki-providers/src/providers/catalog.rs
-index 659c231..8249985 100644
+index 659c231..f81e9f4 100644
 --- a/maki-providers/src/providers/catalog.rs
 +++ b/maki-providers/src/providers/catalog.rs
 @@ -29,7 +29,7 @@ use crate::model::{Model, ModelInfo, ModelPricing};
@@ -169,7 +45,7 @@ index 659c231..8249985 100644
  use crate::{AgentError, Message, ProviderEvent, RequestOptions, StreamResponse, dialect};
  
  const MESSAGES_PATH: &str = "/messages";
-@@ -187,6 +187,14 @@ impl ProviderData {
+@@ -187,6 +187,19 @@ impl ProviderData {
          mut auth: ResolvedAuth,
          session_id: Option<&SessionRef>,
      ) -> ResolvedAuth {
@@ -177,14 +53,19 @@ index 659c231..8249985 100644
 +            // The Zen free tier speaks the CLI wire identity (see
 +            // `ResolvedAuth::configure_request`): the maki nanoID the quirk
 +            // below would stamp is a shape the gateway rejects, so it is
-+            // never stored for zen — the wire carries a CLI `ses_` instead.
++            // never stored for zen — one CLI `ses_` per maki conversation is
++            // stored instead, stable across that conversation's requests
++            // like the CLI's per-conversation `sessionID` (`request.ts`).
 +            auth.opencode_wire = true;
++            if let (Some(header), Some(sid)) = (self.quirks.session_header, session_id) {
++                auth.set_header(header, super::opencode_wire_session(sid.as_str()));
++            }
 +            return auth;
 +        }
          if let (Some(header), Some(sid)) = (self.quirks.session_header, session_id) {
              auth.set_header(header, sid.to_string());
          }
-@@ -766,7 +774,8 @@ impl CatalogTransport {
+@@ -766,7 +779,8 @@ impl CatalogTransport {
                  body["model"] = serde_json::json!(model.id);
                  body["stream"] = serde_json::json!(true);
                  let request = auth
@@ -194,7 +75,7 @@ index 659c231..8249985 100644
                          Request::builder()
                              .method("POST")
                              .uri(format!(
-@@ -777,7 +786,7 @@ impl CatalogTransport {
+@@ -777,7 +791,7 @@ impl CatalogTransport {
                              .header("user-agent", user_agent())
                              .header("content-type", "application/json")
                              .header("anthropic-version", ANTHROPIC_VERSION),
@@ -203,7 +84,7 @@ index 659c231..8249985 100644
                      .body(serde_json::to_vec(&body)?)?;
                  debug!(model = %model.id, "sending Anthropic-format request via catalog");
                  let response = self.client.send_async(request).await?;
-@@ -1077,11 +1086,12 @@ mod tests {
+@@ -1077,11 +1091,12 @@ mod tests {
          assert!(matches!(result, Err(AgentError::Config { .. })));
      }
  
@@ -221,7 +102,7 @@ index 659c231..8249985 100644
          let data = ProviderData {
              slug: slug.into(),
              quirks: quirks_for(slug),
-@@ -1092,12 +1102,20 @@ mod tests {
+@@ -1092,12 +1107,38 @@ mod tests {
              ResolvedAuth::for_test(None, Vec::new()),
              with_session.then_some(&session),
          );
@@ -233,9 +114,27 @@ index 659c231..8249985 100644
              .map(|(_, value)| value.as_str());
 -        assert_eq!(header, expected.then(|| session.to_string()).as_deref());
 +        if slug == opencode::ZEN_SLUG {
-+            // Zen never stores the maki nanoID: the wire carries a CLI `ses_`
-+            // stamped per request in `configure_request` instead.
-+            assert_eq!(header, None);
++            // Zen never stores the maki nanoID: one CLI `ses_` per maki
++            // conversation is stored instead, stable across its requests
++            // like the CLI's per-conversation `sessionID`. With no session
++            // in context there is nothing to map, so nothing is stored —
++            // `configure_request` mints a fallback `ses_` per request.
++            if with_session {
++                let ses = header.expect("zen stores a wire session");
++                assert!(ses.starts_with("ses_") && ses.len() == 30, "{ses}");
++                let again = data.request_auth(
++                    ResolvedAuth::for_test(None, Vec::new()),
++                    Some(&session),
++                );
++                let ses2 = again
++                    .headers
++                    .iter()
++                    .find(|(key, _)| key == SESSION_HEADER)
++                    .map(|(_, value)| value.as_str());
++                assert_eq!(ses2, Some(ses));
++            } else {
++                assert_eq!(header, None);
++            }
 +        } else {
 +            // Everywhere else the quirk passthrough is untouched.
 +            assert_eq!(header, stored.then(|| session.to_string()).as_deref());
@@ -261,47 +160,18 @@ index 83f5210..f72e36f 100644
  
      match protocol {
          Protocol::Anthropic => Ok(Box::new(super::anthropic::Anthropic::with_auth(
-diff --git a/maki-providers/src/providers/google.rs b/maki-providers/src/providers/google.rs
-index f02599d..ea96f1c 100644
---- a/maki-providers/src/providers/google.rs
-+++ b/maki-providers/src/providers/google.rs
-@@ -23,7 +23,9 @@ use crate::{
-     StreamResponse, ThinkingConfig, TokenUsage,
- };
- 
--use super::{KeyHeader, KeyPool, KeyRotation, ResolvedAuth, http_client, next_sse_line};
-+use super::{
-+    KeyHeader, KeyPool, KeyRotation, ResolvedAuth, http_client, next_sse_line, opencode_tls,
-+};
- 
- pub(crate) const SLUG: &str = "google";
- const DISPLAY_NAME: &str = "Google";
-@@ -149,12 +151,13 @@ impl Google {
- 
-     fn build_request(&self, method: &str, url: &str) -> isahc::http::request::Builder {
-         let auth = self.auth.lock().unwrap();
--        auth.configure_request(
-+        auth.configure_request(opencode_tls(
-+            &auth,
-             Request::builder()
-                 .method(method)
-                 .uri(url)
-                 .header("user-agent", super::user_agent()),
--        )
-+        ))
-     }
- 
-     fn api_key(&self) -> String {
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 0333c43..0051c54 100644
+index 0333c43..7f80164 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
- use std::collections::BTreeMap;
+-use std::collections::BTreeMap;
 -use std::sync::atomic::{AtomicUsize, Ordering};
-+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
- use std::sync::{Arc, Mutex};
+-use std::sync::{Arc, Mutex};
 -use std::time::{Duration, Instant};
++use std::collections::{BTreeMap, HashMap};
++use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
++use std::sync::{Arc, LazyLock, Mutex};
 +use std::time::{Duration, Instant, SystemTime};
  
  use futures_lite::StreamExt;
@@ -314,13 +184,15 @@ index 0333c43..0051c54 100644
  
  fn bearer_value(api_key: &str) -> String {
      format!("{BEARER_PREFIX}{api_key}")
-@@ -61,6 +62,181 @@ pub(crate) fn user_agent() -> &'static str {
+@@ -61,6 +62,184 @@ pub(crate) fn user_agent() -> &'static str {
      )
  }
  
-+/// The CLI's `User-Agent` per endpoint family (`README`; `provider-utils`
-+/// ships a different version per wire kind, so the pin names the kind):
-+/// openai (`chat/completions`, `models`), responses, anthropic.
++/// The CLI's `User-Agent` per endpoint family, from the opencode CLI capture
++/// (`overlays/maki/opencode/*.json`) and the ai-sdk each family's provider
++/// package pins (`@ai-sdk/openai-compatible` -> `provider-utils` 4.0.23,
++/// `@ai-sdk/openai` -> 4.0.40, `@ai-sdk/anthropic` -> 4.0.46):
++/// openai (`chat/completions`, `models`), responses, anthropic (`messages`).
 +const OPENCODE_UA_OPENAI: &str =
 +    "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14";
 +const OPENCODE_UA_RESPONSES: &str =
@@ -328,41 +200,27 @@ index 0333c43..0051c54 100644
 +const OPENCODE_UA_ANTHROPIC: &str =
 +    "opencode/1.18.32 ai-sdk/provider-utils/4.0.46 runtime/bun/1.3.14";
 +
-+/// The `user-agent` a request about to leave a provider builder carries: the
-+/// CLI pin for the endpoint `url` names when the Zen wire is active, maki's
-+/// own tag otherwise. `None` when `[<slug>.headers]` sets `user-agent` -
-+/// skipping the stamp lets `configure_request`'s config fold deliver that one
-+/// value alone, like every other stamp (explicit config wins over the wire
-+/// default).
-+pub(crate) fn request_user_agent<'a>(
-+    auth: &'a ResolvedAuth,
-+    url: &str,
-+) -> Option<&'a str> {
++/// Stamp the `user-agent` a request about to leave a provider builder carries:
++/// the CLI pin for the endpoint `url` names when the Zen wire is active,
++/// maki's own tag otherwise. Skipped when `[<slug>.headers]` sets
++/// `user-agent` — then `configure_request`'s config fold delivers that one
++/// value alone, like every other stamp (explicit config wins).
++pub(crate) fn with_user_agent(builder: Builder, auth: &ResolvedAuth, url: &str) -> Builder {
 +    if has_header(&auth.headers, USER_AGENT_HEADER) {
-+        return None;
++        return builder;
 +    }
-+    Some(if !auth.opencode_wire {
-+        user_agent()
-+    } else if url.contains("/messages") {
-+        OPENCODE_UA_ANTHROPIC
-+    } else if url.contains("/responses") {
-+        OPENCODE_UA_RESPONSES
-+    } else {
-+        OPENCODE_UA_OPENAI
-+    })
-+}
-+
-+/// Builder form of [`request_user_agent`]: stamps the `user-agent` only when
-+/// one is due, so call sites stay a single expression.
-+pub(crate) fn with_user_agent(
-+    builder: Builder,
-+    auth: &ResolvedAuth,
-+    url: &str,
-+) -> Builder {
-+    match request_user_agent(auth, url) {
-+        Some(ua) => builder.header(USER_AGENT_HEADER, ua),
-+        None => builder,
-+    }
++    builder.header(
++        USER_AGENT_HEADER,
++        if !auth.opencode_wire {
++            user_agent()
++        } else if url.contains("/messages") {
++            OPENCODE_UA_ANTHROPIC
++        } else if url.contains("/responses") {
++            OPENCODE_UA_RESPONSES
++        } else {
++            OPENCODE_UA_OPENAI
++        },
++    )
 +}
 +
 +/// CLI wire identity for the opencode Zen free tier
@@ -432,14 +290,29 @@ index 0333c43..0051c54 100644
 +    opencode_id("ses_", true)
 +}
 +
++/// One CLI `ses_` per maki conversation. The CLI carries its per-conversation
++/// `sessionID` unchanged across turns (`request.ts`); minting a fresh `ses_`
++/// per request would look like a new conversation every turn, so the choke
++/// points map each maki session to the `ses_` minted on its first request.
++static OPENCODE_WIRE_SESSIONS: LazyLock<Mutex<HashMap<String, String>>> =
++    LazyLock::new(|| Mutex::new(HashMap::new()));
++
++pub(crate) fn opencode_wire_session(maki_session: &str) -> String {
++    OPENCODE_WIRE_SESSIONS
++        .lock()
++        .unwrap()
++        .entry(maki_session.to_string())
++        .or_insert_with(opencode_session_id)
++        .clone()
++}
++
 +/// TLS 1.2 cipher suites from the opencode CLI capture
 +/// (overlays/maki/opencode/tls-fingerprint.json), OpenSSL names in wire
-+/// order. The fourteen suites land byte-identical to the capture; the backend
-+/// keeps its own TLS 1.3 head order plus a trailing renegotiation SCSV, which
-+/// curl's API surface cannot reorder (no TLS 1.3 cipher-list knob in
-+/// isahc 1.8.3). ALPN already rides as http/1.1 via the pinned HTTP/1.1
-+/// negotiation, matching the capture too. Extension/group/signature ordering
-+/// stays the backend's own: strictly closer to the CLI, not JA3 parity.
++/// order: the fourteen 1.2 suites land byte-identical to the capture. The
++/// backend keeps its own TLS 1.3 head order plus a trailing renegotiation
++/// SCSV, which curl's API surface cannot reorder (no TLS 1.3 cipher-list
++/// knob in isahc 1.8.3); extension/group/signature ordering stays the
++/// backend's own too: strictly closer to the CLI, not JA3 parity.
 +pub(crate) const OPENCODE_TLS12_CIPHERS: &[&str] = &[
 +    "ECDHE-ECDSA-AES128-GCM-SHA256",
 +    "ECDHE-RSA-AES128-GCM-SHA256",
@@ -496,7 +369,7 @@ index 0333c43..0051c54 100644
  #[derive(Debug, Clone, Copy)]
  pub struct Timeouts {
      pub connect: Duration,
-@@ -137,6 +313,12 @@ pub struct ResolvedAuth {
+@@ -137,6 +316,12 @@ pub struct ResolvedAuth {
      /// the provider sets afterwards, so a key rotation cannot drop a gateway
      /// credential that replaced the built-in auth header.
      config_headers: Vec<String>,
@@ -509,7 +382,7 @@ index 0333c43..0051c54 100644
  }
  
  impl ResolvedAuth {
-@@ -149,6 +331,7 @@ impl ResolvedAuth {
+@@ -149,6 +334,7 @@ impl ResolvedAuth {
              base_url: None,
              headers,
              config_headers: Vec::new(),
@@ -517,7 +390,7 @@ index 0333c43..0051c54 100644
          };
          if let Some(def) = maki_config::providers::ProvidersConfig::load().get(slug) {
              auth.apply_config_headers(slug, &def.headers)?;
-@@ -226,11 +409,43 @@ impl ResolvedAuth {
+@@ -226,11 +412,47 @@ impl ResolvedAuth {
          }
      }
  
@@ -527,11 +400,15 @@ index 0333c43..0051c54 100644
 +    /// free-tier wire identity lands: static client tag, `x-opencode-project`
 +    /// (`global` — maki has no per-project context, exactly what the CLI sends
 +    /// for the global project), a fresh ascending `msg_` request id per call,
-+    /// and a CLI-shaped `ses_` session id. A stored session survives only when
-+    /// it is already CLI-shaped; maki's own base58 nanoID never reaches the
-+    /// wire because the free tier rejects non-CLI session shapes. Like the
-+    /// CLI (`...input.model.headers` spread last), an explicitly configured
-+    /// header always wins over the stamped default.
++    /// and one CLI-shaped `ses_` per maki conversation, stored by the
++    /// `request_auth` choke point and stable across its requests like the
++    /// CLI's per-conversation `sessionID` (`request.ts`); only when no choke
++    /// point stored one (no session in context) is a fresh `ses_` minted as
++    /// fallback. A stored session survives only when it is already
++    /// CLI-shaped; maki's own base58 nanoID never
++    /// reaches the wire because the free tier rejects non-CLI session shapes.
++    /// Like the CLI (`...input.model.headers` spread last), an explicitly
++    /// configured header always wins over the stamped default.
      pub fn configure_request(&self, builder: Builder) -> Builder {
 -        self.headers.iter().fold(builder, |b, (key, value)| {
 +        let mut cli_session_kept = false;
@@ -564,7 +441,7 @@ index 0333c43..0051c54 100644
      }
  
      #[cfg(test)]
-@@ -239,10 +454,15 @@ impl ResolvedAuth {
+@@ -239,10 +461,15 @@ impl ResolvedAuth {
              base_url,
              headers,
              config_headers: Vec::new(),
@@ -580,7 +457,7 @@ index 0333c43..0051c54 100644
  pub(crate) fn with_prefix<'a>(
      prefix: &Option<String>,
      system: &'a str,
-@@ -765,6 +985,187 @@ mod tests {
+@@ -765,6 +992,198 @@ mod tests {
          ResolvedAuth::for_test(None, vec![(AUTHORIZATION_HEADER.into(), bearer_value(key))])
      }
  
@@ -648,9 +525,8 @@ index 0333c43..0051c54 100644
 +            Some(ses.as_str())
 +        );
 +        // The pinned fourteen TLS 1.2 suites match the CLI capture
-+        // (tls-fingerprint.json) in order verbatim (probe-measured; the
-+        // backend's own TLS 1.3 head order and SCSV tail stay outside curl's
-+        // control).
++        // (tls-fingerprint.json) in order verbatim; the backend's own TLS
++        // 1.3 head order and SCSV tail stay outside curl's control.
 +        assert_eq!(
 +            OPENCODE_TLS12_CIPHERS.join(":"),
 +            "ECDHE-ECDSA-AES128-GCM-SHA256:\
@@ -698,6 +574,20 @@ index 0333c43..0051c54 100644
 +
 +    /// The CLI's per-endpoint `User-Agent` pins: `provider-utils` ships a
 +    /// different version per wire kind, so the URL names which pin goes out.
++    /// Read off a built request, the way the gateway would see it.
++    fn wire_user_agent(auth: &ResolvedAuth, url: &str) -> String {
++        use isahc::http::Request;
++        let request = auth
++            .configure_request(with_user_agent(
++                Request::builder().method("POST").uri(url),
++                auth,
++                url,
++            ))
++            .body(())
++            .unwrap();
++        request.headers()[USER_AGENT_HEADER].to_str().unwrap().to_string()
++    }
++
 +    #[test_case(
 +        "https://opencode.ai/zen/v1/chat/completions",
 +        "opencode/1.18.32 ai-sdk/provider-utils/4.0.23 runtime/bun/1.3.14"
@@ -719,11 +609,9 @@ index 0333c43..0051c54 100644
 +        ; "anthropic"
 +    )]
 +    fn zen_user_agent_pins_the_endpoint_family(url: &str, expected: &str) {
-+        let auth = wire_auth();
-+        assert_eq!(request_user_agent(&auth, url), Some(expected));
++        assert_eq!(wire_user_agent(&wire_auth(), url), expected);
 +        // Off the zen wire maki keeps its own tag, byte for byte.
-+        let plain = test_bearer("sk-1");
-+        assert_eq!(request_user_agent(&plain, url), Some(user_agent()));
++        assert_eq!(wire_user_agent(&test_bearer("sk-1"), url), user_agent());
 +    }
 +
 +    /// An explicit `[<slug>.headers]` `user-agent` reaches the wire alone:
@@ -743,7 +631,7 @@ index 0333c43..0051c54 100644
 +            ))
 +            .body(())
 +            .unwrap();
-+        let user_agents: Vec<_> = request.headers().get_all(USER_AGENT_HEADER).collect();
++        let user_agents: Vec<_> = request.headers().get_all(USER_AGENT_HEADER).iter().collect();
 +        assert_eq!(user_agents.len(), 1);
 +        assert_eq!(user_agents[0], "custom/ua");
 +    }

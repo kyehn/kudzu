@@ -127,6 +127,7 @@ jobs:
           export PATH="$BUN_INSTALL/bin:${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           pi --help
           pi update --models
+          mkdir -p ~/.pi/agent/extensions/pi-rtk-optimizer ~/.pi/agent/extensions/pi-permission-system
           install -m 0644 overlays/pi-rtk-optimizer-config.json ~/.pi/agent/extensions/pi-rtk-optimizer/config.json
           install -m 0644 overlays/pi-permission-system-config.json ~/.pi/agent/extensions/pi-permission-system/config.json
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
