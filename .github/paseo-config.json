@@ -8,10 +8,8 @@
 				"label": "Maki",
 				"command": ["maki", "acp", "--yolo"]
 			},
-			"reasonix": {
-				"extends": "acp",
-				"label": "Reasonix",
-				"command": ["reasonix", "acp"]
+			"pi": {
+				"enabled": false
 			},
 			"omp": {
 				"enabled": false

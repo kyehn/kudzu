@@ -58,6 +58,7 @@ linkFarm "maki" [
       default = "allow";
       bash.deny = [
         "git checkout -- *"
+        "git restore *"
         "find /nix/store *"
         "ls /nix/store"
         "ls /nix/store *"
