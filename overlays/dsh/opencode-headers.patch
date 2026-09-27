@@ -1,0 +1,91 @@
+# Mint dynamic opencode wire identity per request: `x-opencode-session`
+# (stable per harness session) and `x-opencode-request` (fresh per request)
+# with opencode's own `Identifier.create` algorithm
+# (anomalyco/opencode packages/schema/src/identifier.ts), so no static id
+# lives in configuration; a deployment header also wins a case-insensitive
+# collision with harness attribution (default attribution still fills the
+# rest, so providers without deployment headers behave exactly as before).
+# Applies to @deepseek-ai/dsh-llm-pi-ai lib/index.js
+# (requestHeaders + its stream call site).
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1719,14 +1719,62 @@
+ 		...defaultLevel === void 0 ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) }
+ 	} };
+ }
+-/** Merge deployment headers while removing case-insensitive attribution collisions. */
+-function requestHeaders(headers) {
+-	const attribution = attributionHeaders();
+-	const reserved = new Set(Object.keys(attribution).map((name) => name.toLowerCase()));
+-	return {
+-		...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
+-		...attribution
+-	};
++/** Opencode id alphabet (packages/schema/src/identifier.ts). */
++const OPENCODE_ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
++const opencodeSessionIds = new Map();
++let opencodeIdTimestamp = 0;
++let opencodeIdCounter = 0;
++/**
++* Opencode `Identifier.create()`: 12 hex chars of
++* `timestamp_ms * 0x1000 + counter` (bitwise NOT'ed when descending so newer
++* ids sort first) plus 14 random base62 chars.
++* @param descending - whether the id sorts newest-first.
++* @returns the 26-char identifier body.
++*/
++function opencodeIdentifier(descending) {
++	const timestamp = Date.now();
++	if (timestamp !== opencodeIdTimestamp) {
++		opencodeIdTimestamp = timestamp;
++		opencodeIdCounter = 0;
++	}
++	opencodeIdCounter++;
++	const current = BigInt(timestamp) * 0x1000n + BigInt(opencodeIdCounter);
++	const value = descending ? ~current : current;
++	const time = Array.from({ length: 6 }, (_, index) => Number(value >> BigInt(40 - 8 * index) & 0xffn).toString(16).padStart(2, "0")).join("");
++	const bytes = new Uint8Array(14);
++	crypto.getRandomValues(bytes);
++	return time + Array.from(bytes, (byte) => OPENCODE_ID_CHARS[byte % 62]).join("");
++}
++/**
++* Merge deployment headers; a deployment header wins a case-insensitive
++* collision, attribution fills the rest. An opencode route (declared by
++* `x-opencode-client`) gets a per-session `x-opencode-session` and a
++* per-request `x-opencode-request` minted on the wire, so no static id lives
++* in configuration; zen answers a malformed session id with HTTP 403.
++* @param headers - deployment headers from the route profile.
++* @param sessionId - the caller's session, stable for `x-opencode-session`.
++* @returns the headers for one request.
++*/
++function requestHeaders(headers, sessionId) {
++	const deployment = Object.fromEntries(Object.entries(headers ?? {}));
++	const deployed = new Set(Object.keys(deployment).map((name) => name.toLowerCase()));
++	const fallback = Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !deployed.has(name.toLowerCase())));
++	const merged = { ...fallback, ...deployment };
++	if (!deployed.has("x-opencode-client")) return merged;
++	if (sessionId === void 0) {
++		merged["x-opencode-session"] = `ses_${opencodeIdentifier(true)}`;
++		merged["x-opencode-request"] = `msg_${opencodeIdentifier(false)}`;
++		return merged;
++	}
++	const key = String(sessionId);
++	let session = opencodeSessionIds.get(key);
++	if (session === void 0) {
++		session = `ses_${opencodeIdentifier(true)}`;
++		opencodeSessionIds.set(key, session);
++	}
++	merged["x-opencode-session"] = session;
++	merged["x-opencode-request"] = `msg_${opencodeIdentifier(false)}`;
++	return merged;
+ }
+ /**
+ * pi-ai-backed multi-provider adapter. Each operation reads the current
+@@ -1867,7 +1909,7 @@
+ 					...options.maxTokens === void 0 ? {} : { maxTokens: options.maxTokens },
+ 					...options.sessionId === void 0 ? {} : { sessionId: String(options.sessionId) },
+ 					signal: watchdog.signal,
+-					headers: requestHeaders(profile.headers)
++					headers: requestHeaders(profile.headers, options.sessionId)
+ 				}), model.contextWindow, options.signal, model.id)[Symbol.asyncIterator]();
+ 				let exhausted = false;
+ 				try {

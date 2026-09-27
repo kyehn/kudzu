@@ -8,6 +8,11 @@
 				"label": "Maki",
 				"command": ["maki", "acp", "--yolo"]
 			},
+			"dsh": {
+				"extends": "acp",
+				"label": "DSH",
+				"command": ["dsh-acp-interactive"]
+			},
 			"pi": {
 				"enabled": false
 			},

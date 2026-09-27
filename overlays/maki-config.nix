@@ -5,8 +5,6 @@
   formats,
   mcp-nixos,
   context7-mcp,
-  uv,
-  codegraph,
 }:
 
 linkFarm "maki" [
@@ -75,11 +73,6 @@ linkFarm "maki" [
         mcp-nixos.command = [ (lib.getExe mcp-nixos) ];
         context7-mcp.command = [ (lib.getExe context7-mcp) ];
         mobile-mcp.command = [ "mcp-server-mobile" ];
-        codegraph.command = [
-          (lib.getExe codegraph)
-          "serve"
-          "--mcp"
-        ];
         open-websearch = {
           command = [ "open-websearch" ];
           environment = {

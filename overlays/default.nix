@@ -9,6 +9,7 @@ final: prev: {
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   maki = prev.callPackage ./maki { };
   maki-config = prev.callPackage ./maki-config.nix { };
+  dsh-config = prev.callPackage ./dsh-config.nix { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {

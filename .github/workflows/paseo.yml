@@ -55,6 +55,7 @@ jobs:
             ~/.paseo
             ~/.local/share/maki
             ~/.local/state/maki
+            ~/.dsh/acp-sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*
@@ -80,7 +81,13 @@ jobs:
           npm install --global --yes @mobilenext/mobile-mcp
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
-      - run: overlays/maki/providers-config.py
+          npm install --global --yes deepseekharness-acp-interactive@1.3.2
+          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && mkdir -p ~/.dsh && install -m 0644 /tmp/dsh-config/settings.yaml ~/.dsh/settings.yaml && rm -rf /tmp/dsh-config
+          for patch in overlays/dsh/*.patch; do case "$patch" in *opencode-headers.patch) dir="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai";; *) dir="$(npm root -g)/deepseekharness-acp-interactive";; esac; patch --dry-run -p1 -d "$dir" < "$patch" && patch -p1 -d "$dir" < "$patch"; done
+          overlays/dsh/providers-config.py
+      - run: |
+          overlays/maki/providers-config.py
+          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -115,6 +122,7 @@ jobs:
             ~/.paseo
             ~/.local/share/maki
             ~/.local/state/maki
+            ~/.dsh/acp-sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/*/transforms
             ~/.gradle/caches/jars-*

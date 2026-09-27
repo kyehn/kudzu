@@ -1,0 +1,97 @@
+# Register a settings-driven "mcp" section (name-keyed stdio/HTTP server
+# entries) and fall back to it when a session requests no MCP servers:
+# paseo's ACP client always sends `mcpServers: []`, so deployment MCP
+# servers would never reach a session otherwise. Applies to
+# deepseekharness-acp-interactive lib/index.js (settings section
+# registration in apply() + pickMcpServers at both session call sites).
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1327,7 +1327,40 @@
+ const Config = Schema.object({
+ 	provider: Schema.string(),
+ 	model: Schema.string()
+ });
++/** Settings namespace carrying deployment MCP servers for sessions that request none. */
++const MCP_SETTINGS_NAMESPACE = "mcp";
++/** Settings schema: name-keyed stdio or HTTP MCP server entries. */
++const MCP_SETTINGS_SCHEMA = Schema.dict(Schema.union([
++	Schema.object({
++		type: Schema.const("http").required(),
++		url: Schema.string().required(),
++		headers: Schema.dict(Schema.string()).default({})
++	}),
++	Schema.object({
++		command: Schema.string().required(),
++		args: Schema.array(Schema.string()).default([]),
++		env: Schema.dict(Schema.string()).default({})
++	})
++]));
++/**
++* Convert one resolved settings section into the ACP server list shape.
++* @param section - name-keyed MCP entries resolved from settings.
++* @returns one ACP MCP configuration per settings entry.
++*/
++function configuredMcpServers(section) {
++	return Object.entries(section).map(([name, entry]) => entry.type === "http" ? {
++		name,
++		type: "http",
++		url: entry.url,
++		headers: Object.entries(entry.headers).map(([key, value]) => ({ name: key, value }))
++	} : {
++		name,
++		command: entry.command,
++		args: [...entry.args],
++		env: Object.entries(entry.env).map(([key, value]) => ({ name: key, value }))
++	});
++}
+ /**
+ * Mount the editor-facing ACP server.
+ * @param ctx - Cordis context carrying the agent, command, skill, and tool registries.
+@@ -1348,6 +1379,20 @@
+ 		logger.warn(message);
+ 	});
+ 	let closed = false;
++	let mcpSection = () => ({});
++	ctx.inject(["settings"], (settingsCtx) => {
++		try {
++			settingsCtx.settings.installSection(ctx, MCP_SETTINGS_NAMESPACE, MCP_SETTINGS_SCHEMA, {}, {
++				setSource: (source) => {
++					mcpSection = source;
++				},
++				onChange: () => {}
++			});
++		} catch (error) {
++			process.stderr.write(`acp-interactive: invalid settings section "${MCP_SETTINGS_NAMESPACE}": ${error instanceof Error ? error.message : String(error)}\n`);
++			throw error;
++		}
++	});
+ 	let terminalOutputEnabled = false;
+ 	let imagePromptEnabled = false;
+ 	let elicitationEnabled = false;
+@@ -1473,6 +1519,8 @@
+ 			throw invalidParams(error.message);
+ 		}
+ 	};
++	/** Fall back to settings MCP servers when a session requests none. */
++	const pickMcpServers = (requested) => requested.length > 0 ? requested : configuredMcpServers(mcpSection());
+ 	const makeRecord = (handle) => ({
+ 		agent: handle.agent,
+ 		dispose: () => handle.dispose(),
+@@ -1597,7 +1645,7 @@
+ 		assertOpen();
+ 		signal.throwIfAborted();
+ 		validateRestoredSessionParams(params);
+-		const mcpConfigs = validateMcpServers(params.mcpServers ?? [], params.cwd);
++		const mcpConfigs = validateMcpServers(pickMcpServers(params.mcpServers ?? []), params.cwd);
+ 		const sessionId = SessionId(params.sessionId);
+ 		if (sessions.has(sessionId) || startingSessions.has(sessionId)) throw invalidParams(`session is already active in this ACP connection: ${sessionId}`);
+ 		if (agents.get(sessionId) !== void 0) throw invalidParams(`session is already active outside this ACP connection: ${sessionId}`);
+@@ -1846,7 +1894,7 @@
+ 			async newSession(params, signal) {
+ 				assertOpen();
+ 				validateSessionParams(params);
+-				const mcpConfigs = validateMcpServers(params.mcpServers, params.cwd);
++				const mcpConfigs = validateMcpServers(pickMcpServers(params.mcpServers), params.cwd);
+ 				await assertSessionCredential(ctx, config, signal);
+ 				signal.throwIfAborted();
+ 				const sessionId = SessionId(randomUUID());

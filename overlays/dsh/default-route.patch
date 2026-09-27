@@ -1,0 +1,39 @@
+# Disable the default DeepSeek models (this deployment serves opencode zen
+# free models instead; the DeepSeek rows would advertise unreachable models)
+# and the DeepSeek web search provider (it needs a real DEEPSEEK_API_KEY this
+# deployment does not hold); default the ACP bridge to the zen route so the
+# model selector and agent options read a defined initial route.
+# Applies to deepseekharness-acp-interactive config/cordis.yml.
+--- a/config/cordis.yml
++++ b/config/cordis.yml
+@@ -3,13 +3,7 @@
+ - id: llm-deepseek
+   name: '@deepseek-ai/dsh-llm-deepseek'
+   config:
+-    thinking: enabled
+-    reasoningEffort: max
+-    models:
+-      - id: deepseek-v4-flash
+-      - id: deepseek-v4-pro
+-      - id: deepseek-v4-flash-vision-exp
+-        inputModalities: [text, image]
++    models: []
+ - id: settings
+   name: '@deepseek-ai/dsh-settings-file'
+ - id: credentials
+@@ -210,6 +206,7 @@
+   name: '@deepseek-ai/dsh-web'
+ - id: web-search-deepseek
+   name: '@deepseek-ai/dsh-web-search-deepseek'
++  disabled: true
+ - id: web-fetch-http
+   name: '@deepseek-ai/dsh-web-fetch-http'
+ - id: tool-web
+@@ -252,5 +249,5 @@
+ - id: acp-interactive
+   name: '../lib/index.js'
+   config:
+-    provider: deepseek-official
+-    model: deepseek-v4-pro
++    provider: opencode-openai
++    model: mimo-v2.6-flash-free

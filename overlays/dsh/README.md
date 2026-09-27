@@ -1,0 +1,5 @@
+- 参考 `overlays/maki/README.md` 中对 opencode 模拟（除 tls 指纹外）的要求
+- 只显示 `cost.input == 0 && cost.output == 0` 的 opencode 模型
+- 只有一个 `opencode` provider，没有重复，没有 `opencode-patched` 或类似 providers
+- 使用 `deepseekharness-acp-interactive`，标记版本，并跟随最新版本
+- `providers-config.py` 与 `overlays/maki/providers-config.py` 几乎一样的流程和代码，模型列表经 yaml 库读写，无硬编码、无字符串拼接
