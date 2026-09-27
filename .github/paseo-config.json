@@ -13,8 +13,10 @@
 				"label": "DSH",
 				"command": ["dsh-acp-interactive"]
 			},
-			"pi": {
-				"enabled": false
+			"reasonix": {
+				"extends": "acp",
+				"label": "Reasonix",
+				"command": ["reasonix", "acp"]
 			},
 			"omp": {
 				"enabled": false

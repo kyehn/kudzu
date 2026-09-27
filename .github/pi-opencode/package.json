@@ -1,0 +1,25 @@
+{
+	"name": "pi-opencode",
+	"version": "0.6.0",
+	"private": true,
+	"files": [
+		"index.ts"
+	],
+	"type": "module",
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"dependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@types/node": "*",
+		"typescript": "*"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	}
+}

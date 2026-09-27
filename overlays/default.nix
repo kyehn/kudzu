@@ -10,6 +10,10 @@ final: prev: {
   maki = prev.callPackage ./maki { };
   maki-config = prev.callPackage ./maki-config.nix { };
   dsh-config = prev.callPackage ./dsh-config.nix { };
+  pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
+  pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
+  reasonix = prev.callPackage ./reasonix { };
+  reasonix-config = prev.callPackage ./reasonix-config.nix { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {
