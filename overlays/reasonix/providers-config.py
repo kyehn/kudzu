@@ -10,7 +10,20 @@ from typing import Any
 import httpx
 import tomli_w
 
-USER_AGENT = "opencode/latest/1.18.32/cli"
+OPENCODE_VERSION = "1.18.32"
+BUN_VERSION = "1.3.14"
+USER_AGENTS = {
+    protocol: (
+        f"opencode/{OPENCODE_VERSION} ai-sdk/provider-utils/{utils} "
+        f"runtime/bun/{BUN_VERSION}"
+    )
+    for protocol, utils in (
+        ("openai", "4.0.23"),
+        ("openai-responses", "4.0.40"),
+        ("anthropic", "4.0.46"),
+    )
+}
+USER_AGENT = USER_AGENTS["openai"]
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 PROVIDER_NAMES = ("opencode", "nvidia")
 # models.dev cost 单位为美元 (USD)
@@ -62,7 +75,7 @@ def _provider_dict(
             model_override["max_output_tokens"] = model_limit["output"]
         if model.get("reasoning"):
             model_override["reasoning_protocol"] = "openai"
-            for option in model.get("reasoning_options", []):
+            for option in model.get("reasoning_options") or []:
                 if isinstance(option, dict) and option.get("type") == "effort":
                     effort_values = [
                         "none" if value is None else value

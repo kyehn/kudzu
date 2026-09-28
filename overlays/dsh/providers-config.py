@@ -10,7 +10,20 @@ import httpx
 import yaml
 
 OPENCODE_VERSION = "1.18.32"
-USER_AGENT = f"opencode/{OPENCODE_VERSION}"
+BUN_VERSION = "1.3.14"
+USER_AGENTS = {
+    api: (
+        f"opencode/{OPENCODE_VERSION} ai-sdk/provider-utils/{utils} "
+        f"runtime/bun/{BUN_VERSION}"
+    )
+    for api, utils in (
+        ("openai-completions", "4.0.23"),
+        ("openai-responses", "4.0.40"),
+        ("anthropic-messages", "4.0.46"),
+    )
+}
+USER_AGENT = USER_AGENTS["openai-completions"]
+THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 DSH_SETTINGS = Path.home() / ".dsh" / "settings.yaml"
 PROVIDER_NAMES = ("opencode", "nvidia")
 
@@ -89,7 +102,9 @@ def main(argv: list[str] | None = None) -> None:
                     model_config["maxTokens"] = model_limit["output"]
                 input_modalities = (model.get("modalities") or {}).get("input") or []
                 model_config["input"] = (
-                    ["text", "image"] if "image" in input_modalities else ["text"]
+                    ["text", "image"]
+                    if model.get("attachment") or "image" in input_modalities
+                    else ["text"]
                 )
                 if model.get("reasoning"):
                     for option in model.get("reasoning_options") or []:
@@ -104,6 +119,18 @@ def main(argv: list[str] | None = None) -> None:
                                     for value in effort_values
                                 }
                 model_configs.append(model_config)
+            common_levels: set[str] | None = None
+            for model_config in model_configs:
+                levels = set((model_config.get("reasoningEfforts") or {}).keys())
+                common_levels = (
+                    levels if common_levels is None else common_levels & levels
+                )
+            default_reasoning = None
+            if common_levels:
+                for level in reversed(THINKING_LEVELS):
+                    if level != "off" and level in common_levels:
+                        default_reasoning = level
+                        break
             route_key = f"{provider}-{bucket}"
             provider_config: dict[str, Any] = {
                 "displayName": f"{provider} {protocol}",
@@ -116,9 +143,11 @@ def main(argv: list[str] | None = None) -> None:
                 },
                 "models": model_configs,
             }
+            if default_reasoning is not None:
+                provider_config["reasoning"] = default_reasoning
             if provider == "opencode":
                 provider_config["headers"] = {
-                    "User-Agent": USER_AGENT,
+                    "User-Agent": USER_AGENTS[protocol],
                     "x-opencode-client": "cli",
                     "x-opencode-project": "global",
                 }

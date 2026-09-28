@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 345b496..5faf445 100644
+index 345b49691..5faf44538 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -12,6 +12,7 @@ require (
@@ -19,7 +19,7 @@ index 345b496..5faf445 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 456d904..3854d64 100644
+index 456d9044f..3854d6435 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -18,6 +18,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -41,7 +41,7 @@ index 456d904..3854d64 100644
  github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
  github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 diff --git a/internal/acp/e2e_test.go b/internal/acp/e2e_test.go
-index 0aecc73..1846543 100644
+index 0aecc7308..184654370 100644
 --- a/internal/acp/e2e_test.go
 +++ b/internal/acp/e2e_test.go
 @@ -106,7 +106,10 @@ func (f *e2eFactory) NewSession(_ context.Context, p SessionParams) (*control.Co
@@ -178,7 +178,7 @@ index 0aecc73..1846543 100644
  
  func toolCallChunk(id, name, args string) provider.Chunk {
 diff --git a/internal/acp/server_test.go b/internal/acp/server_test.go
-index 35065a8..0d91cdd 100644
+index 35065a896..0d91cdddb 100644
 --- a/internal/acp/server_test.go
 +++ b/internal/acp/server_test.go
 @@ -972,8 +972,9 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
@@ -236,7 +236,7 @@ index 35065a8..0d91cdd 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index b72fdd2..48f2ca5 100644
+index b72fdd264..48f2ca5e9 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
 @@ -671,7 +671,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -292,7 +292,7 @@ index b72fdd2..48f2ca5 100644
  
 diff --git a/internal/agent/active_oversize_fold_test.go b/internal/agent/active_oversize_fold_test.go
 new file mode 100644
-index 0000000..f57f984
+index 000000000..f57f98479
 --- /dev/null
 +++ b/internal/agent/active_oversize_fold_test.go
 @@ -0,0 +1,121 @@
@@ -418,7 +418,7 @@ index 0000000..f57f984
 +	}
 +}
 diff --git a/internal/agent/ask_test.go b/internal/agent/ask_test.go
-index a29e324..bbb778d 100644
+index a29e324ef..bbb778d07 100644
 --- a/internal/agent/ask_test.go
 +++ b/internal/agent/ask_test.go
 @@ -37,25 +37,43 @@ func TestAskToolReusesAcceptedDecisionAndRejectsSpoofedID(t *testing.T) {
@@ -472,7 +472,7 @@ index a29e324..bbb778d 100644
  }
  
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index 68a261a..c8d3b5d 100644
+index 68a261a58..c8d3b5dd8 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
 @@ -448,7 +448,7 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
@@ -485,7 +485,7 @@ index 68a261a..c8d3b5d 100644
  	}
  	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index 4b6abb2..7ccefd2 100644
+index 4b6abb2d9..7ccefd2db 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
 @@ -579,7 +579,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
@@ -536,7 +536,7 @@ index 4b6abb2..7ccefd2 100644
  	}
  	return nil
 diff --git a/internal/agent/compact_threshold_test.go b/internal/agent/compact_threshold_test.go
-index 70e9c63..1061525 100644
+index 70e9c6308..10615254d 100644
 --- a/internal/agent/compact_threshold_test.go
 +++ b/internal/agent/compact_threshold_test.go
 @@ -22,7 +22,7 @@ func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
@@ -594,7 +594,7 @@ index 70e9c63..1061525 100644
 +	}
  }
 diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
-index ae0f5ea..7c591f0 100644
+index ae0f5ea4d..7c591f075 100644
 --- a/internal/agent/context_manager.go
 +++ b/internal/agent/context_manager.go
 @@ -196,7 +196,10 @@ func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
@@ -610,7 +610,7 @@ index ae0f5ea..7c591f0 100644
  		return 1
  	}
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
-index 0416586..a1fe478 100644
+index 041658613..a1fe47869 100644
 --- a/internal/agent/context_recovery.go
 +++ b/internal/agent/context_recovery.go
 @@ -22,7 +22,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
@@ -624,7 +624,7 @@ index 0416586..a1fe478 100644
  	adm.ObservedPrompt = limit.PromptTokens
 diff --git a/internal/agent/context_summary_admission_test.go b/internal/agent/context_summary_admission_test.go
 new file mode 100644
-index 0000000..14b5a7d
+index 000000000..14b5a7dd3
 --- /dev/null
 +++ b/internal/agent/context_summary_admission_test.go
 @@ -0,0 +1,186 @@
@@ -815,7 +815,7 @@ index 0000000..14b5a7d
 +	}
 +}
 diff --git a/internal/agent/coordinator_test.go b/internal/agent/coordinator_test.go
-index 98e879b..81db150 100644
+index 98e879b98..81db1509d 100644
 --- a/internal/agent/coordinator_test.go
 +++ b/internal/agent/coordinator_test.go
 @@ -660,10 +660,20 @@ func TestCoordinatorSetReasoningLanguageClearsPlannerAgent(t *testing.T) {
@@ -936,7 +936,7 @@ index 98e879b..81db150 100644
  }
  
 diff --git a/internal/agent/decision.go b/internal/agent/decision.go
-index 84c7ca5..ba1a091 100644
+index 84c7ca50f..ba1a091cb 100644
 --- a/internal/agent/decision.go
 +++ b/internal/agent/decision.go
 @@ -23,6 +23,11 @@ type decisionAmbiguity struct {
@@ -1035,7 +1035,7 @@ index 84c7ca5..ba1a091 100644
  
  func setIntersection(left, right map[string]struct{}) int {
 diff --git a/internal/agent/decision_test.go b/internal/agent/decision_test.go
-index 2bef5d7..d88e01d 100644
+index 2bef5d761..d88e01d12 100644
 --- a/internal/agent/decision_test.go
 +++ b/internal/agent/decision_test.go
 @@ -38,6 +38,66 @@ func TestAskReusesAcceptedDecisionWithoutNewEvidence(t *testing.T) {
@@ -1106,7 +1106,7 @@ index 2bef5d7..d88e01d 100644
  	turn := &turnRuntime{}
  	turn.loop.rememberDecision("dec-1", "Which path?", "Keep going")
 diff --git a/internal/agent/dispatch_test.go b/internal/agent/dispatch_test.go
-index 1871dd5..88c72fa 100644
+index 1871dd560..88c72fad4 100644
 --- a/internal/agent/dispatch_test.go
 +++ b/internal/agent/dispatch_test.go
 @@ -13,20 +13,29 @@ import (
@@ -1158,7 +1158,7 @@ index 1871dd5..88c72fa 100644
  	if full != 1 {
  		t.Errorf("want 1 full dispatch, got %d", full)
 diff --git a/internal/agent/goal_boundaries_test.go b/internal/agent/goal_boundaries_test.go
-index 8bc3575..cf72483 100644
+index 8bc3575d0..cf7248383 100644
 --- a/internal/agent/goal_boundaries_test.go
 +++ b/internal/agent/goal_boundaries_test.go
 @@ -32,7 +32,7 @@ func TestGoalRunHasNoDefaultModelRoundCeiling(t *testing.T) {
@@ -1187,10 +1187,10 @@ index 8bc3575..cf72483 100644
  }
  
 diff --git a/internal/agent/output_budget.go b/internal/agent/output_budget.go
-index 4774e77..4d8c85f 100644
+index 1084a0bd1..47083f3ef 100644
 --- a/internal/agent/output_budget.go
 +++ b/internal/agent/output_budget.go
-@@ -370,14 +370,20 @@ func (a *Agent) effectiveContextWindow() int {
+@@ -378,14 +378,20 @@ func (a *Agent) effectiveContextWindow() int {
  	if snap := a.sess.output.learned.Load(); snap != nil {
  		learned = snap.windowTokens
  	}
@@ -1216,7 +1216,7 @@ index 4774e77..4d8c85f 100644
  }
  
  func (a *Agent) learnedCompletionBudget() int {
-@@ -419,6 +425,34 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
+@@ -427,6 +433,34 @@ func (a *Agent) learnContextBudget(window, completion int, omittedOutput bool) {
  	a.sess.output.learned.Store(&next)
  }
  
@@ -1251,7 +1251,7 @@ index 4774e77..4d8c85f 100644
  func (a *Agent) storeAdmission(adm contextAdmission) {
  	if a == nil {
  		return
-@@ -546,6 +580,10 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
+@@ -554,6 +588,10 @@ func (a *Agent) admitOutputBudgetWithReserve(req provider.Request, reserveTokens
  	adm.MaxOutputTokens = policy.MaxOutputTokens
  	window := a.effectiveContextWindow()
  	adm.WindowTokens = window
@@ -1262,7 +1262,7 @@ index 4774e77..4d8c85f 100644
  	learnedWindow := window > 0 && (a.contextWindow <= 0 || window < a.contextWindow)
  	adm.Source = admissionSource(req.MaxTokens, policy, learnedWindow)
  	if window <= 0 {
-@@ -636,6 +674,22 @@ func (a *Agent) applySummaryAdmissionToRequest(req *provider.Request) error {
+@@ -644,6 +682,22 @@ func (a *Agent) applySummaryAdmissionToRequest(req *provider.Request) error {
  	return nil
  }
  
@@ -1286,7 +1286,7 @@ index 4774e77..4d8c85f 100644
  	if userMax < 0 || policy.LimitMode == provider.OutputLimitUnsupported {
  		adm.ApplyMaxTokens = false
 diff --git a/internal/agent/planner_adaptive_research_test.go b/internal/agent/planner_adaptive_research_test.go
-index 496e2d2..11ae177 100644
+index 496e2d2a0..11ae177c6 100644
 --- a/internal/agent/planner_adaptive_research_test.go
 +++ b/internal/agent/planner_adaptive_research_test.go
 @@ -43,10 +43,14 @@ func TestCoordinatorPlannerDepthDoesNotCapResearchRounds(t *testing.T) {
@@ -1355,7 +1355,7 @@ index 496e2d2..11ae177 100644
  	if len(exec.requests) == 0 || !strings.Contains(lastUser(exec.requests[0]), "finish within the safety envelope") {
  		t.Fatal("executor did not receive the task-budget terminal plan")
 diff --git a/internal/agent/projection_valid_test.go b/internal/agent/projection_valid_test.go
-index 69764bc..6d7a9f4 100644
+index 69764bce4..6d7a9f47d 100644
 --- a/internal/agent/projection_valid_test.go
 +++ b/internal/agent/projection_valid_test.go
 @@ -302,9 +302,10 @@ func TestLoadProjectionSidecarDropsForeignCacheKey(t *testing.T) {
@@ -1391,7 +1391,7 @@ index 69764bc..6d7a9f4 100644
  }
  
 diff --git a/internal/agent/run_budget.go b/internal/agent/run_budget.go
-index c59985c..0959fc9 100644
+index c59985c8c..0959fc9f2 100644
 --- a/internal/agent/run_budget.go
 +++ b/internal/agent/run_budget.go
 @@ -125,14 +125,13 @@ func (b *runBudget) exceeded(limit TaskBudget) (axis, detail string) {
@@ -1417,10 +1417,10 @@ index c59985c..0959fc9 100644
  
  // ResetTaskBudget starts a fresh user-approved spend slice without touching
 diff --git a/internal/agent/run_loop.go b/internal/agent/run_loop.go
-index 99a498a..8887c91 100644
+index 37e359222..b32f63398 100644
 --- a/internal/agent/run_loop.go
 +++ b/internal/agent/run_loop.go
-@@ -164,7 +164,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -165,7 +165,7 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  	defer releaseMCPListObserver()
  	ctx = a.withAgentContext(ctx)
  	truncatedRounds := 0
@@ -1429,7 +1429,7 @@ index 99a498a..8887c91 100644
  		// Consume a queued steer and persist it to the session so it
  		// survives tab switches and history replay. The model sees it as
  		// guidance (with a prefix), not a new task. One cache miss per
-@@ -273,10 +273,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
+@@ -274,10 +274,6 @@ func (a *Agent) runToolLoop(ctx context.Context, state *turnRuntime) (runErr err
  			return terr
  		}
  	}
@@ -1440,7 +1440,7 @@ index 99a498a..8887c91 100644
  }
  
  func (a *Agent) emitProtocolRetry(attempt int, hasFallback bool) {
-@@ -402,12 +398,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
+@@ -430,12 +426,6 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
  		}
  		return true, nil
  	}
@@ -1455,7 +1455,7 @@ index 99a498a..8887c91 100644
  
 diff --git a/internal/agent/shared_ceiling_test.go b/internal/agent/shared_ceiling_test.go
 new file mode 100644
-index 0000000..d4bd9f7
+index 000000000..d4bd9f7c2
 --- /dev/null
 +++ b/internal/agent/shared_ceiling_test.go
 @@ -0,0 +1,111 @@
@@ -1571,7 +1571,7 @@ index 0000000..d4bd9f7
 +	}
 +}
 diff --git a/internal/agent/task_budget_gate_test.go b/internal/agent/task_budget_gate_test.go
-index 7a5042f..798897a 100644
+index 7a5042f05..798897aed 100644
 --- a/internal/agent/task_budget_gate_test.go
 +++ b/internal/agent/task_budget_gate_test.go
 @@ -2,7 +2,6 @@ package agent
@@ -1697,7 +1697,7 @@ index 7a5042f..798897a 100644
  	}
  }
 diff --git a/internal/agent/tool_call_parse.go b/internal/agent/tool_call_parse.go
-index 28a7272..5489bfb 100644
+index 28a72720d..5489bfb6d 100644
 --- a/internal/agent/tool_call_parse.go
 +++ b/internal/agent/tool_call_parse.go
 @@ -17,6 +17,15 @@ func (a *Agent) parseToolCall(ctx context.Context, turn *turnRuntime, plan *tool
@@ -1717,10 +1717,10 @@ index 28a7272..5489bfb 100644
  		msg := fmt.Sprintf("ambiguous MCP tool reference %q; use one of: %s", plan.call.Name, strings.Join(ambiguous, ", "))
  		return toolOutcome{
 diff --git a/internal/boot/effect_test.go b/internal/boot/effect_test.go
-index fdf0a38..bbf1b63 100644
+index 04759e1a0..02f94d5d7 100644
 --- a/internal/boot/effect_test.go
 +++ b/internal/boot/effect_test.go
-@@ -153,7 +153,8 @@ func TestEffectSubagentAblationRemovesChildToolSchemas(t *testing.T) {
+@@ -162,7 +162,8 @@ func TestEffectSubagentAblationRemovesChildToolSchemas(t *testing.T) {
  }
  
  // budgetRunawayProvider never repeats itself and never fails, so every
@@ -1730,7 +1730,7 @@ index fdf0a38..bbf1b63 100644
  type budgetRunawayProvider struct {
  	mu     sync.Mutex
  	rounds int
-@@ -186,10 +187,11 @@ func (p *budgetRunawayProvider) roundCount() int {
+@@ -195,10 +196,11 @@ func (p *budgetRunawayProvider) roundCount() int {
  	return p.rounds
  }
  
@@ -1746,7 +1746,7 @@ index fdf0a38..bbf1b63 100644
  func TestEffectTaskBudgetLandsARunawayThroughRealBuild(t *testing.T) {
  	isolateConfigHome(t)
  	dir := robustTempDir(t)
-@@ -222,12 +224,14 @@ model = "x"
+@@ -231,12 +233,14 @@ model = "x"
  	defer cancel()
  	runErr := ctrl.Run(runCtx, "read every file you can find")
  
@@ -1768,23 +1768,23 @@ index fdf0a38..bbf1b63 100644
  	if rec.roundCount() == 0 {
  		t.Fatal("no round reached the provider; the run never started")
 diff --git a/internal/boot/testdata/golden/prefix_shape.json b/internal/boot/testdata/golden/prefix_shape.json
-index e8a28fc..e17431a 100644
+index 00c10040c..bd101e352 100644
 --- a/internal/boot/testdata/golden/prefix_shape.json
 +++ b/internal/boot/testdata/golden/prefix_shape.json
 @@ -1,8 +1,8 @@
  {
    "SystemHash": "2c95f2f47dec3aed",
--  "ToolsHash": "ca8675322833ed59",
--  "PrefixHash": "5b156eb122da7ac2",
-+  "ToolsHash": "8e4b4e3046e4a61c",
-+  "PrefixHash": "1ac15e0392668265",
+-  "ToolsHash": "69878e44e84d9a93",
+-  "PrefixHash": "29044abb555d147e",
++  "ToolsHash": "9b1050dfe10fb30c",
++  "PrefixHash": "69bffcd96a801c49",
    "LogRewriteVersion": 0,
--  "ToolSchemaTokens": 3406,
-+  "ToolSchemaTokens": 3444,
+-  "ToolSchemaTokens": 3409,
++  "ToolSchemaTokens": 3447,
    "SessionContextDigest": ""
  }
 diff --git a/internal/boot/testdata/golden/provider_request.json b/internal/boot/testdata/golden/provider_request.json
-index a94be2c..231ed89 100644
+index 646b60332..a88f29902 100644
 --- a/internal/boot/testdata/golden/provider_request.json
 +++ b/internal/boot/testdata/golden/provider_request.json
 @@ -120,7 +120,7 @@
@@ -1797,7 +1797,7 @@ index a94be2c..231ed89 100644
            },
            "preserve_background_processes": {
 diff --git a/internal/boot/testdata/golden/tool_schemas.json b/internal/boot/testdata/golden/tool_schemas.json
-index d289e72..acb827d 100644
+index 61099e9de..554177695 100644
 --- a/internal/boot/testdata/golden/tool_schemas.json
 +++ b/internal/boot/testdata/golden/tool_schemas.json
 @@ -92,7 +92,7 @@
@@ -1810,26 +1810,26 @@ index d289e72..acb827d 100644
          },
          "preserve_background_processes": {
 diff --git a/internal/boot/testdata/golden/windows-powershell/prefix_shape.json b/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
-index 0124d0c..decd42e 100644
+index 6b57a144f..46192d47d 100644
 --- a/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
 +++ b/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
 @@ -1,8 +1,8 @@
  {
    "SystemHash": "2c95f2f47dec3aed",
--  "ToolsHash": "25329d2755c20503",
--  "PrefixHash": "b9085bb6a2b359e8",
-+  "ToolsHash": "5c65b71aa2872b65",
-+  "PrefixHash": "361bc9359e324c56",
+-  "ToolsHash": "0536a510c9605724",
+-  "PrefixHash": "c2094426e8aacc2d",
++  "ToolsHash": "0f3640d0672f9c3b",
++  "PrefixHash": "95f090e4aabcb651",
    "LogRewriteVersion": 0,
--  "ToolSchemaTokens": 3477,
-+  "ToolSchemaTokens": 3515,
+-  "ToolSchemaTokens": 3480,
++  "ToolSchemaTokens": 3519,
    "SessionContextDigest": ""
  }
 diff --git a/internal/boot/testdata/golden/windows-powershell/provider_request.json b/internal/boot/testdata/golden/windows-powershell/provider_request.json
-index 6719b25..7a15962 100644
+index 5c60684cb..150777018 100644
 --- a/internal/boot/testdata/golden/windows-powershell/provider_request.json
 +++ b/internal/boot/testdata/golden/windows-powershell/provider_request.json
-@@ -271,7 +271,7 @@
+@@ -272,7 +272,7 @@
              "type": "string"
            },
            "justification": {
@@ -1839,10 +1839,10 @@ index 6719b25..7a15962 100644
            },
            "run_in_background": {
 diff --git a/internal/boot/testdata/golden/windows-powershell/tool_schemas.json b/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
-index ac26d95..ceee187 100644
+index c07a572cb..67b81000e 100644
 --- a/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
 +++ b/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
-@@ -249,7 +249,7 @@
+@@ -250,7 +250,7 @@
            "type": "string"
          },
          "justification": {
@@ -1852,7 +1852,7 @@ index ac26d95..ceee187 100644
          },
          "run_in_background": {
 diff --git a/internal/control/chat_run_budget_test.go b/internal/control/chat_run_budget_test.go
-index f8a4635..1de437d 100644
+index f8a463599..1de437dfe 100644
 --- a/internal/control/chat_run_budget_test.go
 +++ b/internal/control/chat_run_budget_test.go
 @@ -77,8 +77,11 @@ func TestOrdinaryChatTurnRunsPastTheOldRoundCeiling(t *testing.T) {
@@ -1880,7 +1880,7 @@ index f8a4635..1de437d 100644
  	}
  }
 diff --git a/internal/control/write_access.go b/internal/control/write_access.go
-index cab4096..c1beb17 100644
+index 63b3ea035..7055a843a 100644
 --- a/internal/control/write_access.go
 +++ b/internal/control/write_access.go
 @@ -39,6 +39,12 @@ func (c *Controller) CheckWriteAccess(ctx context.Context, req agent.WriteAccess
@@ -1897,7 +1897,7 @@ index cab4096..c1beb17 100644
  		return agent.WriteAccessDecision{Allow: true, PermissionPreset: requestedPreset}, nil
  	}
 diff --git a/internal/netclient/netclient.go b/internal/netclient/netclient.go
-index a466fa9..8913b43 100644
+index a466fa960..8913b4376 100644
 --- a/internal/netclient/netclient.go
 +++ b/internal/netclient/netclient.go
 @@ -44,12 +44,14 @@ type ProxySpec struct {
@@ -1930,7 +1930,7 @@ index a466fa9..8913b43 100644
  
 diff --git a/internal/netclient/opencode_spec_test.go b/internal/netclient/opencode_spec_test.go
 new file mode 100644
-index 0000000..9b0ea1b
+index 000000000..9b0ea1b6f
 --- /dev/null
 +++ b/internal/netclient/opencode_spec_test.go
 @@ -0,0 +1,111 @@
@@ -2047,7 +2047,7 @@ index 0000000..9b0ea1b
 +}
 diff --git a/internal/netclient/opencode_tls.go b/internal/netclient/opencode_tls.go
 new file mode 100644
-index 0000000..d01b28a
+index 000000000..d01b28a31
 --- /dev/null
 +++ b/internal/netclient/opencode_tls.go
 @@ -0,0 +1,140 @@
@@ -2192,10 +2192,10 @@ index 0000000..d01b28a
 +	}
 +}
 diff --git a/internal/provider/anthropic/anthropic.go b/internal/provider/anthropic/anthropic.go
-index b0e04b9..be17ae8 100644
+index 9fd702c24..562fb0c53 100644
 --- a/internal/provider/anthropic/anthropic.go
 +++ b/internal/provider/anthropic/anthropic.go
-@@ -147,13 +147,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -128,13 +128,23 @@ func New(cfg provider.Config) (provider.Provider, error) {
  			}
  		}
  	}
@@ -2220,7 +2220,7 @@ index b0e04b9..be17ae8 100644
  	return &client{
  		identityHeaders:  provider.NewClientIdentityHeaders(),
  		reasoning:        ReasoningForConfig(cfg),
-@@ -178,20 +188,29 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -159,20 +169,29 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		defaultMaxTokens: maxOutputTokens,
  		http:             httpClient, // no overall timeout; lifecycle is ctx-driven
  		idleTimeout:      defaultStreamIdleTimeout,
@@ -2253,7 +2253,7 @@ index b0e04b9..be17ae8 100644
  }
  
  type client struct {
-@@ -219,6 +238,9 @@ type client struct {
+@@ -200,6 +219,9 @@ type client struct {
  	http             *http.Client
  	idleTimeout      time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
  	authed           atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -2263,7 +2263,7 @@ index b0e04b9..be17ae8 100644
  }
  
  func (c *client) Name() string { return c.name }
-@@ -322,6 +344,7 @@ var bufPool = sync.Pool{
+@@ -303,6 +325,7 @@ var bufPool = sync.Pool{
  }
  
  func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
@@ -2271,7 +2271,7 @@ index b0e04b9..be17ae8 100644
  	if err := c.reasoning.Validate(c.model, req.EffortOverride); err != nil {
  		return nil, err
  	}
-@@ -343,7 +366,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -324,7 +347,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  		}
  		httpReq.Header.Set("Content-Type", "application/json")
  		httpReq.Header.Set("Accept", "text/event-stream")
@@ -2286,7 +2286,7 @@ index b0e04b9..be17ae8 100644
  			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
  		} else {
  			httpReq.Header.Set("x-api-key", c.apiKey)
-@@ -353,7 +382,11 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -334,7 +363,11 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  			httpReq.Header.Set("anthropic-beta", "files-api-2025-04-14")
  		}
  		applyCustomHeaders(httpReq.Header, c.headers)
@@ -2300,12 +2300,12 @@ index b0e04b9..be17ae8 100644
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
 diff --git a/internal/provider/context_limit.go b/internal/provider/context_limit.go
-index 6aa011d..cd63f3f 100644
+index 93c0c431a..2f4573d7e 100644
 --- a/internal/provider/context_limit.go
 +++ b/internal/provider/context_limit.go
-@@ -67,7 +67,12 @@ var (
- 	contextLimitEnglishRe = regexp.MustCompile(`(?i)maximum context length is (\d+) tokens?\.?\s*however,\s*you requested (\d+) tokens? \((\d+) in the (?:messages|prompt), (\d+) in the completion\)`)
+@@ -68,7 +68,12 @@ var (
  	contextLimitPromptRe  = regexp.MustCompile(`(?i)prompt is too long:\s*(\d+) tokens? > (\d+) maximum`)
+ 	contextLimitInputRe   = regexp.MustCompile(`(?i)\binput length (\d+) exceeds the maximum length (\d+)\b`)
  	contextLimitSumRe     = regexp.MustCompile("(?i)input length and [`']?max_tokens[`']? exceed context limit:\\s*(\\d+)\\s*\\+\\s*(\\d+)\\s*>\\s*(\\d+)")
 -	outputLimitRe         = regexp.MustCompile(`(?i)max_tokens\s*(?:is\s+too\s+large|too\s+large)\s*[:=]?\s*(\d+).*?(?:supports?|maximum|at\s+most)[^\d]*(\d+)`)
 +	// OpenAI-compatible gateways report the overflow as a bare input-vs-window
@@ -2317,8 +2317,8 @@ index 6aa011d..cd63f3f 100644
  )
  
  func contextLimitStatusOK(status int) bool {
-@@ -198,6 +203,14 @@ func parseContextLimitText(text string) (window, requested, prompt, completion i
- 			return window, prompt, prompt, 0, true
+@@ -201,6 +206,14 @@ func parseContextLimitText(text string) (window, requested, prompt, completion i
+ 			}
  		}
  	}
 +
@@ -2333,11 +2333,11 @@ index 6aa011d..cd63f3f 100644
  }
  
 diff --git a/internal/provider/context_limit_test.go b/internal/provider/context_limit_test.go
-index df04262..1873143 100644
+index b7746a5e3..9b93cd1a6 100644
 --- a/internal/provider/context_limit_test.go
 +++ b/internal/provider/context_limit_test.go
-@@ -82,3 +82,22 @@ func TestParseOutputLimitError(t *testing.T) {
- 		t.Fatal("authorization errors must not be treated as output-limit errors")
+@@ -122,3 +122,22 @@ func TestParseContextLimitErrorInputLengthNeedsOverflow(t *testing.T) {
+ 		t.Fatal("401 must not be treated as a context limit")
  	}
  }
 +
@@ -2360,7 +2360,7 @@ index df04262..1873143 100644
 +	}
 +}
 diff --git a/internal/provider/openai/openai.go b/internal/provider/openai/openai.go
-index f41e5b4..6f2fbb5 100644
+index 99eeee4e7..807865aa6 100644
 --- a/internal/provider/openai/openai.go
 +++ b/internal/provider/openai/openai.go
 @@ -29,6 +29,7 @@ import (
@@ -2486,10 +2486,10 @@ index f41e5b4..6f2fbb5 100644
  		return httpReq, nil
  	}
  	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
-@@ -697,6 +738,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
- }
- 
+@@ -699,6 +740,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
  func (c *client) buildRequest(req provider.Request) chatRequest {
+ 	openCodeGoRoute, officialOpenCodeGo := provider.OpenCodeGoRequestRoute("openai", c.baseURL, c.chatURL, "")
+ 	openCodeGoChat := officialOpenCodeGo && openCodeGoRoute == provider.OpenCodeGoRouteChat
 +	req = ApplyOpencodeNames(c.name, c.baseURL, req)
  	// Repair tool-call pairing before sending: an interrupted/resumed history can
  	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
@@ -2508,7 +2508,7 @@ index f41e5b4..6f2fbb5 100644
  	// Close the response body when the context is canceled (user interrupt) or the
  	// stream stalls past c.idleTimeout, so scanner.Scan() unblocks instead of
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
-@@ -1108,6 +1157,7 @@ type chatRequest struct {
+@@ -1099,6 +1148,7 @@ type chatRequest struct {
  	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
  	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
  	Thinking            *thinkingMode  `json:"thinking,omitempty"`
@@ -2517,7 +2517,7 @@ index f41e5b4..6f2fbb5 100644
  }
  
 diff --git a/internal/provider/openai/openai_test.go b/internal/provider/openai/openai_test.go
-index feefad7..25184cf 100644
+index 0333fbc92..092be4fb0 100644
 --- a/internal/provider/openai/openai_test.go
 +++ b/internal/provider/openai/openai_test.go
 @@ -1027,6 +1027,36 @@ func TestBuildRequestRoundTripsReasoningOnDeepSeekToolCalls(t *testing.T) {
@@ -2559,7 +2559,7 @@ index feefad7..25184cf 100644
  	if got := c.buildRequest(provider.Request{}).ReasoningEffort; got != "high" {
 diff --git a/internal/provider/openai/opencode.go b/internal/provider/openai/opencode.go
 new file mode 100644
-index 0000000..5f13141
+index 000000000..5f13141f7
 --- /dev/null
 +++ b/internal/provider/openai/opencode.go
 @@ -0,0 +1,74 @@
@@ -2638,7 +2638,7 @@ index 0000000..5f13141
 +	}
 +}
 diff --git a/internal/provider/openai/output_budget.go b/internal/provider/openai/output_budget.go
-index bf3aca8..c4470b2 100644
+index bf3aca8fc..c4470b28e 100644
 --- a/internal/provider/openai/output_budget.go
 +++ b/internal/provider/openai/output_budget.go
 @@ -1,12 +1,32 @@
@@ -2698,7 +2698,7 @@ index bf3aca8..c4470b2 100644
  	return provider.ContextBudgetPolicy{WindowMode: provider.ContextWindowUnknown, LimitMode: provider.OutputLimitOmitWhenSafe}
  }
 diff --git a/internal/provider/openai/tool_search_wire.go b/internal/provider/openai/tool_search_wire.go
-index c172869..60922d3 100644
+index c172869d3..60922d399 100644
 --- a/internal/provider/openai/tool_search_wire.go
 +++ b/internal/provider/openai/tool_search_wire.go
 @@ -2,6 +2,31 @@ package openai
@@ -2735,7 +2735,7 @@ index c172869..60922d3 100644
  	for _, t := range req.Tools {
 diff --git a/internal/provider/opencode_cli.go b/internal/provider/opencode_cli.go
 new file mode 100644
-index 0000000..2390118
+index 000000000..23901184c
 --- /dev/null
 +++ b/internal/provider/opencode_cli.go
 @@ -0,0 +1,290 @@
@@ -3031,7 +3031,7 @@ index 0000000..2390118
 +}
 diff --git a/internal/provider/opencode_cli_test.go b/internal/provider/opencode_cli_test.go
 new file mode 100644
-index 0000000..c963b7e
+index 000000000..c963b7e41
 --- /dev/null
 +++ b/internal/provider/opencode_cli_test.go
 @@ -0,0 +1,136 @@
@@ -3173,7 +3173,7 @@ index 0000000..c963b7e
 +}
 diff --git a/internal/provider/responses/encrypted_retry_test.go b/internal/provider/responses/encrypted_retry_test.go
 new file mode 100644
-index 0000000..d674d19
+index 000000000..d674d19b4
 --- /dev/null
 +++ b/internal/provider/responses/encrypted_retry_test.go
 @@ -0,0 +1,118 @@
@@ -3296,7 +3296,7 @@ index 0000000..d674d19
 +	}
 +}
 diff --git a/internal/provider/responses/image_test.go b/internal/provider/responses/image_test.go
-index a8f35d2..1a85857 100644
+index a8f35d26a..1a8585755 100644
 --- a/internal/provider/responses/image_test.go
 +++ b/internal/provider/responses/image_test.go
 @@ -207,7 +207,7 @@ func TestToolImagesFollowCompleteToolRun(t *testing.T) {
@@ -3309,7 +3309,7 @@ index a8f35d2..1a85857 100644
  			if vision {
  				want++
 diff --git a/internal/provider/responses/message_input.go b/internal/provider/responses/message_input.go
-index 3454610..db5904c 100644
+index 34546108f..db5904c0b 100644
 --- a/internal/provider/responses/message_input.go
 +++ b/internal/provider/responses/message_input.go
 @@ -4,7 +4,14 @@ import (
@@ -3354,7 +3354,7 @@ index 3454610..db5904c 100644
  				}
  				if message.ReasoningStatus != "" {
 diff --git a/internal/provider/responses/reasoning_snapshots.go b/internal/provider/responses/reasoning_snapshots.go
-index 3a805c7..bd62c1f 100644
+index 1dc0f716b..2a2c71d81 100644
 --- a/internal/provider/responses/reasoning_snapshots.go
 +++ b/internal/provider/responses/reasoning_snapshots.go
 @@ -35,12 +35,20 @@ func (s *responseReasoningSnapshots) metadata() (string, string) {
@@ -3380,7 +3380,7 @@ index 3a805c7..bd62c1f 100644
  				found = true
  			}
 diff --git a/internal/provider/responses/reasoning_snapshots_test.go b/internal/provider/responses/reasoning_snapshots_test.go
-index 7f70b37..bea7982 100644
+index 7f70b3799..bea7982cc 100644
 --- a/internal/provider/responses/reasoning_snapshots_test.go
 +++ b/internal/provider/responses/reasoning_snapshots_test.go
 @@ -28,7 +28,7 @@ func TestTerminalReasoningSnapshotReplacesEarlierOpaqueItem(t *testing.T) {
@@ -3402,7 +3402,7 @@ index 7f70b37..bea7982 100644
  	var got, want any
  	_ = json.Unmarshal(encoded, &got)
 diff --git a/internal/provider/responses/responses.go b/internal/provider/responses/responses.go
-index df43b71..d716678 100644
+index 735aac439..78bc48aca 100644
 --- a/internal/provider/responses/responses.go
 +++ b/internal/provider/responses/responses.go
 @@ -95,6 +95,9 @@ type client struct {
@@ -3415,14 +3415,14 @@ index df43b71..d716678 100644
  	caps                               vendorCapabilities
  	sessionCache                       bool
  	search                             provider.SearchPolicy
-@@ -147,17 +150,31 @@ func New(cfg Config) provider.Provider {
+@@ -147,11 +150,26 @@ func New(cfg Config) provider.Provider {
  	// Official DeepSeek image input is pinned to one SKU. Ignore metadata or
  	// Extra["vision"] for Flash/Pro.
  	vision = openai.DeepSeekImageInputAllowed(vendor == "deepseek", cfg.RequestURL, cfg.Model, cfg.ModelInfo != nil, vision)
 -	httpClient := &http.Client{}
 -	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
-+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-+	opencode := provider.IsOpenCode(cfg.Name, baseURL)
++	opencodeBase := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
++	opencode := provider.IsOpenCode(cfg.Name, opencodeBase)
 +	opencodeSession := ""
 +	opencodeProject := ""
 +	if opencode {
@@ -3445,13 +3445,7 @@ index df43b71..d716678 100644
  		httpClient = built
  	}
  	if cfg.HTTPClient != nil {
- 		httpClient = cfg.HTTPClient
- 	}
--	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
- 	requestURL := strings.TrimSpace(cfg.RequestURL)
- 	if requestURL == "" {
- 		requestURL = baseURL + "/responses"
-@@ -184,6 +201,7 @@ func New(cfg Config) provider.Provider {
+@@ -180,6 +198,7 @@ func New(cfg Config) provider.Provider {
  		reasoning: ReasoningForConfig(provider.Config{BaseURL: cfg.BaseURL, Model: cfg.Model, Extra: cfg.Extra}),
  		baseURL:   baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
  		vendor: vendor, caps: cap, mode: cfg.mode(), sessionCache: sessionCache, search: provider.SearchPolicy{NativeEnabled: cfg.WebSearch, ClientEnabled: clientWebSearch}, maxOutputTokens: maxOutputTokens,
@@ -3459,7 +3453,7 @@ index df43b71..d716678 100644
  		vision:    vision,
  		modelInfo: modelInfo,
  		http:      httpClient, idleTimeout: defaultStreamIdleTimeout,
-@@ -246,6 +264,7 @@ func (c *client) ResetContext() {
+@@ -242,6 +261,7 @@ func (c *client) ResetContext() {
  }
  
  func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
@@ -3467,7 +3461,7 @@ index df43b71..d716678 100644
  	if c.effort != "auto" && c.effort != "off" {
  		if err := c.reasoning.Validate(c.model, c.effort); err != nil {
  			return nil, err
-@@ -264,6 +283,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
+@@ -260,6 +280,18 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
  		body, _, wireMessages = c.buildRequestBody(req)
  		resp, err = c.send(requestCtx, body)
  	}
@@ -3486,7 +3480,7 @@ index df43b71..d716678 100644
  	if err != nil {
  		return nil, err
  	}
-@@ -284,8 +315,14 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -280,8 +312,14 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  			return nil, err
  		}
  		req.Header.Set("Content-Type", "application/json")
@@ -3503,7 +3497,7 @@ index df43b71..d716678 100644
  		if c.caps.sessionCacheHeader && c.sessionCache {
  			req.Header.Set("x-dashscope-session-cache", "enable")
  		}
-@@ -305,6 +342,58 @@ func isStalePreviousResponseError(err error) bool {
+@@ -301,6 +339,58 @@ func isStalePreviousResponseError(err error) bool {
  		(strings.Contains(body, "not found") || strings.Contains(body, "invalid") || strings.Contains(body, "expired"))
  }
  
@@ -3562,7 +3556,7 @@ index df43b71..d716678 100644
  func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, []provider.Message) {
  	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
  	body := map[string]any{"model": c.model, "stream": true}
-@@ -321,7 +410,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -317,7 +407,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		effort = "none"
  	}
  	if effort != "" {
@@ -3581,7 +3575,7 @@ index df43b71..d716678 100644
  	}
  	maxOutputTokens := req.MaxTokens
  	if maxOutputTokens == 0 {
-@@ -363,7 +462,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
+@@ -359,7 +459,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
  		return body, true, messages
  	}
  
@@ -3590,7 +3584,7 @@ index df43b71..d716678 100644
  	return body, false, messages
  }
  
-@@ -410,7 +509,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
+@@ -406,7 +506,7 @@ func (c *client) conversationDigest(messages []provider.Message) string {
  	payload, _ := json.Marshal(struct {
  		Instructions string           `json:"instructions,omitempty"`
  		Input        []map[string]any `json:"input"`
@@ -3600,7 +3594,7 @@ index df43b71..d716678 100644
  	return hex.EncodeToString(sum[:])
  }
 diff --git a/internal/provider/responses/responses_test.go b/internal/provider/responses/responses_test.go
-index 3547d50..5723bd0 100644
+index 3547d50d4..5723bd0c5 100644
 --- a/internal/provider/responses/responses_test.go
 +++ b/internal/provider/responses/responses_test.go
 @@ -56,6 +56,12 @@ func TestDetectVendorAndModeDefaults(t *testing.T) {
@@ -3723,7 +3717,7 @@ index 3547d50..5723bd0 100644
  	// reasoning-item schema; sending it leaks the reasoning text into an
  	// extra field the server may echo back into the model context (the
 diff --git a/internal/provider/responses/vendor.go b/internal/provider/responses/vendor.go
-index 6200e4f..7aca23b 100644
+index 6200e4f67..7aca23b9a 100644
 --- a/internal/provider/responses/vendor.go
 +++ b/internal/provider/responses/vendor.go
 @@ -123,6 +123,15 @@ var vendorTable = map[string]vendorCapabilities{
@@ -3760,62 +3754,11 @@ index 6200e4f..7aca23b 100644
  		return ""
  	}
  }
-diff --git a/internal/runtimepolicy/constraints.go b/internal/runtimepolicy/constraints.go
-index 1c255e9..d6828eb 100644
---- a/internal/runtimepolicy/constraints.go
-+++ b/internal/runtimepolicy/constraints.go
-@@ -184,7 +184,29 @@ func globalMutationTail(tail string) bool {
- 	if strings.HasPrefix(tail, ":") {
- 		return false
- 	}
--	return hasBroadTarget(tail)
-+	if !hasBroadTarget(tail) {
-+		return false
-+	}
-+	// A broad target narrowed by a scope qualifier names a subtree, not the
-+	// whole tree: "do not modify anything under tests/" only fences tests/.
-+	for _, marker := range []string{" under ", " within ", " inside ", " in "} {
-+		if _, rest, ok := strings.Cut(tail, marker); ok && !globalContainer(rest) {
-+			return false
-+		}
-+	}
-+	return true
-+}
-+
-+// globalContainer reports whether the text after a scope qualifier still
-+// names the entire tree rather than a subtree of it.
-+func globalContainer(rest string) bool {
-+	return startsWithAnyWord(strings.TrimSpace(rest), []string{
-+		"the workspace", "this workspace", "workspace",
-+		"the repository", "this repository", "repository",
-+		"the repo", "this repo", "repo",
-+		"the codebase", "this codebase", "codebase",
-+		"the project", "the source tree",
-+	})
- }
- 
- func globalFixTail(tail string) bool {
-diff --git a/internal/runtimepolicy/constraints_test.go b/internal/runtimepolicy/constraints_test.go
-index ddfa8e3..6931631 100644
---- a/internal/runtimepolicy/constraints_test.go
-+++ b/internal/runtimepolicy/constraints_test.go
-@@ -12,6 +12,11 @@ func TestParseConstraintsScopesMutationBans(t *testing.T) {
- 		instruction string
- 		forbid      bool
- 	}{
-+		{name: "scoped subtree under tests", instruction: "Make the suite pass. Do not modify anything under tests/."},
-+		{name: "scoped subtree in folder", instruction: "Do not modify anything in the generated directory."},
-+		{name: "scoped subtree within src", instruction: "Do not edit any files within src/auth."},
-+		{name: "broad under whole workspace", instruction: "Do not modify anything under the workspace.", forbid: true},
-+		{name: "broad in repository", instruction: "Do not modify anything in the repository.", forbid: true},
- 		{name: "scoped PR", instruction: "Do not modify PR #10. Create a branch and implement the repair."},
- 		{name: "scoped product", instruction: "Do not modify Strategy Lab. Commit the Battleboard fix."},
- 		{name: "scoped list", instruction: "Do not modify:\n- main\n- PR #10\nCreate feature/fix and commit."},
 diff --git a/internal/tool/builtin/bash_write.go b/internal/tool/builtin/bash_write.go
-index 29ddffd..56a9f17 100644
+index dae8cf5d8..1396bf2ea 100644
 --- a/internal/tool/builtin/bash_write.go
 +++ b/internal/tool/builtin/bash_write.go
-@@ -15,9 +15,9 @@ import (
+@@ -17,9 +17,9 @@ import (
  
  func (b bash) Schema() json.RawMessage {
  	if b.resolved().Kind == sandbox.ShellPowerShell {
@@ -3827,7 +3770,7 @@ index 29ddffd..56a9f17 100644
  }
  
  func (b bash) DeclareWriteAccess(args json.RawMessage) (tool.WriteAccessDeclaration, error) {
-@@ -41,8 +41,12 @@ func validateBashWriteDirs(p bashParams) error {
+@@ -43,8 +43,12 @@ func validateBashWriteDirs(p bashParams) error {
  	if preset != "" && preset != string(permissionpreset.WorkspaceWrite) && preset != string(permissionpreset.DangerFullAccess) {
  		return fmt.Errorf("sandbox_permissions must be workspace-write or danger-full-access")
  	}
