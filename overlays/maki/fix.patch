@@ -1,17 +1,17 @@
 diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
-index 4ce2be75..b0a2ade8 100644
+index f49a9de..0b9f713 100644
 --- a/maki-agent/src/agent/compaction.rs
 +++ b/maki-agent/src/agent/compaction.rs
-@@ -85,6 +85,7 @@ pub(super) async fn compact_history(
-     cancel: &CancelToken,
+@@ -185,6 +185,7 @@ pub(super) async fn compact_history(
+     hooks: &AgentHooks<'_>,
      config: &AgentConfig,
      instructions: Option<&str>,
 +    tools: &Value,
      carry_len: usize,
-     session_id: Option<&SessionRef>,
      retry: RetryPolicy,
-@@ -98,7 +99,10 @@ pub(super) async fn compact_history(
-     collapse_tool_results(&mut compaction_history, RECENT_TOOL_RESULT_BUDGET);
+ ) -> Result<(TokenUsage, String), AgentError> {
+@@ -197,7 +198,10 @@ pub(super) async fn compact_history(
+     prepare_collapse(hooks, &mut compaction_history, RECENT_TOOL_RESULT_BUDGET).await;
      compaction_history.push(Message::user(summary_prompt(config, instructions)));
  
 -    let empty_tools = serde_json::json!([]);
@@ -22,7 +22,7 @@ index 4ce2be75..b0a2ade8 100644
      let max_attempts = 3;
      let mut last_error = None;
  
-@@ -109,7 +113,7 @@ pub(super) async fn compact_history(
+@@ -208,7 +212,7 @@ pub(super) async fn compact_history(
                  model,
                  messages: &compaction_history,
                  system: crate::prompt::COMPACTION_SYSTEM,
@@ -30,16 +30,16 @@ index 4ce2be75..b0a2ade8 100644
 +                tools,
                  opts: RequestOptions::default(),
                  output_budget: SUMMARY_OUTPUT_BUDGET,
-                 session_id,
-@@ -226,6 +230,7 @@ pub async fn compact(
-         cancel,
+                 session_id: hooks.session_id,
+@@ -341,6 +345,7 @@ pub async fn compact(
+         hooks,
          config,
-         instructions,
+         steer.instructions.as_deref(),
 +        tools,
          0,
-         session_id,
          retry,
-@@ -419,6 +424,7 @@ mod tests {
+     )
+@@ -638,6 +643,7 @@ mod tests {
          responses: Mutex<Vec<Result<StreamResponse, AgentError>>>,
          requests: Mutex<Vec<Vec<Message>>>,
          sessions: Mutex<Vec<Option<String>>>,
@@ -47,7 +47,7 @@ index 4ce2be75..b0a2ade8 100644
      }
  
      impl MockProvider {
-@@ -427,6 +433,7 @@ mod tests {
+@@ -646,6 +652,7 @@ mod tests {
                  responses: Mutex::new(responses),
                  requests: Mutex::new(Vec::new()),
                  sessions: Mutex::new(Vec::new()),
@@ -55,7 +55,7 @@ index 4ce2be75..b0a2ade8 100644
              }
          }
      }
-@@ -437,7 +444,7 @@ mod tests {
+@@ -656,7 +663,7 @@ mod tests {
              _: &'a Model,
              messages: &'a [Message],
              _: &'a str,
@@ -64,7 +64,7 @@ index 4ce2be75..b0a2ade8 100644
              _: &'a flume::Sender<ProviderEvent>,
              _: RequestOptions,
              session_id: Option<&'a SessionRef>,
-@@ -448,6 +455,7 @@ mod tests {
+@@ -667,6 +674,7 @@ mod tests {
                      .lock()
                      .unwrap()
                      .push(session_id.map(|s| s.as_str().to_string()));
@@ -72,15 +72,32 @@ index 4ce2be75..b0a2ade8 100644
                  let mut responses = self.responses.lock().unwrap();
                  assert!(!responses.is_empty(), "MockProvider: no more responses");
                  responses.remove(0)
-@@ -528,6 +536,7 @@ mod tests {
-             &CancelToken::none(),
+@@ -754,6 +762,16 @@ mod tests {
+         history: &mut History,
+         carry_len: usize,
+         session_id: Option<&SessionRef>,
++    ) {
++        summarize_history_with_tools(provider, history, carry_len, session_id, &no_tools()).await;
++    }
++
++    async fn summarize_history_with_tools(
++        provider: &MockProvider,
++        history: &mut History,
++        carry_len: usize,
++        session_id: Option<&SessionRef>,
++        tools: &Value,
+     ) {
+         let (raw_tx, _rx) = flume::unbounded();
+         let registry = ToolRegistry::new();
+@@ -767,6 +785,7 @@ mod tests {
+             &test_hooks(&registry, session_id, &model, &cancel),
              &AgentConfig::default(),
              None,
-+            &no_tools(),
++            tools,
              carry_len,
-             session_id,
              RetryPolicy::default(),
-@@ -1057,6 +1066,39 @@ mod tests {
+         )
+@@ -1497,6 +1516,24 @@ mod tests {
          });
      }
  
@@ -93,22 +110,7 @@ index 4ce2be75..b0a2ade8 100644
 +            let provider = MockProvider::new(vec![Ok(text_response(StopReason::EndTurn))]);
 +            let mut history = History::new(vec![Message::user("work".into())]);
 +            let tools = serde_json::json!([{ "name": "read", "description": "Read a file" }]);
-+            let (raw_tx, _rx) = flume::unbounded();
-+            compact_history(
-+                &provider,
-+                &default_model(),
-+                &mut history,
-+                &EventSender::new(raw_tx, 0),
-+                &CancelToken::none(),
-+                &AgentConfig::default(),
-+                None,
-+                &tools,
-+                0,
-+                None,
-+                RetryPolicy::default(),
-+            )
-+            .await
-+            .unwrap();
++            summarize_history_with_tools(&provider, &mut history, 0, None, &tools).await;
 +
 +            let seen = provider.seen_tools.lock().unwrap();
 +            assert_eq!(seen.len(), 1);
@@ -121,19 +123,19 @@ index 4ce2be75..b0a2ade8 100644
      const CARRY_UNSENT_MSG: &str = "carried input is not the summariser's to read";
      const CARRY_KEPT_MSG: &str = "carried input must outlive the summary verbatim";
 diff --git a/maki-agent/src/agent/run.rs b/maki-agent/src/agent/run.rs
-index a912da2d..b78a04c7 100644
+index df64513..9502777 100644
 --- a/maki-agent/src/agent/run.rs
 +++ b/maki-agent/src/agent/run.rs
-@@ -697,6 +697,7 @@ impl<'h> Agent<'h> {
-             &self.cancel,
+@@ -893,6 +893,7 @@ impl<'h> Agent<'h> {
+             &hooks,
              &self.config,
              instructions,
 +            request_tools(&self.tools, self.mcp.as_ref()).as_ref(),
              carry_len,
-             self.session_id.as_ref(),
              self.timeouts.retry,
+         )
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
-index 3b6280b0..dda6adfe 100644
+index 3b6280b..dda6adf 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
 +++ b/maki-providers/src/providers/anthropic/mod.rs
 @@ -27,7 +27,7 @@ use crate::{
@@ -167,7 +169,7 @@ index 3b6280b0..dda6adfe 100644
  
      async fn do_stream_request(
 diff --git a/maki-providers/src/providers/catalog.rs b/maki-providers/src/providers/catalog.rs
-index 659c2315..f81e9f47 100644
+index 347fdf3..d6a701a 100644
 --- a/maki-providers/src/providers/catalog.rs
 +++ b/maki-providers/src/providers/catalog.rs
 @@ -29,7 +29,7 @@ use crate::model::{Model, ModelInfo, ModelPricing};
@@ -199,7 +201,7 @@ index 659c2315..f81e9f47 100644
          if let (Some(header), Some(sid)) = (self.quirks.session_header, session_id) {
              auth.set_header(header, sid.to_string());
          }
-@@ -766,7 +779,8 @@ impl CatalogTransport {
+@@ -780,7 +793,8 @@ impl CatalogTransport {
                  body["model"] = serde_json::json!(model.id);
                  body["stream"] = serde_json::json!(true);
                  let request = auth
@@ -209,7 +211,7 @@ index 659c2315..f81e9f47 100644
                          Request::builder()
                              .method("POST")
                              .uri(format!(
-@@ -777,7 +791,7 @@ impl CatalogTransport {
+@@ -791,7 +805,7 @@ impl CatalogTransport {
                              .header("user-agent", user_agent())
                              .header("content-type", "application/json")
                              .header("anthropic-version", ANTHROPIC_VERSION),
@@ -218,7 +220,7 @@ index 659c2315..f81e9f47 100644
                      .body(serde_json::to_vec(&body)?)?;
                  debug!(model = %model.id, "sending Anthropic-format request via catalog");
                  let response = self.client.send_async(request).await?;
-@@ -1077,11 +1091,12 @@ mod tests {
+@@ -1094,11 +1108,12 @@ mod tests {
          assert!(matches!(result, Err(AgentError::Config { .. })));
      }
  
@@ -236,7 +238,7 @@ index 659c2315..f81e9f47 100644
          let data = ProviderData {
              slug: slug.into(),
              quirks: quirks_for(slug),
-@@ -1092,12 +1107,38 @@ mod tests {
+@@ -1109,12 +1124,38 @@ mod tests {
              ResolvedAuth::for_test(None, Vec::new()),
              with_session.then_some(&session),
          );
@@ -277,7 +279,7 @@ index 659c2315..f81e9f47 100644
  
      /// Limits are published so nothing under test reads a default; only the
 diff --git a/maki-providers/src/providers/custom.rs b/maki-providers/src/providers/custom.rs
-index 83f52102..f72e36f1 100644
+index 7d362d2..f7d17a0 100644
 --- a/maki-providers/src/providers/custom.rs
 +++ b/maki-providers/src/providers/custom.rs
 @@ -92,6 +92,13 @@ pub fn create(slug: &str, timeouts: Timeouts) -> Result<Box<dyn Provider>, Agent
@@ -295,7 +297,7 @@ index 83f52102..f72e36f1 100644
      match protocol {
          Protocol::Anthropic => Ok(Box::new(super::anthropic::Anthropic::with_auth(
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 0333c43b..7f801645 100644
+index 0333c43..7f80164 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
@@ -791,7 +793,7 @@ index 0333c43b..7f801645 100644
      fn config_headers_append_unknown_and_replace_same_name() {
          let mut auth = test_bearer("sk-1");
 diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
-index 3aebf9e0..822d4259 100644
+index 3aebf9e..822d425 100644
 --- a/maki-providers/src/providers/openai/responses.rs
 +++ b/maki-providers/src/providers/openai/responses.rs
 @@ -228,14 +228,17 @@ async fn post_responses(
@@ -820,7 +822,7 @@ index 3aebf9e0..822d4259 100644
  
      debug!(
 diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
-index 6ac740c1..40154997 100644
+index 6ac740c..4015499 100644
 --- a/maki-providers/src/providers/openai_compat.rs
 +++ b/maki-providers/src/providers/openai_compat.rs
 @@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
