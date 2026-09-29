@@ -6,22 +6,32 @@
 # Applies to deepseekharness-acp-interactive config/cordis.yml.
 --- a/config/cordis.yml
 +++ b/config/cordis.yml
-@@ -3,13 +3,7 @@
+@@ -3,23 +3,7 @@
  - id: llm-deepseek
-   name: '@deepseek-ai/dsh-llm-deepseek'
+   name: '@deepseek-ai/dsh-llm-deepseek-api-key'
    config:
 -    thinking: enabled
 -    reasoningEffort: max
+-    # The official directory is V4.1 Flash and V4 Pro. The retired
+-    # `deepseek-v4-flash-vision-exp` beta is deliberately absent: advertising it
+-    # offers a route the service no longer serves. Flash is the image-capable
+-    # entry, so it declares its modalities.
 -    models:
--      - id: deepseek-v4-flash
--      - id: deepseek-v4-pro
--      - id: deepseek-v4-flash-vision-exp
+-      - id: deepseek-flash
+-        name: DeepSeek V4.1 Flash
+-        contextWindow: 1000000
+-        maxTokens: 384000
 -        inputModalities: [text, image]
+-      - id: deepseek-v4-pro
+-        name: DeepSeek V4 Pro
+-        contextWindow: 1000000
+-        maxTokens: 384000
+-        inputModalities: [text]
 +    models: []
- - id: settings
-   name: '@deepseek-ai/dsh-settings-file'
  - id: credentials
-@@ -210,6 +206,7 @@
+   name: '@deepseek-ai/dsh-credentials-local'
+ - id: llm-pi-ai
+@@ -219,6 +203,7 @@
    name: '@deepseek-ai/dsh-web'
  - id: web-search-deepseek
    name: '@deepseek-ai/dsh-web-search-deepseek'
@@ -29,7 +39,7 @@
  - id: web-fetch-http
    name: '@deepseek-ai/dsh-web-fetch-http'
  - id: tool-web
-@@ -252,5 +249,5 @@
+@@ -260,5 +245,5 @@
  - id: acp-interactive
    name: '../lib/index.js'
    config:

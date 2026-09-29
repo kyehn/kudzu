@@ -5,6 +5,7 @@
   context7-mcp,
   ripgrep,
   bashNonInteractive,
+  open-websearch,
 }:
 
 (formats.toml { }).generate "config.toml" {
@@ -139,7 +140,7 @@
     {
       name = "open-websearch";
       type = "stdio";
-      command = "open-websearch";
+      command = lib.getExe open-websearch;
       concurrency = "serial";
       env = {
         SEARCH_MODE = "request";

@@ -5,6 +5,7 @@
   formats,
   mcp-nixos,
   context7-mcp,
+  open-websearch,
 }:
 
 linkFarm "maki" [
@@ -74,7 +75,7 @@ linkFarm "maki" [
         context7-mcp.command = [ (lib.getExe context7-mcp) ];
         mobile-mcp.command = [ "mcp-server-mobile" ];
         open-websearch = {
-          command = [ "open-websearch" ];
+          command = [ (lib.getExe open-websearch) ];
           environment = {
             SEARCH_MODE = "request";
             DEFAULT_SEARCH_ENGINE = "duckduckgo";

@@ -4,16 +4,10 @@
   formats,
   mcp-nixos,
   context7-mcp,
+  open-websearch,
 }:
 
 linkFarm "dsh" [
-  {
-    name = "settings.yaml";
-    path = (formats.yaml { }).generate "settings.yaml" {
-      permission.defaultPreset = "danger-full-access";
-      llm-deepseek.models = [ ];
-    };
-  }
   {
     name = "cordis.patch.yml";
     path = (formats.yaml { }).generate "cordis.patch.yml" [
@@ -35,6 +29,20 @@ linkFarm "dsh" [
               transport = "stdio";
               serverName = "context7-mcp";
               command = lib.getExe context7-mcp;
+            };
+          }
+          {
+            id = "open-websearch";
+            name = "@deepseek-ai/dsh-mcp-client";
+            config = {
+              transport = "stdio";
+              serverName = "open-websearch";
+              command = lib.getExe open-websearch;
+              env = {
+                SEARCH_MODE = "request";
+                DEFAULT_SEARCH_ENGINE = "duckduckgo";
+                MODE = "stdio";
+              };
             };
           }
           {
@@ -68,6 +76,10 @@ linkFarm "dsh" [
       {
         id = "compaction-basic";
         config.thresholdRatio = 0.6;
+      }
+      {
+        id = "permission-presets";
+        config.defaultPreset = "danger-full-access";
       }
     ];
   }

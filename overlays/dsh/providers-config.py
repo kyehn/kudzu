@@ -24,7 +24,7 @@ USER_AGENTS = {
 }
 USER_AGENT = USER_AGENTS["openai-completions"]
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
-DSH_SETTINGS = Path.home() / ".dsh" / "settings.yaml"
+DSH_PATCH = Path.home() / ".dsh" / "cordis.patch.yml"
 PROVIDER_NAMES = ("opencode", "nvidia")
 
 
@@ -154,21 +154,32 @@ def main(argv: list[str] | None = None) -> None:
             new_providers[route_key] = provider_config
     if not new_providers:
         raise SystemExit("no models found")
-    existing_raw = (
-        yaml.safe_load(DSH_SETTINGS.read_text(encoding="utf-8"))
-        if DSH_SETTINGS.exists()
-        else {}
+    patch_raw = (
+        yaml.safe_load(DSH_PATCH.read_text(encoding="utf-8"))
+        if DSH_PATCH.exists()
+        else []
     )
-    existing = existing_raw if isinstance(existing_raw, dict) else {}
-    providers_section = existing.setdefault("llm-pi-ai", {}).setdefault("providers", {})
+    patch = patch_raw if isinstance(patch_raw, list) else []
+    entry = next(
+        (
+            item
+            for item in patch
+            if isinstance(item, dict) and item.get("id") == "llm-pi-ai"
+        ),
+        None,
+    )
+    if entry is None:
+        entry = {"id": "llm-pi-ai", "config": {}}
+        patch.append(entry)
+    providers_section = entry.setdefault("config", {}).setdefault("providers", {})
     for provider_name, provider_config in new_providers.items():
         providers_section[provider_name] = provider_config
-    DSH_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
-    DSH_SETTINGS.write_text(
-        yaml.safe_dump(existing, sort_keys=False),
+    DSH_PATCH.parent.mkdir(parents=True, exist_ok=True)
+    DSH_PATCH.write_text(
+        yaml.safe_dump(patch, sort_keys=False),
         encoding="utf-8",
     )
-    print(f"Wrote {len(new_providers)} provider(s) to {DSH_SETTINGS}")
+    print(f"Wrote {len(new_providers)} provider(s) to {DSH_PATCH}")
     for provider_name, provider_config in new_providers.items():
         print(
             f"  {provider_name}: "

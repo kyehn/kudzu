@@ -3,6 +3,7 @@
   writeText,
   mcp-nixos,
   context7-mcp,
+  open-websearch,
 }:
 
 writeText "mcp.json" (
@@ -21,7 +22,7 @@ writeText "mcp.json" (
       context7-mcp.command = lib.getExe context7-mcp;
       mobile-mcp.command = "mcp-server-mobile";
       open-websearch = {
-        command = "open-websearch";
+        command = lib.getExe open-websearch;
         env = {
           SEARCH_MODE = "request";
           DEFAULT_SEARCH_ENGINE = "duckduckgo";
