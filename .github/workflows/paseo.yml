@@ -87,7 +87,6 @@ jobs:
           pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
-          npm install --global --yes open-websearch
           npm install --global --yes @tobilu/qmd
           npm install --global --yes @mobilenext/mobile-mcp
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config

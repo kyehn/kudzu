@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 345b49691..5faf44538 100644
+index 7091750a3..1d0b09962 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -12,6 +12,7 @@ require (
@@ -9,17 +9,17 @@ index 345b49691..5faf44538 100644
 +	github.com/andybalholm/brotli v1.0.6
  	github.com/atotto/clipboard v0.1.4
  	github.com/aymanbagabas/go-udiff v0.4.1
- 	github.com/bmatcuk/doublestar/v4 v4.10.0
+ 	github.com/bmatcuk/doublestar/v4 v4.10.2
 @@ -28,6 +29,7 @@ require (
- 	github.com/mattn/go-runewidth v0.0.29
- 	github.com/modelcontextprotocol/go-sdk v1.8.0-pre.2
+ 	github.com/mattn/go-runewidth v0.0.30
+ 	github.com/modelcontextprotocol/go-sdk v1.8.0
  	github.com/pkg/sftp v1.13.11
 +	github.com/refraction-networking/utls v1.8.2
  	github.com/rivo/uniseg v0.4.7
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 456d9044f..3854d6435 100644
+index 9bdd23f53..fde78e120 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -18,6 +18,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -236,10 +236,10 @@ index 35065a896..0d91cdddb 100644
  	meta, ok, err := loadACPMeta(path)
  	if err != nil || !ok {
 diff --git a/internal/acp/service.go b/internal/acp/service.go
-index b72fdd264..48f2ca5e9 100644
+index 7a2a02e72..c6ee1b7e4 100644
 --- a/internal/acp/service.go
 +++ b/internal/acp/service.go
-@@ -671,7 +671,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -673,7 +673,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  	if err != nil {
  		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
  	}
@@ -248,7 +248,7 @@ index b72fdd264..48f2ca5e9 100644
  	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
  		Cwd: cwd, Model: cfgState.Model, RuntimeProfile: cfgState.RuntimeProfile,
  	})
-@@ -701,11 +701,14 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -703,11 +703,14 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
  	}
  	ctrl.EnableInteractiveApproval()
@@ -267,7 +267,7 @@ index b72fdd264..48f2ca5e9 100644
  	sink.bindControllerPrompts(ctrl, sessionParams.MCPInteractions)
  
  	now := time.Now().UTC()
-@@ -718,7 +721,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
+@@ -720,7 +723,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
  		model:            cfgState.Model,
  		effortOverride:   cloneStringPtr(cfgState.EffortOverride),
  		runtimeProfile:   cfgState.RuntimeProfile,
@@ -276,7 +276,7 @@ index b72fdd264..48f2ca5e9 100644
  		runtimeState:     runtimeState,
  		status:           newStatusTelemetry(),
  		modeID:           sessionModeNormal,
-@@ -1053,10 +1056,9 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
+@@ -1055,10 +1058,9 @@ func (s *service) openExistingSession(ctx context.Context, method, id, cwdParam
  			return SessionConfigState{}, sessionLeaseBindError(method, err)
  		}
  	}
@@ -472,10 +472,10 @@ index a29e324ef..bbb778d07 100644
  }
  
 diff --git a/internal/agent/compact.go b/internal/agent/compact.go
-index 68a261a58..c8d3b5dd8 100644
+index 2890d5ae4..0cd1b558c 100644
 --- a/internal/agent/compact.go
 +++ b/internal/agent/compact.go
-@@ -448,7 +448,7 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
+@@ -458,7 +458,7 @@ func (a *Agent) runSummaryRequest(ctx context.Context, req provider.Request) (su
  		}
  	}()
  	defer trackPublishedHostStream(ctx, cancel)()
@@ -485,10 +485,10 @@ index 68a261a58..c8d3b5dd8 100644
  	}
  	if budget := a.summaryOutputBudget(); req.MaxTokens > budget {
 diff --git a/internal/agent/compact_projection.go b/internal/agent/compact_projection.go
-index 4b6abb2d9..7ccefd2db 100644
+index e302d8c71..50f4d2a79 100644
 --- a/internal/agent/compact_projection.go
 +++ b/internal/agent/compact_projection.go
-@@ -579,7 +579,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
+@@ -585,7 +585,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
  		projMsgs = append(projMsgs, projectionMessagesPreservingPinnedContext(bodySuffix)...)
  	}
  	tele.UserTurnsKept, tele.UserTurnsDropped = retention.Kept, retention.Dropped
@@ -497,7 +497,7 @@ index 4b6abb2d9..7ccefd2db 100644
  	if err != nil {
  		a.emitCompactionAborted(trigger)
  		return CompactionNoop, err
-@@ -607,6 +607,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+@@ -613,6 +613,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
  	projection, canonical []provider.Message,
  	covered, sourceTokens int,
  	tele *CompactionTelemetry,
@@ -505,7 +505,7 @@ index 4b6abb2d9..7ccefd2db 100644
  ) ([]provider.Message, []provider.Message, int, error) {
  	projection, pinnedCheckpoint, err := rebasePinnedContextProjection(projection, canonical, covered)
  	if err != nil {
-@@ -616,7 +617,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
+@@ -622,7 +623,7 @@ func (a *Agent) preparePinnedCheckpointCandidate(
  	projectionTokens := a.estimatedVisibleRequestTokens(spliced)
  	tele.ProjectionTokens = projectionTokens
  	a.emitCompactionTelemetry(*tele)
@@ -514,7 +514,7 @@ index 4b6abb2d9..7ccefd2db 100644
  		if pinnedCheckpoint {
  			return nil, nil, 0, fmt.Errorf("pinned-context-too-large: checkpoint prevents compaction acceptance: %w", err)
  		}
-@@ -661,13 +662,17 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
+@@ -667,13 +668,17 @@ func checkpointProjectionMessages(msgs []provider.Message, head int, kept []prov
  }
  
  // acceptCheckpointCandidate requires real savings and, for automatic
@@ -594,10 +594,10 @@ index 70e9c6308..10615254d 100644
 +	}
  }
 diff --git a/internal/agent/context_manager.go b/internal/agent/context_manager.go
-index ae0f5ea4d..7c591f075 100644
+index c1d261768..1a0f2bb84 100644
 --- a/internal/agent/context_manager.go
 +++ b/internal/agent/context_manager.go
-@@ -196,7 +196,10 @@ func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
+@@ -199,7 +199,10 @@ func maxSummariesFor(policy ContextPreparePolicy, overCeiling bool) int {
  	case policy.Trigger == CompactionTriggerManual && overCeiling:
  		return manualRecoverySummaries
  	case policy.Trigger == CompactionTriggerPressure:
@@ -610,10 +610,10 @@ index ae0f5ea4d..7c591f075 100644
  		return 1
  	}
 diff --git a/internal/agent/context_recovery.go b/internal/agent/context_recovery.go
-index 041658613..a1fe47869 100644
+index 2f5c873e8..a8255c2c1 100644
 --- a/internal/agent/context_recovery.go
 +++ b/internal/agent/context_recovery.go
-@@ -22,7 +22,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
+@@ -23,7 +23,7 @@ func (a *Agent) recoverContextLimit(ctx context.Context, frozen samplingRequest,
  	if limit.PromptTokens > 0 {
  		a.setPromptTokenCalibrationFromActive(limit.PromptTokens)
  	}
@@ -1717,10 +1717,10 @@ index 28a72720d..5489bfb6d 100644
  		msg := fmt.Sprintf("ambiguous MCP tool reference %q; use one of: %s", plan.call.Name, strings.Join(ambiguous, ", "))
  		return toolOutcome{
 diff --git a/internal/boot/effect_test.go b/internal/boot/effect_test.go
-index 04759e1a0..02f94d5d7 100644
+index 90bd8a0ce..04ef21861 100644
 --- a/internal/boot/effect_test.go
 +++ b/internal/boot/effect_test.go
-@@ -162,7 +162,8 @@ func TestEffectSubagentAblationRemovesChildToolSchemas(t *testing.T) {
+@@ -163,7 +163,8 @@ func TestEffectSubagentAblationRemovesChildToolSchemas(t *testing.T) {
  }
  
  // budgetRunawayProvider never repeats itself and never fails, so every
@@ -1730,7 +1730,7 @@ index 04759e1a0..02f94d5d7 100644
  type budgetRunawayProvider struct {
  	mu     sync.Mutex
  	rounds int
-@@ -195,10 +196,11 @@ func (p *budgetRunawayProvider) roundCount() int {
+@@ -196,10 +197,11 @@ func (p *budgetRunawayProvider) roundCount() int {
  	return p.rounds
  }
  
@@ -1746,7 +1746,7 @@ index 04759e1a0..02f94d5d7 100644
  func TestEffectTaskBudgetLandsARunawayThroughRealBuild(t *testing.T) {
  	isolateConfigHome(t)
  	dir := robustTempDir(t)
-@@ -231,12 +233,14 @@ model = "x"
+@@ -233,12 +235,14 @@ model = "x"
  	defer cancel()
  	runErr := ctrl.Run(runCtx, "read every file you can find")
  
@@ -1768,23 +1768,23 @@ index 04759e1a0..02f94d5d7 100644
  	if rec.roundCount() == 0 {
  		t.Fatal("no round reached the provider; the run never started")
 diff --git a/internal/boot/testdata/golden/prefix_shape.json b/internal/boot/testdata/golden/prefix_shape.json
-index 00c10040c..bd101e352 100644
+index 2fc41b794..46b91c2b1 100644
 --- a/internal/boot/testdata/golden/prefix_shape.json
 +++ b/internal/boot/testdata/golden/prefix_shape.json
 @@ -1,8 +1,8 @@
  {
    "SystemHash": "2c95f2f47dec3aed",
--  "ToolsHash": "69878e44e84d9a93",
--  "PrefixHash": "29044abb555d147e",
-+  "ToolsHash": "9b1050dfe10fb30c",
-+  "PrefixHash": "69bffcd96a801c49",
+-  "ToolsHash": "676b0df489c58a52",
+-  "PrefixHash": "de3311d41fe3716b",
++  "ToolsHash": "2add6cb9254ce6d2",
++  "PrefixHash": "f8bece01b124488e",
    "LogRewriteVersion": 0,
--  "ToolSchemaTokens": 3409,
-+  "ToolSchemaTokens": 3447,
+-  "ToolSchemaTokens": 3482,
++  "ToolSchemaTokens": 3521,
    "SessionContextDigest": ""
  }
 diff --git a/internal/boot/testdata/golden/provider_request.json b/internal/boot/testdata/golden/provider_request.json
-index 646b60332..a88f29902 100644
+index c6cbc0d74..b8e998dac 100644
 --- a/internal/boot/testdata/golden/provider_request.json
 +++ b/internal/boot/testdata/golden/provider_request.json
 @@ -120,7 +120,7 @@
@@ -1797,7 +1797,7 @@ index 646b60332..a88f29902 100644
            },
            "preserve_background_processes": {
 diff --git a/internal/boot/testdata/golden/tool_schemas.json b/internal/boot/testdata/golden/tool_schemas.json
-index 61099e9de..554177695 100644
+index ffa4c54a4..58d9cfc0b 100644
 --- a/internal/boot/testdata/golden/tool_schemas.json
 +++ b/internal/boot/testdata/golden/tool_schemas.json
 @@ -92,7 +92,7 @@
@@ -1810,23 +1810,23 @@ index 61099e9de..554177695 100644
          },
          "preserve_background_processes": {
 diff --git a/internal/boot/testdata/golden/windows-powershell/prefix_shape.json b/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
-index 6b57a144f..46192d47d 100644
+index e46da4d98..fee2c290a 100644
 --- a/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
 +++ b/internal/boot/testdata/golden/windows-powershell/prefix_shape.json
 @@ -1,8 +1,8 @@
  {
    "SystemHash": "2c95f2f47dec3aed",
--  "ToolsHash": "0536a510c9605724",
--  "PrefixHash": "c2094426e8aacc2d",
-+  "ToolsHash": "0f3640d0672f9c3b",
-+  "PrefixHash": "95f090e4aabcb651",
+-  "ToolsHash": "14975bda1a5e1dd9",
+-  "PrefixHash": "ba4fe16fba8a3bd2",
++  "ToolsHash": "361381b2d19a9905",
++  "PrefixHash": "4f5d8e50d2ddab46",
    "LogRewriteVersion": 0,
--  "ToolSchemaTokens": 3480,
-+  "ToolSchemaTokens": 3519,
+-  "ToolSchemaTokens": 3617,
++  "ToolSchemaTokens": 3655,
    "SessionContextDigest": ""
  }
 diff --git a/internal/boot/testdata/golden/windows-powershell/provider_request.json b/internal/boot/testdata/golden/windows-powershell/provider_request.json
-index 5c60684cb..150777018 100644
+index 9d6fe0ff4..d6a10ceab 100644
 --- a/internal/boot/testdata/golden/windows-powershell/provider_request.json
 +++ b/internal/boot/testdata/golden/windows-powershell/provider_request.json
 @@ -272,7 +272,7 @@
@@ -1839,7 +1839,7 @@ index 5c60684cb..150777018 100644
            },
            "run_in_background": {
 diff --git a/internal/boot/testdata/golden/windows-powershell/tool_schemas.json b/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
-index c07a572cb..67b81000e 100644
+index 74f94140a..f73ce772a 100644
 --- a/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
 +++ b/internal/boot/testdata/golden/windows-powershell/tool_schemas.json
 @@ -250,7 +250,7 @@
@@ -3755,7 +3755,7 @@ index 6200e4f67..7aca23b9a 100644
  	}
  }
 diff --git a/internal/tool/builtin/bash_write.go b/internal/tool/builtin/bash_write.go
-index dae8cf5d8..1396bf2ea 100644
+index efa6847c1..b93970457 100644
 --- a/internal/tool/builtin/bash_write.go
 +++ b/internal/tool/builtin/bash_write.go
 @@ -17,9 +17,9 @@ import (
