@@ -57,11 +57,10 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
-            ~/.reasonix/sessions-*
+            ~/.reasonix/sessions-v4
             ~/.dsh/acp-sessions
+            ~/.local/share/opencode/opencode.db
             ~/.gradle/caches/modules-2
-            ~/.gradle/caches/*/transforms
-            ~/.gradle/caches/jars-*
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
             ~/.cargo/registry/index
@@ -76,7 +75,7 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix"
+          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix" "$HOME/.config/opencode"
           nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki .#reasonix
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
@@ -97,6 +96,10 @@ jobs:
           overlays/dsh/providers-config.py
           nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
           install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
+          npm install --global --yes @opencode/cli
+          nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config
+          install -m 0644 .github/AGENTS.md ~/.config/opencode/AGENTS.md
+          curl -sL https://raw.githubusercontent.com/mksglu/context-mode/main/configs/opencode/AGENTS.md >> ~/.config/opencode/AGENTS.md
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -128,6 +131,23 @@ jobs:
           PI_SKIP_VERSION_CHECK: "1"
           PI_TELEMETRY: "0"
           DSH_TELEMETRY_DISABLED: 1
+          OPENCODE_DISABLE_AUTOUPDATE: true
+          OPENCODE_DISABLE_DEFAULT_PLUGINS: true
+          OPENCODE_EXPERIMENTAL_PARALLEL: true
+          OPENCODE_ENABLE_EXPERIMENTAL_MODELS: true
+          OPENCODE_DISABLE_CLAUDE_CODE: 1
+          OPENCODE_DISABLE_CLAUDE_CODE_PROMPT: 1
+          OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: 1
+          OPENCODE_ENABLE_EXA: false
+          OPENCODE_AUTO_SHARE: false
+          OPENCODE_EXPERIMENTAL_DISABLE_FILEWATCHER: true
+          OPENCODE_EXPERIMENTAL_PLAN_MODE: true
+          OPENCODE_EXPERIMENTAL_NATIVE_LLM: true
+          OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT: true
+          OPENCODE_EXPERIMENTAL_LSP_TOOL: false
+          OPENCODE_EXPERIMENTAL_OXFMT: false
+          OPENCODE_EXPERIMENTAL_LSP_TY: false
+          OPENCODE_EXPERIMENTAL_SCOUT: true
         run: |
           set -euo pipefail
           skills add mattpocock/skills --agent zed --global --yes
@@ -164,11 +184,10 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
-            ~/.reasonix/sessions-*
+            ~/.reasonix/sessions-v4
             ~/.dsh/acp-sessions
+            ~/.local/share/opencode/opencode.db
             ~/.gradle/caches/modules-2
-            ~/.gradle/caches/*/transforms
-            ~/.gradle/caches/jars-*
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
             ~/.cargo/registry/index

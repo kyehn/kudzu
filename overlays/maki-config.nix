@@ -56,7 +56,7 @@ linkFarm "maki" [
     path = (formats.toml { }).generate "permissions.toml" {
       default = "allow";
       bash.deny = [
-        "git checkout -- *"
+        "git checkout --*"
         "git restore *"
         "find /nix/store *"
         "ls /nix/store"
@@ -64,6 +64,12 @@ linkFarm "maki" [
         "find / *"
         "find /usr *"
         "find /home/runner *"
+        "paseo daemon stop*"
+        "paseo daemon restart*"
+        "paseo restart*"
+        "pkill *paseo*"
+        "killall *paseo*"
+        "fuser -k *6767*"
       ];
     };
   }

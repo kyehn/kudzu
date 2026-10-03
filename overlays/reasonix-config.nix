@@ -94,10 +94,13 @@
       "Bash(find /:*)"
       "Bash(find /usr:*)"
       "Bash(find /home/runner:*)"
-      "Bash(rm -rf /:*)"
-      "Bash(shutdown:*)"
-      "Bash(reboot:*)"
-      "Bash(poweroff:*)"
+      "Bash(paseo daemon stop:*)"
+      "Bash(paseo daemon restart:*)"
+      "Bash(paseo restart:*)"
+      "Bash(pkill -f paseo:*)"
+      "Bash(pkill paseo:*)"
+      "Bash(killall paseo:*)"
+      "Bash(fuser -k 6767:*)"
     ];
     ask = [
       "Bash(git checkout --:*)"

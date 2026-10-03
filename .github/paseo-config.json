@@ -6,17 +6,78 @@
 			"maki": {
 				"extends": "acp",
 				"label": "Maki",
-				"command": ["maki", "acp", "--yolo"]
+				"command": [
+					"systemd-run",
+					"--user",
+					"--scope",
+					"-p",
+					"MemoryMax=7G",
+					"-p",
+					"TasksMax=512",
+					"--",
+					"nice",
+					"-n",
+					"10",
+					"maki",
+					"acp",
+					"--yolo"
+				]
 			},
 			"dsh": {
 				"extends": "acp",
 				"label": "DSH",
-				"command": ["dsh-acp-interactive"]
+				"command": [
+					"systemd-run",
+					"--user",
+					"--scope",
+					"-p",
+					"MemoryMax=7G",
+					"-p",
+					"TasksMax=512",
+					"--",
+					"nice",
+					"-n",
+					"10",
+					"dsh-acp-interactive"
+				]
 			},
 			"reasonix": {
 				"extends": "acp",
 				"label": "Reasonix",
-				"command": ["reasonix", "acp"]
+				"command": [
+					"systemd-run",
+					"--user",
+					"--scope",
+					"-p",
+					"MemoryMax=7G",
+					"-p",
+					"TasksMax=512",
+					"--",
+					"nice",
+					"-n",
+					"10",
+					"reasonix",
+					"acp"
+				]
+			},
+			"opencode2": {
+				"extends": "acp",
+				"label": "OpenCode",
+				"command": [
+					"systemd-run",
+					"--user",
+					"--scope",
+					"-p",
+					"MemoryMax=7G",
+					"-p",
+					"TasksMax=512",
+					"--",
+					"nice",
+					"-n",
+					"10",
+					"opencode",
+					"acp"
+				]
 			},
 			"omp": {
 				"enabled": false
@@ -47,6 +108,12 @@
 	},
 	"features": {
 		"webUi": {
+			"enabled": false
+		},
+		"voiceMode": {
+			"enabled": false
+		},
+		"dictation": {
 			"enabled": false
 		}
 	}

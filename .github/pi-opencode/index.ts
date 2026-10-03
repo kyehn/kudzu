@@ -1,10 +1,12 @@
 import { randomBytes } from "node:crypto";
 import type {
+	AnyModel,
 	Api,
 	Model,
 	ProviderHeaders,
 	RefreshModelsContext,
 } from "@earendil-works/pi-ai";
+import { isModelType } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ModelRegistry,
@@ -16,8 +18,8 @@ import type {
 // provides. No catalog is fetched and no wheel is reinvented:
 //
 //   1. Model list — one `registerProvider("opencode", …)` at discovery. The
-//      visible tier is the free tier only, through one projection shared by
-//      the registration snapshot and the `refreshModels` hook. The hook
+//      visible tier is the free chat tier only, through one projection shared
+//      by the registration snapshot and the `refreshModels` hook. The hook
 //      re-projects from `context.stored` — the pi.dev catalog pi itself
 //      synced into `models-store.json` — so `pi update --models` is the only
 //      refresh path and anything pi.dev dropped (a withdrawn baseline id
@@ -183,13 +185,20 @@ function sanitizeRequest(payload: unknown): void {
 	visit(payload);
 }
 
-// The anonymous zen key buys only the zero-cost tier, so cost is the whole
-// policy, and every opencode model is served from zen.
-function isFreeZenModel(model: Model<Api>): boolean {
+// The anonymous zen key buys only the zero-cost tier, and every opencode model
+// is served from zen. Zero cost alone is not the whole policy: the catalog also
+// carries non-chat entries (`jev-1.13-free` is a classifier on the
+// `typesafe-system-one` API), and `projectFreeTier` cannot carry a non-chat
+// `type` through, so pi would default one to `chat` and offer a picker entry
+// with no chat surface. `isModelType` is pi's own narrowing — a catalog entry
+// with no `type` is a chat model — so the free tier stays exactly pi's chat
+// surface. Reach the classifiers through `registry.findOfType("classifier", …)`.
+function isFreeZenChatModel(model: AnyModel): model is Model<Api> {
 	return (
 		model.provider === PROVIDER_ID &&
 		model.cost?.input === 0 &&
-		model.cost?.output === 0
+		model.cost?.output === 0 &&
+		isModelType(model, "chat")
 	);
 }
 
@@ -199,9 +208,9 @@ function isFreeZenModel(model: Model<Api>): boolean {
 // `provider` for the composer to stamp); registering a thinner shape breaks
 // downstream readers that assume a catalog entry.
 function projectFreeTier(
-	models: ReadonlyArray<Model<Api>>,
+	models: ReadonlyArray<AnyModel>,
 ): ProviderModelConfig[] {
-	return models.filter(isFreeZenModel).map((model) => ({
+	return models.filter(isFreeZenChatModel).map((model) => ({
 		id: model.id,
 		name: model.name,
 		api: model.api,
@@ -219,12 +228,14 @@ function projectFreeTier(
 }
 
 // ModelsStoreEntry shapes differ across pi builds (array or Map), so the
-// refresh hook reads through one helper instead of repeating the branch.
+// refresh hook reads through one helper instead of repeating the branch. A
+// stored catalog is a mixed list, so entries are kept as `AnyModel` and
+// narrowed by the shared projection rather than assumed to be chat.
 // Entries pass through only with a string `id`: anything else cannot name a
 // model, and dropping it here beats registering an `id: undefined` entry
 // that would fail far from the cause. The remaining fields are pi's own
 // persisted catalog shape, resolved against the live entry by the composer.
-function storedModelsOf(stored: unknown): Array<Model<Api>> {
+function storedModelsOf(stored: unknown): AnyModel[] {
 	if (stored === null || typeof stored !== "object") return [];
 	const models = (stored as { models?: unknown }).models;
 	const entries = Array.isArray(models)
@@ -233,7 +244,7 @@ function storedModelsOf(stored: unknown): Array<Model<Api>> {
 			? [...models.values()]
 			: [];
 	return entries.filter(
-		(entry): entry is Model<Api> =>
+		(entry): entry is AnyModel =>
 			typeof entry === "object" &&
 			entry !== null &&
 			typeof (entry as { id?: unknown }).id === "string",

@@ -408,6 +408,7 @@
         "omo/"
         "ultracode/"
         "ultragoal/"
+        ".cortexkit/"
       ];
       attributes = [ "*.age diff=nodiff" ];
       settings = {

@@ -1,4 +1,5 @@
 {
+	"yoloMode": true,
 	"permission": {
 		"*": "allow",
 		"path": {
@@ -9,13 +10,19 @@
 		},
 		"bash": {
 			"*": "allow",
-			"git checkout -- *": "ask",
+			"git checkout --*": "ask",
 			"find /nix/store *": "deny",
 			"ls /nix/store": "deny",
 			"ls /nix/store *": "deny",
 			"find / *": "deny",
 			"find /usr *": "deny",
-			"find /home/runner *": "deny"
+			"find /home/runner *": "deny",
+			"paseo daemon stop*": "deny",
+			"paseo daemon restart*": "deny",
+			"paseo restart*": "deny",
+			"pkill *paseo*": "deny",
+			"killall *paseo*": "deny",
+			"fuser -k *6767*": "deny"
 		},
 		"external_directory": "allow"
 	}
