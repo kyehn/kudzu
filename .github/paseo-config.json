@@ -41,25 +41,6 @@
 					"dsh-acp-interactive"
 				]
 			},
-			"reasonix": {
-				"extends": "acp",
-				"label": "Reasonix",
-				"command": [
-					"systemd-run",
-					"--user",
-					"--scope",
-					"-p",
-					"MemoryMax=7G",
-					"-p",
-					"TasksMax=512",
-					"--",
-					"nice",
-					"-n",
-					"10",
-					"reasonix",
-					"acp"
-				]
-			},
 			"opencode2": {
 				"extends": "acp",
 				"label": "OpenCode",
@@ -78,6 +59,9 @@
 					"opencode",
 					"acp"
 				]
+			},
+			"pi": {
+				"enabled": false
 			},
 			"omp": {
 				"enabled": false

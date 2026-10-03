@@ -58,6 +58,11 @@ writeText "opencode.json" (
       }
       {
         "action" = "shell";
+        "resource" = "ls /nix/store";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
         "resource" = "ls /nix/store *";
         "effect" = "deny";
       }
@@ -90,26 +95,6 @@ writeText "opencode.json" (
         "action" = "shell";
         "resource" = "fuser -k *6767*";
         "effect" = "deny";
-      }
-      {
-        "action" = "shell";
-        "resource" = "git checkout --*";
-        "effect" = "ask";
-      }
-      {
-        "action" = "edit";
-        "resource" = ".github/workflows/*";
-        "effect" = "ask";
-      }
-      {
-        "action" = "edit";
-        "resource" = ".github/actions/*";
-        "effect" = "ask";
-      }
-      {
-        "action" = "edit";
-        "resource" = "flake.nix";
-        "effect" = "ask";
       }
     ];
     experimental.portable_shell_scanner = true;

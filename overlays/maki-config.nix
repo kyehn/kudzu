@@ -56,8 +56,6 @@ linkFarm "maki" [
     path = (formats.toml { }).generate "permissions.toml" {
       default = "allow";
       bash.deny = [
-        "git checkout --*"
-        "git restore *"
         "find /nix/store *"
         "ls /nix/store"
         "ls /nix/store *"

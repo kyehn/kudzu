@@ -21,7 +21,7 @@ on:
         type: boolean
 jobs:
   paseo:
-    timeout-minutes: 319
+    timeout-minutes: 321
     runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@main
@@ -53,13 +53,11 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent/sessions
-            ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
-            ~/.reasonix/sessions-v4
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
+            ~/.local/share/cortexkit/magic-context
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
@@ -75,61 +73,32 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.pi/agent/extensions" "$HOME/.config/mcp" "$HOME/.config/cortexkit" "$HOME/.config/maki" "$HOME/.reasonix" "$HOME/.config/opencode"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk nixpkgs#bun .#maki .#reasonix
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
-          bun add -g --ignore-scripts @earendil-works/pi-coding-agent
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.config/mcp/mcp.json && rm -f /tmp/pi-agent-mcp
-          cp -r .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
-          pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
-          install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
-          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
-          npm install --global --yes @tobilu/qmd
-          npm install --global --yes @mobilenext/mobile-mcp
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           npm install --global --yes deepseekharness-acp-interactive@1.4.1
-          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && mkdir -p ~/.dsh && install -m 0644 /tmp/dsh-config/cordis.patch.yml ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-config
+          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && install -m 0644 /tmp/dsh-config/cordis.patch.yml ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-config
           for patch in overlays/dsh/*.patch; do case "$patch" in *opencode-headers.patch) dir="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai";; *) dir="$(npm root -g)/deepseekharness-acp-interactive";; esac; patch --dry-run -p1 -d "$dir" < "$patch" && patch -p1 -d "$dir" < "$patch"; done
           overlays/dsh/providers-config.py
-          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
-          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
           npm install --global --yes @opencode/cli
           nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config
           install -m 0644 .github/AGENTS.md ~/.config/opencode/AGENTS.md
-          curl -sL https://raw.githubusercontent.com/mksglu/context-mode/main/configs/opencode/AGENTS.md >> ~/.config/opencode/AGENTS.md
-      - run: |
-          cat << 'EOF' > ~/.pi/agent/auth.json
-          {
-            "opencode": {
-              "type": "api_key",
-              "key": "public"
-            },
-            "nvidia": {
-              "type": "api_key",
-              "key": "${{ secrets.NVIDIA_API_KEY }}"
-            }
-          }
-          EOF
+          cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
+          npm install --global --yes @mobilenext/mobile-mcp
       - run: |
           overlays/maki/providers-config.py
           install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      - run: overlays/reasonix/providers-config.py
-        working-directory: ${{ github.event.repository.name }}
-      - run: |
-          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
-          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
         env:
-          PI_SKIP_VERSION_CHECK: "1"
-          PI_TELEMETRY: "0"
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DSH_TELEMETRY_DISABLED: 1
           OPENCODE_DISABLE_AUTOUPDATE: true
           OPENCODE_DISABLE_DEFAULT_PLUGINS: true
@@ -157,14 +126,7 @@ jobs:
           skills add aldefy/compose-skill --full-depth --skill '*' --agent zed --global --yes
           skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent zed --global --yes
           skills add getpaseo/paseo --agent zed --global --yes
-          skills add levi-qiao/longgraph-skill --full-depth --skill '*' --agent zed --global --yes
-          export BUN_INSTALL="$HOME/.bun"
-          export PATH="$BUN_INSTALL/bin:${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
-          pi --help
-          pi update --models
-          mkdir -p ~/.pi/agent/extensions/pi-rtk-optimizer ~/.pi/agent/extensions/pi-permission-system
-          install -m 0644 overlays/pi-rtk-optimizer-config.json ~/.pi/agent/extensions/pi-rtk-optimizer/config.json
-          install -m 0644 overlays/pi-permission-system-config.json ~/.pi/agent/extensions/pi-permission-system/config.json
+          export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
             paseo onboard --relay --voice disable
           else
@@ -180,13 +142,11 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.pi/agent/sessions
-            ~/.local/share/cortexkit/magic-context
             ~/.local/share/maki
             ~/.local/state/maki
-            ~/.reasonix/sessions-v4
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
+            ~/.local/share/cortexkit/magic-context
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
