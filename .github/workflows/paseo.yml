@@ -98,7 +98,6 @@ jobs:
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DSH_TELEMETRY_DISABLED: 1
           OPENCODE_DISABLE_AUTOUPDATE: true
           OPENCODE_DISABLE_DEFAULT_PLUGINS: true
