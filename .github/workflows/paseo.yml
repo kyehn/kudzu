@@ -53,7 +53,6 @@ jobs:
         with:
           path: |
             ~/.paseo
-            ~/.local/share/maki
             ~/.local/state/maki
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
@@ -81,8 +80,9 @@ jobs:
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           npm install --global --yes deepseekharness-acp-interactive@1.4.1
+          npm install --global --yes dsh-permission-rules
           dsh_llm_pi_ai="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai" && patch --dry-run -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch && patch -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch
-          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && install -m 0644 /tmp/dsh-config/cordis.patch.yml ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-config
+          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-cordis-patch --out-link /tmp/dsh-cordis-patch && install -m 0644 /tmp/dsh-cordis-patch ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-cordis-patch
           overlays/dsh/providers-config.py
           npm install --global --yes @opencode/cli
           nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config
@@ -143,13 +143,13 @@ jobs:
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         run: |
           paseo daemon stop
-          rm -rf ~/.paseo/paseo.pid ~/.paseo/daemon.log
+          comm -13 <(paseo ls -g --json | jq -r '.[].id' | sort) <(paseo ls -ag --json | jq -r '.[].id' | sort) | xargs -r -n1 paseo delete
+          rm -rf ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.paseo/config.json ~/.paseo/worktrees ~/.local/state/maki/sessions/locks
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         uses: actions/cache/save@main
         with:
           path: |
             ~/.paseo
-            ~/.local/share/maki
             ~/.local/state/maki
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db

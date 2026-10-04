@@ -102,13 +102,6 @@
       "Bash(killall paseo:*)"
       "Bash(fuser -k 6767:*)"
     ];
-    ask = [
-      "Bash(git checkout --:*)"
-      "Bash(git restore:*)"
-      "Edit(.github/workflows/**)"
-      "Edit(.github/actions/**)"
-      "Edit(flake.nix)"
-    ];
   };
   sandbox = {
     workspace_root = "/";

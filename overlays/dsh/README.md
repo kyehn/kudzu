@@ -3,8 +3,3 @@
 - 只有一个 `opencode` provider，没有重复，没有 `opencode-patched` 或类似 providers
 - 使用 `deepseekharness-acp-interactive`，标记版本，并跟随最新版本
 - `providers-config.py` 与 `overlays/maki/providers-config.py` 几乎一样的流程和代码，模型列表经 yaml 库读写，无硬编码、无字符串拼接
-- 选 `deepseekharness-acp-interactive` 而不是 `@openma/deepseek-harness-acp` 或 `paseo-dsh-direct`：前者的 composition 是平铺的 `@deepseek-ai/dsh-*` 行，`llm-pi-ai` 可以直接打补丁覆盖 provider，正好承接上面第 1 条的 opencode 模拟；openma 那套挂在 `@deepseek-ai/dsh-base` 之上、且自带一份 vendored runtime，会和 `providers-config.py` 写的 `llm-pi-ai` 打架；`paseo-dsh-direct` 需要 Paseo daemon，`@getpaseo/plugin` 还是 devDependency 里的运行时值导入，脱离 Paseo 根本起不来
-- `agent-instructions` 必须写 `maxBytes`：patch 是整块替换 `config` 而不是深合并，而 `maxBytes` 是该插件唯一 required 的字段，漏掉就校验失败、该行不激活，AGENTS.md 会从每个会话里静默消失。`AGENTS.md` / `AGENTS.local.md` 是显式收窄，去掉上游默认的 `CLAUDE.md`
-- 命令拦截用官方 `@deepseek-ai/dsh-experimental-auto-review`（不发自定义插件、不写脚本）：它在每个工具执行前用当前会话的模型复核实际效果，不可逆删除、生产环境操作、外部写入、安全变更判为中风险转人工审批，跨信任边界的敏感外泄判为高风险直接拒绝
-- `auto` 是 `permission-presets` 的保留 id，既不能写进 `presets`，也不能当 `defaultPreset`，所以它是逐会话选择的：`/permission auto`，或客户端的 permission 选择器（ACP `session/new` 的 `configOptions` 里会出现 `auto`）
-- 该插件要与 `deepseekharness-acp-interactive` 装在同一棵 npm 树里（patch 用裸包名，按包内 `config/` 目录解析），版本 `0.2.0-rc.2` 对齐 `deepseekharness-acp-interactive` 固定的 `@deepseek-ai/dsh-*` 那一代；注意 npm 上它的 `latest` 标签还停在 `0.0.0` 之前的 `0.0.1-rc.5`，peer 要求整个不兼容，必须显式钉版本

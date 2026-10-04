@@ -9,7 +9,7 @@ final: prev: {
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   maki = prev.callPackage ./maki { };
   maki-config = prev.callPackage ./maki-config.nix { };
-  dsh-config = prev.callPackage ./dsh-config.nix { };
+  dsh-cordis-patch = prev.callPackage ./dsh-cordis-patch.nix { };
   opencode-config = prev.callPackage ./opencode-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
