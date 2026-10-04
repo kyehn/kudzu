@@ -79,6 +79,7 @@ linkFarm "dsh" [
         id = "agent-instructions";
         name = "@deepseek-ai/dsh-agent-instructions";
         config = {
+          maxBytes = 65536;
           instructionFileCandidates = [ "AGENTS.md" ];
           localInstructionFileCandidates = [ "AGENTS.local.md" ];
         };
@@ -87,6 +88,11 @@ linkFarm "dsh" [
         id = "tool-web";
         name = "@deepseek-ai/dsh-tool-web";
         config.search = false;
+      }
+      {
+        id = "tool-ask-user";
+        name = "@deepseek-ai/dsh-tool-ask-user";
+        disabled = true;
       }
       {
         id = "compaction-basic";

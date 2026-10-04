@@ -11,6 +11,8 @@ final: prev: {
   maki-config = prev.callPackage ./maki-config.nix { };
   dsh-config = prev.callPackage ./dsh-config.nix { };
   opencode-config = prev.callPackage ./opencode-config.nix { };
+  reasonix = prev.callPackage ./reasonix { };
+  reasonix-config = prev.callPackage ./reasonix-config.nix { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {

@@ -58,6 +58,7 @@ jobs:
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
+            ~/.reasonix/sessions-v4
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
@@ -73,8 +74,8 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit" "$HOME/.reasonix"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki .#reasonix
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
@@ -88,17 +89,23 @@ jobs:
           install -m 0644 .github/AGENTS.md ~/.config/opencode/AGENTS.md
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           npm install --global --yes @mobilenext/mobile-mcp
+          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
+          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
       - run: |
           overlays/maki/providers-config.py
           install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      - run: overlays/reasonix/providers-config.py
+        working-directory: ${{ github.event.repository.name }}
+      - run: |
+          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
+          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
         env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           DSH_TELEMETRY_DISABLED: 1
           OPENCODE_DISABLE_AUTOUPDATE: true
           OPENCODE_DISABLE_DEFAULT_PLUGINS: true
@@ -147,6 +154,7 @@ jobs:
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
+            ~/.reasonix/sessions-v4
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
