@@ -66,20 +66,50 @@ linkFarm "dsh" [
         ];
       }
       {
-        id = "web-search-deepseek";
+        id = "llm-deepseek";
+        name = "@deepseek-ai/dsh-llm-deepseek-api-key";
         disabled = true;
       }
       {
+        id = "web-search-deepseek";
+        name = "@deepseek-ai/dsh-web-search-deepseek";
+        disabled = true;
+      }
+      {
+        id = "agent-instructions";
+        name = "@deepseek-ai/dsh-agent-instructions";
+        config = {
+          instructionFileCandidates = [ "AGENTS.md" ];
+          localInstructionFileCandidates = [ "AGENTS.local.md" ];
+        };
+      }
+      {
         id = "tool-web";
+        name = "@deepseek-ai/dsh-tool-web";
         config.search = false;
       }
       {
         id = "compaction-basic";
+        name = "@deepseek-ai/dsh-compaction-basic";
         config.thresholdRatio = 0.6;
       }
       {
         id = "permission-presets";
-        config.defaultPreset = "danger-full-access";
+        name = "@deepseek-ai/dsh-permission-presets";
+        config = {
+          presets.danger-full-access = {
+            sandbox = "danger-full-access";
+            approval = "ask";
+          };
+          defaultPreset = "danger-full-access";
+        };
+      }
+      {
+        id = "acp-interactive";
+        config = {
+          provider = "opencode-openai-responses";
+          model = "muse-spark-1.3-contributor-free";
+        };
       }
     ];
   }

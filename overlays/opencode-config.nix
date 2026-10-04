@@ -96,6 +96,21 @@ writeText "opencode.json" (
         "resource" = "fuser -k *6767*";
         "effect" = "deny";
       }
+      {
+        "action" = "shell";
+        "resource" = "git checkout --*";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
+        "resource" = "git restore *";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
+        "resource" = "git reset --hard *";
+        "effect" = "deny";
+      }
     ];
     experimental.portable_shell_scanner = true;
     compaction.auto = false;
