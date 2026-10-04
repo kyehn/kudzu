@@ -1,28 +1,46 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index dd91741..76e4abf 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -10,7 +10,7 @@ homepage = "https://maki.sh"
+ readme = "README.md"
+ keywords = ["ai", "agent", "cli", "tui", "coding"]
+ categories = ["command-line-utilities", "development-tools"]
+-rust-version = "1.99"
++rust-version = "1.98"
+ 
+ [[bin]]
+ name = "maki"
+@@ -71,7 +71,7 @@ edition = "2024"
+ authors = ["Tony Solomonik <tony.solomonik@gmail.com>"]
+ license = "MIT"
+ repository = "https://github.com/tontinton/maki"
+-rust-version = "1.99"
++rust-version = "1.98"
+ 
+ [workspace.dependencies]
+ maki-agent = { path = "maki-agent" }
 diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
-index f49a9de..0b9f713 100644
+index 8b70bee..0ae611b 100644
 --- a/maki-agent/src/agent/compaction.rs
 +++ b/maki-agent/src/agent/compaction.rs
-@@ -185,6 +185,7 @@ pub(super) async fn compact_history(
-     hooks: &AgentHooks<'_>,
-     config: &AgentConfig,
-     instructions: Option<&str>,
-+    tools: &Value,
-     carry_len: usize,
-     retry: RetryPolicy,
- ) -> Result<(TokenUsage, String), AgentError> {
-@@ -197,7 +198,10 @@ pub(super) async fn compact_history(
+@@ -207,7 +207,15 @@ pub(super) async fn compact_history(
      prepare_collapse(hooks, &mut compaction_history, RECENT_TOOL_RESULT_BUDGET).await;
      compaction_history.push(Message::user(summary_prompt(config, instructions)));
  
--    let empty_tools = serde_json::json!([]);
 +    // The summary rides the session's own tool declarations: providers that
 +    // only serve CLI-shaped traffic (e.g. the opencode Zen free tier) reject
 +    // tool-less requests, so an empty declaration would fail the compaction
 +    // instead of just saving tokens.
+     let empty_tools = serde_json::json!([]);
++    let tools = history
++        .request_prefix()
++        .map(|(_, tools)| tools)
++        .unwrap_or(&empty_tools);
      let max_attempts = 3;
      let mut last_error = None;
  
-@@ -208,7 +212,7 @@ pub(super) async fn compact_history(
+@@ -218,7 +226,7 @@ pub(super) async fn compact_history(
                  model,
                  messages: &compaction_history,
                  system: crate::prompt::COMPACTION_SYSTEM,
@@ -31,15 +49,7 @@ index f49a9de..0b9f713 100644
                  opts: RequestOptions::default(),
                  output_budget: SUMMARY_OUTPUT_BUDGET,
                  session_id: hooks.session_id,
-@@ -341,6 +345,7 @@ pub async fn compact(
-         hooks,
-         config,
-         steer.instructions.as_deref(),
-+        tools,
-         0,
-         retry,
-     )
-@@ -638,6 +643,7 @@ mod tests {
+@@ -653,6 +661,7 @@ mod tests {
          responses: Mutex<Vec<Result<StreamResponse, AgentError>>>,
          requests: Mutex<Vec<Vec<Message>>>,
          sessions: Mutex<Vec<Option<String>>>,
@@ -47,7 +57,7 @@ index f49a9de..0b9f713 100644
      }
  
      impl MockProvider {
-@@ -646,6 +652,7 @@ mod tests {
+@@ -661,6 +670,7 @@ mod tests {
                  responses: Mutex::new(responses),
                  requests: Mutex::new(Vec::new()),
                  sessions: Mutex::new(Vec::new()),
@@ -55,7 +65,7 @@ index f49a9de..0b9f713 100644
              }
          }
      }
-@@ -656,7 +663,7 @@ mod tests {
+@@ -671,7 +681,7 @@ mod tests {
              _: &'a Model,
              messages: &'a [Message],
              _: &'a str,
@@ -64,7 +74,7 @@ index f49a9de..0b9f713 100644
              _: &'a flume::Sender<ProviderEvent>,
              _: RequestOptions,
              session_id: Option<&'a SessionRef>,
-@@ -667,6 +674,7 @@ mod tests {
+@@ -682,6 +692,7 @@ mod tests {
                      .lock()
                      .unwrap()
                      .push(session_id.map(|s| s.as_str().to_string()));
@@ -72,32 +82,7 @@ index f49a9de..0b9f713 100644
                  let mut responses = self.responses.lock().unwrap();
                  assert!(!responses.is_empty(), "MockProvider: no more responses");
                  responses.remove(0)
-@@ -754,6 +762,16 @@ mod tests {
-         history: &mut History,
-         carry_len: usize,
-         session_id: Option<&SessionRef>,
-+    ) {
-+        summarize_history_with_tools(provider, history, carry_len, session_id, &no_tools()).await;
-+    }
-+
-+    async fn summarize_history_with_tools(
-+        provider: &MockProvider,
-+        history: &mut History,
-+        carry_len: usize,
-+        session_id: Option<&SessionRef>,
-+        tools: &Value,
-     ) {
-         let (raw_tx, _rx) = flume::unbounded();
-         let registry = ToolRegistry::new();
-@@ -767,6 +785,7 @@ mod tests {
-             &test_hooks(&registry, session_id, &model, &cancel),
-             &AgentConfig::default(),
-             None,
-+            tools,
-             carry_len,
-             RetryPolicy::default(),
-         )
-@@ -1497,6 +1516,24 @@ mod tests {
+@@ -1499,6 +1510,30 @@ mod tests {
          });
      }
  
@@ -108,9 +93,15 @@ index f49a9de..0b9f713 100644
 +    fn compact_history_sends_the_sessions_tools() {
 +        smol::block_on(async {
 +            let provider = MockProvider::new(vec![Ok(text_response(StopReason::EndTurn))]);
-+            let mut history = History::new(vec![Message::user("work".into())]);
++            let model = default_model();
 +            let tools = serde_json::json!([{ "name": "read", "description": "Read a file" }]);
-+            summarize_history_with_tools(&provider, &mut history, 0, None, &tools).await;
++            let mut history = History::new(vec![Message::user("work".into())]);
++            history.adopt_frame(super::frame::LiveFrame::build(
++                RequestTools::assembled(tools.clone(), &AgentConfig::default(), &model),
++                None,
++                &model,
++            ));
++            summarize_history(&provider, &mut history, 0, None).await;
 +
 +            let seen = provider.seen_tools.lock().unwrap();
 +            assert_eq!(seen.len(), 1);
@@ -122,23 +113,11 @@ index f49a9de..0b9f713 100644
      const CARRIED: &str = "answer this next";
      const CARRY_UNSENT_MSG: &str = "carried input is not the summariser's to read";
      const CARRY_KEPT_MSG: &str = "carried input must outlive the summary verbatim";
-diff --git a/maki-agent/src/agent/run.rs b/maki-agent/src/agent/run.rs
-index df64513..9502777 100644
---- a/maki-agent/src/agent/run.rs
-+++ b/maki-agent/src/agent/run.rs
-@@ -893,6 +893,7 @@ impl<'h> Agent<'h> {
-             &hooks,
-             &self.config,
-             instructions,
-+            request_tools(&self.tools, self.mcp.as_ref()).as_ref(),
-             carry_len,
-             self.timeouts.retry,
-         )
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
-index 3b6280b..dda6adf 100644
+index 67d1271..bb95b7b 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
 +++ b/maki-providers/src/providers/anthropic/mod.rs
-@@ -27,7 +27,7 @@ use crate::{
+@@ -28,7 +28,7 @@ use crate::{
      AgentError, Message, ProviderEvent, ProviderUsage, RequestOptions, StreamResponse, UsageLimit,
  };
  
@@ -147,10 +126,10 @@ index 3b6280b..dda6adf 100644
  
  const API_VERSION: &str = "2023-06-01";
  const API_ORIGIN: &str = "https://api.anthropic.com";
-@@ -378,13 +378,15 @@ impl Anthropic {
+@@ -422,13 +422,15 @@ impl Anthropic {
+     fn build_request(&self, method: &str, path: &str) -> isahc::http::request::Builder {
          let auth = self.auth.lock().unwrap();
-         let base = auth.base_url.as_deref().unwrap_or(API_ORIGIN);
-         let url = format!("{}{path}", origin(base));
+         let url = format!("{}{path}", origin(self.base_url(&auth)));
 -        auth.configure_request(
 +        let builder = super::with_user_agent(
              Request::builder()
@@ -169,19 +148,19 @@ index 3b6280b..dda6adf 100644
  
      async fn do_stream_request(
 diff --git a/maki-providers/src/providers/catalog.rs b/maki-providers/src/providers/catalog.rs
-index 347fdf3..d6a701a 100644
+index 17a36e1..ecd1930 100644
 --- a/maki-providers/src/providers/catalog.rs
 +++ b/maki-providers/src/providers/catalog.rs
-@@ -29,7 +29,7 @@ use crate::model::{Model, ModelInfo, ModelPricing};
- use crate::provider::{BoxFuture, Provider};
- use crate::providers::anthropic::shared;
- use crate::providers::openai_compat::{OpenAiCompatConfig, OpenAiCompatProvider};
--use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, user_agent};
-+use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, opencode_tls, user_agent};
+@@ -32,7 +32,7 @@ use crate::providers::anthropic::shared;
+ use crate::providers::openai_compat::{
+     DEFAULT_MAX_TOKENS_FIELD, OpenAiCompatConfig, OpenAiCompatProvider,
+ };
+-use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, plugin, user_agent};
++use crate::providers::{ResolvedAuth, Timeouts, http_client, opencode, opencode_tls, plugin, user_agent};
+ use crate::spec::ProviderRegistry;
  use crate::{AgentError, Message, ProviderEvent, RequestOptions, StreamResponse, dialect};
  
- const MESSAGES_PATH: &str = "/messages";
-@@ -187,6 +187,19 @@ impl ProviderData {
+@@ -191,6 +191,19 @@ impl ProviderData {
          mut auth: ResolvedAuth,
          session_id: Option<&SessionRef>,
      ) -> ResolvedAuth {
@@ -201,7 +180,7 @@ index 347fdf3..d6a701a 100644
          if let (Some(header), Some(sid)) = (self.quirks.session_header, session_id) {
              auth.set_header(header, sid.to_string());
          }
-@@ -780,7 +793,8 @@ impl CatalogTransport {
+@@ -819,7 +832,8 @@ impl CatalogTransport {
                  body["model"] = serde_json::json!(model.id);
                  body["stream"] = serde_json::json!(true);
                  let request = auth
@@ -211,7 +190,7 @@ index 347fdf3..d6a701a 100644
                          Request::builder()
                              .method("POST")
                              .uri(format!(
-@@ -791,7 +805,7 @@ impl CatalogTransport {
+@@ -830,7 +844,7 @@ impl CatalogTransport {
                              .header("user-agent", user_agent())
                              .header("content-type", "application/json")
                              .header("anthropic-version", ANTHROPIC_VERSION),
@@ -220,7 +199,7 @@ index 347fdf3..d6a701a 100644
                      .body(serde_json::to_vec(&body)?)?;
                  debug!(model = %model.id, "sending Anthropic-format request via catalog");
                  let response = self.client.send_async(request).await?;
-@@ -1094,11 +1108,12 @@ mod tests {
+@@ -1134,11 +1148,12 @@ mod tests {
          assert!(matches!(result, Err(AgentError::Config { .. })));
      }
  
@@ -238,7 +217,7 @@ index 347fdf3..d6a701a 100644
          let data = ProviderData {
              slug: slug.into(),
              quirks: quirks_for(slug),
-@@ -1109,12 +1124,38 @@ mod tests {
+@@ -1149,12 +1164,38 @@ mod tests {
              ResolvedAuth::for_test(None, Vec::new()),
              with_session.then_some(&session),
          );
@@ -279,12 +258,12 @@ index 347fdf3..d6a701a 100644
  
      /// Limits are published so nothing under test reads a default; only the
 diff --git a/maki-providers/src/providers/custom.rs b/maki-providers/src/providers/custom.rs
-index 7d362d2..f7d17a0 100644
+index 16f411b..76dd520 100644
 --- a/maki-providers/src/providers/custom.rs
 +++ b/maki-providers/src/providers/custom.rs
-@@ -92,6 +92,13 @@ pub fn create(slug: &str, timeouts: Timeouts) -> Result<Box<dyn Provider>, Agent
+@@ -69,6 +69,13 @@ pub fn create(slug: &str, timeouts: Timeouts) -> Result<Box<dyn Provider>, Agent
          })?;
-     let resolved = resolve_custom_auth(slug)?;
+     let (resolved, api_key_env) = resolve_custom_auth(slug)?;
      let auth = Arc::new(Mutex::new(resolved));
 +    // Zen-pointed custom slugs get the CLI wire identity by base URL match;
 +    // the flag rides the shared auth into whichever codec (openai, responses,
@@ -294,10 +273,10 @@ index 7d362d2..f7d17a0 100644
 +        auth.lock().unwrap().opencode_wire = true;
 +    }
  
-     match protocol {
-         Protocol::Anthropic => Ok(Box::new(super::anthropic::Anthropic::with_auth(
+     // No `base_url`: `resolve_custom_auth` already put the configured origin in
+     // `auth.base_url`, which outranks anything the config could carry here, so
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 0333c43..7f80164 100644
+index 2817f37..d5797b3 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
@@ -312,7 +291,7 @@ index 0333c43..7f80164 100644
  
  use futures_lite::StreamExt;
  use futures_lite::io::AsyncBufRead;
-@@ -47,6 +47,7 @@ const EMPTY_SSE_ERROR_MESSAGE: &str = "provider sent an error frame with no deta
+@@ -41,6 +41,7 @@ const EMPTY_SSE_ERROR_MESSAGE: &str = "provider sent an error frame with no deta
  const UNAUTHORIZED_STATUS: u16 = 401;
  const AUTHORIZATION_HEADER: &str = "authorization";
  const BEARER_PREFIX: &str = "Bearer ";
@@ -320,7 +299,7 @@ index 0333c43..7f80164 100644
  
  fn bearer_value(api_key: &str) -> String {
      format!("{BEARER_PREFIX}{api_key}")
-@@ -61,6 +62,184 @@ pub(crate) fn user_agent() -> &'static str {
+@@ -55,6 +56,189 @@ pub fn user_agent() -> &'static str {
      )
  }
  
@@ -447,7 +426,7 @@ index 0333c43..7f80164 100644
 +/// order: the fourteen 1.2 suites land byte-identical to the capture. The
 +/// backend keeps its own TLS 1.3 head order plus a trailing renegotiation
 +/// SCSV, which curl's API surface cannot reorder (no TLS 1.3 cipher-list
-+/// knob in isahc 1.8.3); extension/group/signature ordering stays the
++/// knob in isahc 2.0 either); extension/group/signature ordering stays the
 +/// backend's own too: strictly closer to the CLI, not JA3 parity.
 +pub(crate) const OPENCODE_TLS12_CIPHERS: &[&str] = &[
 +    "ECDHE-ECDSA-AES128-GCM-SHA256",
@@ -470,8 +449,13 @@ index 0333c43..7f80164 100644
 +/// other provider: the pin is per-request, never on the shared client, so a
 +/// Zen request cannot leak its fingerprint onto unrelated providers.
 +pub(crate) fn opencode_tls(auth: &ResolvedAuth, builder: Builder) -> Builder {
++    use isahc::config::Configurable;
 +    if auth.opencode_wire {
-+        builder.ssl_ciphers(OPENCODE_TLS12_CIPHERS.iter().copied())
++        builder.tls_config(
++            isahc::tls::TlsConfig::builder()
++                .ciphers(OPENCODE_TLS12_CIPHERS.iter().copied())
++                .build(),
++        )
 +    } else {
 +        builder
 +    }
@@ -505,10 +489,10 @@ index 0333c43..7f80164 100644
  #[derive(Debug, Clone, Copy)]
  pub struct Timeouts {
      pub connect: Duration,
-@@ -137,6 +316,12 @@ pub struct ResolvedAuth {
-     /// the provider sets afterwards, so a key rotation cannot drop a gateway
-     /// credential that replaced the built-in auth header.
-     config_headers: Vec<String>,
+@@ -134,6 +318,12 @@ pub struct ResolvedAuth {
+     /// `[<slug>] top_p`, carried with the auth so whoever the slug's
+     /// credentials reach (aperture routes, catalog sub-providers) sends it.
+     pub top_p: Option<f64>,
 +    /// Opencode Zen free-tier wire identity. Set by the catalog `request_auth`
 +    /// choke point or for zen-pointed custom slugs (never by user config).
 +    /// Requests carrying it stamp the CLI headers in `configure_request` and
@@ -518,15 +502,23 @@ index 0333c43..7f80164 100644
  }
  
  impl ResolvedAuth {
-@@ -149,6 +334,7 @@ impl ResolvedAuth {
-             base_url: None,
+@@ -147,6 +337,7 @@ impl ResolvedAuth {
              headers,
              config_headers: Vec::new(),
+             top_p: None,
 +            opencode_wire: false,
          };
          if let Some(def) = maki_config::providers::ProvidersConfig::load().get(slug) {
              auth.apply_config_headers(slug, &def.headers)?;
-@@ -226,11 +412,47 @@ impl ResolvedAuth {
+@@ -195,6 +386,7 @@ impl ResolvedAuth {
+             headers: Vec::new(),
+             config_headers: Vec::new(),
+             top_p: None,
++            opencode_wire: false,
+         }
+     }
+ 
+@@ -237,11 +429,47 @@ impl ResolvedAuth {
          }
      }
  
@@ -577,10 +569,10 @@ index 0333c43..7f80164 100644
      }
  
      #[cfg(test)]
-@@ -239,10 +461,15 @@ impl ResolvedAuth {
-             base_url,
+@@ -251,10 +479,15 @@ impl ResolvedAuth {
              headers,
              config_headers: Vec::new(),
+             top_p: None,
 +            opencode_wire: false,
          }
      }
@@ -593,7 +585,7 @@ index 0333c43..7f80164 100644
  pub(crate) fn with_prefix<'a>(
      prefix: &Option<String>,
      system: &'a str,
-@@ -765,6 +992,198 @@ mod tests {
+@@ -795,6 +1028,198 @@ mod tests {
          ResolvedAuth::for_test(None, vec![(AUTHORIZATION_HEADER.into(), bearer_value(key))])
      }
  
@@ -793,7 +785,7 @@ index 0333c43..7f80164 100644
      fn config_headers_append_unknown_and_replace_same_name() {
          let mut auth = test_bearer("sk-1");
 diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
-index 3aebf9e..822d425 100644
+index ceb1ca6..d4bf4bc 100644
 --- a/maki-providers/src/providers/openai/responses.rs
 +++ b/maki-providers/src/providers/openai/responses.rs
 @@ -228,14 +228,17 @@ async fn post_responses(
@@ -822,19 +814,19 @@ index 3aebf9e..822d425 100644
  
      debug!(
 diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
-index 6ac740c..4015499 100644
+index 3e21f06..a2cb894 100644
 --- a/maki-providers/src/providers/openai_compat.rs
 +++ b/maki-providers/src/providers/openai_compat.rs
-@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
+@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer};
  use serde_json::{Value, json};
  use tracing::{debug, warn};
  
 -use super::ResolvedAuth;
 +use super::{ResolvedAuth, opencode_tls};
+ use crate::model::ModelFamily;
+ use crate::types::rejects_sampling;
  use crate::{
-     AgentError, ContentBlock, Message, ProviderEvent, Role, StopReason, StreamResponse, TokenUsage,
- };
-@@ -91,12 +91,14 @@ impl OpenAiCompatProvider {
+@@ -117,12 +117,14 @@ impl OpenAiCompatProvider {
          url: &str,
      ) -> Result<String, AgentError> {
          let request = auth
@@ -855,7 +847,7 @@ index 6ac740c..4015499 100644
              .body(())?;
          let mut response = self.client.send_async(request).await?;
          if response.status().as_u16() != 200 {
-@@ -112,13 +114,17 @@ impl OpenAiCompatProvider {
+@@ -138,13 +140,17 @@ impl OpenAiCompatProvider {
          content_type: &str,
          body: &[u8],
      ) -> Result<String, AgentError> {
@@ -880,7 +872,7 @@ index 6ac740c..4015499 100644
          let request = builder
              .header("content-type", content_type)
              .body(body.to_vec())?;
-@@ -175,12 +181,15 @@ impl OpenAiCompatProvider {
+@@ -213,12 +219,15 @@ impl OpenAiCompatProvider {
          auth: &ResolvedAuth,
      ) -> isahc::http::request::Builder {
          let base = self.base_url(auth);
@@ -901,4 +893,4 @@ index 6ac740c..4015499 100644
 +        ))
      }
  
-     pub async fn do_stream(
+     /// Where a provider's own headers meet the credentials. A header already on

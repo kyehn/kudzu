@@ -80,8 +80,8 @@ jobs:
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           npm install --global --yes deepseekharness-acp-interactive@1.4.1
+          dsh_llm_pi_ai="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai" && patch --dry-run -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch && patch -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch
           nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-config --out-link /tmp/dsh-config && install -m 0644 /tmp/dsh-config/cordis.patch.yml ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-config
-          for patch in overlays/dsh/*.patch; do case "$patch" in *opencode-headers.patch) dir="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai";; *) dir="$(npm root -g)/deepseekharness-acp-interactive";; esac; patch --dry-run -p1 -d "$dir" < "$patch" && patch -p1 -d "$dir" < "$patch"; done
           overlays/dsh/providers-config.py
           npm install --global --yes @opencode/cli
           nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config

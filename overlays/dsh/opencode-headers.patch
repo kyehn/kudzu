@@ -7,6 +7,12 @@
 # rest, so providers without deployment headers behave exactly as before).
 # Applies to @deepseek-ai/dsh-llm-pi-ai lib/index.js
 # (requestHeaders + its stream call site).
+# Verified against @deepseek-ai/dsh-llm-pi-ai 0.2.0-rc.2, the version
+# deepseekharness-acp-interactive 1.4.1 resolves to. That npm dist-tag `latest`
+# points at 0.0.1-rc.1 instead, so pin the version rather than installing it
+# bare. This is the only change in overlays/dsh that config cannot express: a
+# provider profile's `headers` is a static dict, so there is nowhere to mint a
+# per-request id.
 --- a/lib/index.js
 +++ b/lib/index.js
 @@ -1719,14 +1719,62 @@
