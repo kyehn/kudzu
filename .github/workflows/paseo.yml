@@ -57,7 +57,7 @@ jobs:
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
-            ~/.reasonix/sessions-v4
+            ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
@@ -154,7 +154,7 @@ jobs:
             ~/.dsh/acp-sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
-            ~/.reasonix/sessions-v4
+            ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache

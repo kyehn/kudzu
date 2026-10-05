@@ -24,7 +24,19 @@ writeText "opencode.json" (
     formatter = false;
     websearch = false;
     warming = false;
-    plugins = [ "@cortexkit/opencode-magic-context" ];
+    plugins = [
+      "@cortexkit/opencode-magic-context"
+      "opencode-pty/v2"
+      {
+        package = "@prevalentware/opencode-goal-plugin";
+        options = {
+          max_auto_turns = 35;
+          max_prompt_failures = 7;
+          locale = "zh-CN";
+          max_no_progress_turns = 5;
+        };
+      }
+    ];
     permissions = [
       {
         "action" = "shell";
