@@ -26,7 +26,6 @@ writeText "opencode.json" (
     warming = false;
     plugins = [
       "@cortexkit/opencode-magic-context"
-      "opencode-pty/v2"
       {
         package = "@prevalentware/opencode-goal-plugin";
         options = {

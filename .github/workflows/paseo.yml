@@ -59,6 +59,10 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
+            ~/.gradle/caches/build-cache-1
+            ~/.gradle/caches/*/kotlin-dsl
+            ~/.gradle/caches/*/javaCompile
+            ~/.gradle/caches/*/transforms
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
             ~/.cargo/registry/index
@@ -156,6 +160,10 @@ jobs:
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
+            ~/.gradle/caches/build-cache-1
+            ~/.gradle/caches/*/kotlin-dsl
+            ~/.gradle/caches/*/javaCompile
+            ~/.gradle/caches/*/transforms
             ~/.gradle/wrapper/dists
             ~/.cargo/registry/cache
             ~/.cargo/registry/index

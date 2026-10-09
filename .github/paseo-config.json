@@ -60,9 +60,7 @@
 					"acp"
 				]
 			},
-			"opencode2": {
-				"extends": "acp",
-				"label": "OpenCode",
+			"opencode": {
 				"command": [
 					"systemd-run",
 					"--user",
@@ -75,11 +73,16 @@
 					"nice",
 					"-n",
 					"10",
-					"opencode",
-					"acp"
+					"opencode"
 				]
 			},
 			"pi": {
+				"enabled": false
+			},
+			"antigravity": {
+				"enabled": false
+			},
+			"muse": {
 				"enabled": false
 			},
 			"omp": {
@@ -89,9 +92,6 @@
 				"enabled": false
 			},
 			"codex": {
-				"enabled": false
-			},
-			"opencode": {
 				"enabled": false
 			},
 			"claude": {
