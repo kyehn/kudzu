@@ -11,16 +11,16 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "maki";
-  version = "0.6.1";
+  version = "0.6.2";
 
   src = fetchFromGitHub {
     owner = "tontinton";
     repo = "maki";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-1H0rLOaDowP++d5Yr/MkuqkgwSpL6Y0lFwou63Hhvtg=";
+    hash = "sha256-34pnX/TCdncMrozDKe/BOBSoLnpRnHU/ePKAPpzIc00=";
   };
 
-  cargoHash = "sha256-4PUP1/iPp7g7t+NrU/FPSMsdmJ764jZ1phFGtzx6CjA=";
+  cargoHash = "sha256-QGwg03rgcsX7CI9h23ustq1HE9xj5Sw9I1s/rJvFpqM=";
 
   patches = [ ./fix.patch ];
 

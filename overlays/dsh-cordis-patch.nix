@@ -125,7 +125,7 @@
                 command = "git";
                 args = [
                   "checkout"
-                  "--"
+                  "--*"
                 ];
               };
             };

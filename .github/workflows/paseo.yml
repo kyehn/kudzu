@@ -139,14 +139,14 @@ jobs:
           skills add getpaseo/paseo --agent zed --global --yes
           export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
           rm -rf ~/.dsh/profiles/web/
-          dsh --profile paseo --from-default-profile web
+          dsh --profile paseo --from-default-profile web --dump-config > /dev/null
           dsh plugin --profile paseo add dsh-permission-rules
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
             paseo onboard --relay --voice disable
           else
             paseo onboard --relay --voice disable > /dev/null
           fi
-          paseo plugin install https://github.com/Jecvay/paseo-dsh-direct
+          paseo plugin install npm:paseo-dsh-direct
       - run: tail -f "$HOME/.paseo/daemon.log"
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         run: |
