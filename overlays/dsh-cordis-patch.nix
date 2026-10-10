@@ -87,35 +87,12 @@
     config.search = false;
   }
   {
-    id = "tool-ask-user";
-    name = "@deepseek-ai/dsh-tool-ask-user";
-    disabled = true;
-  }
-  {
-    id = "tool-subagent";
-    name = "@deepseek-ai/dsh-tool-subagent";
-    config = {
-      provider = "spawn";
-      toolName = "subagent";
-      enableRunInBackground = false;
-    };
-  }
-  {
-    id = "tool-subagent-fork";
-    name = "@deepseek-ai/dsh-tool-subagent";
-    config = {
-      provider = "fork";
-      toolName = "subagent_fork";
-      enableRunInBackground = false;
-    };
-  }
-  {
     id = "compaction-basic";
     name = "@deepseek-ai/dsh-compaction-basic";
     config.thresholdRatio = 0.6;
   }
   {
-    id = "permission-presets";
+    id = "permission";
     name = "@deepseek-ai/dsh-permission-presets";
     config = {
       presets.danger-full-access = {
@@ -126,161 +103,208 @@
     };
   }
   {
-    insert = [
-      {
-        id = "permission-rules";
-        name = "dsh-permission-rules";
-        config = {
-          fallbackPath = (formats.yaml { }).generate "rules.yaml" {
-            rules = [
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "find";
-                    args = [ "/nix/store" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "ls";
-                    args = [ "/nix/store" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "find";
-                    args = [ "/" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "find";
-                    args = [ "/usr" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "find";
-                    args = [ "/home/runner" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "paseo";
-                    args = [
-                      "daemon"
-                      "stop*"
-                    ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "paseo";
-                    args = [
-                      "daemon"
-                      "restart*"
-                    ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "paseo";
-                    args = [ "restart*" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "pkill";
-                    anyArg = [ "*paseo*" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "killall";
-                    anyArg = [ "*paseo*" ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = {
-                  tools = [ "bash" ];
-                  argv = {
-                    command = "fuser";
-                    args = [
-                      "-k"
-                      "*6767*"
-                    ];
-                  };
-                };
-                action = "deny";
-                reason = "Permission denied";
-              }
-              {
-                match = { };
-                action = "allow";
-                reason = "allow";
-              }
-            ];
-          };
-          language = "zh";
-          watch = false;
-          network.enabled = false;
-          network.mode = "allow-all";
-          builtin.enabled = false;
-        };
-      }
-    ];
+    id = "permission-rules";
+    name = "dsh-permission-rules";
+    config = {
+      fallbackPath = (formats.yaml { }).generate "rules.yaml" {
+        rules = [
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "sleep";
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "git";
+                args = [
+                  "checkout"
+                  "--"
+                ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "git";
+                args = [ "restore" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "git";
+                args = [
+                  "reset"
+                  "--hard"
+                ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "find";
+                args = [ "/nix/store" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "ls";
+                args = [ "/nix/store" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "find";
+                args = [ "/" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "find";
+                args = [ "/usr" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "find";
+                args = [ "/home/runner" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "paseo";
+                args = [
+                  "daemon"
+                  "stop*"
+                ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "paseo";
+                args = [
+                  "daemon"
+                  "restart*"
+                ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "paseo";
+                args = [ "restart*" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "pkill";
+                anyArg = [ "*paseo*" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "killall";
+                anyArg = [ "*paseo*" ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = {
+              tools = [ "bash" ];
+              argv = {
+                command = "fuser";
+                args = [
+                  "-k"
+                  "*6767*"
+                ];
+              };
+            };
+            action = "deny";
+            reason = "Permission denied";
+          }
+          {
+            match = { };
+            action = "allow";
+            reason = "allow";
+          }
+        ];
+      };
+      language = "zh";
+      watch = false;
+      network = {
+        enabled = false;
+        mode = "allow-all";
+      };
+      builtin.enabled = false;
+    };
   }
   {
-    id = "acp-interactive";
+    id = "agent-default-model";
     config = {
       provider = "opencode-openai-responses";
       model = "muse-spark-1.3-contributor-free";

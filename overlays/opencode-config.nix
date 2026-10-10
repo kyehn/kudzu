@@ -49,6 +49,26 @@ writeText "opencode.json" (
       }
       {
         "action" = "shell";
+        "resource" = "sleep *";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
+        "resource" = "git reset --hard*";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
+        "resource" = "git checkout --*";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
+        "resource" = "git restore *";
+        "effect" = "deny";
+      }
+      {
+        "action" = "shell";
         "resource" = "find / *";
         "effect" = "deny";
       }

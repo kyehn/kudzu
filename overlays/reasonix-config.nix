@@ -89,6 +89,10 @@
       "use_capability"
     ];
     deny = [
+      "Bash(sleep:*)"
+      "Bash(git checkout --:*)"
+      "Bash(git restore:*)"
+      "Bash(git reset --hard:*)"
       "Bash(find /nix/store:*)"
       "Bash(ls /nix/store:*)"
       "Bash(find /:*)"

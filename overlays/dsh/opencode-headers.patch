@@ -8,14 +8,15 @@
 # Applies to @deepseek-ai/dsh-llm-pi-ai lib/index.js
 # (requestHeaders + its stream call site).
 # Verified against @deepseek-ai/dsh-llm-pi-ai 0.2.0-rc.2, the version
-# deepseekharness-acp-interactive 1.4.1 resolves to. That npm dist-tag `latest`
-# points at 0.0.1-rc.1 instead, so pin the version rather than installing it
-# bare. This is the only change in overlays/dsh that config cannot express: a
-# provider profile's `headers` is a static dict, so there is nowhere to mint a
+# @deepseek-ai/dsh@0.2.0-rc.2 resolves to. That npm dist-tag `latest`
+# points at 0.2.0-rc.2 today, but the harness pins the dsh line the
+# paseo-dsh-direct plugin targets, so pin the version here as well. This is
+# the only change in overlays/dsh that config cannot express: a provider
+# profile's `headers` is a static dict, so there is nowhere to mint a
 # per-request id.
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -1719,14 +1719,62 @@
+@@ -1733,14 +1733,62 @@
  		...defaultLevel === void 0 ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) }
  	} };
  }
@@ -86,7 +87,7 @@
  }
  /**
  * pi-ai-backed multi-provider adapter. Each operation reads the current
-@@ -1867,7 +1909,7 @@
+@@ -1884,7 +1932,7 @@
  					...options.maxTokens === void 0 ? {} : { maxTokens: options.maxTokens },
  					...options.sessionId === void 0 ? {} : { sessionId: String(options.sessionId) },
  					signal: watchdog.signal,

@@ -1,6 +1,7 @@
 {
 	"$schema": "https://paseo.sh/schemas/paseo.config.v1.json",
 	"version": 1,
+	"pluginsEnabled": true,
 	"agents": {
 		"providers": {
 			"maki": {
@@ -21,24 +22,6 @@
 					"maki",
 					"acp",
 					"--yolo"
-				]
-			},
-			"dsh": {
-				"extends": "acp",
-				"label": "DSH",
-				"command": [
-					"systemd-run",
-					"--user",
-					"--scope",
-					"-p",
-					"MemoryMax=7G",
-					"-p",
-					"TasksMax=512",
-					"--",
-					"nice",
-					"-n",
-					"10",
-					"dsh-acp-interactive"
 				]
 			},
 			"reasonix": {

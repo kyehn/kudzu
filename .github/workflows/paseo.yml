@@ -54,7 +54,7 @@ jobs:
           path: |
             ~/.paseo
             ~/.local/state/maki
-            ~/.dsh/acp-sessions
+            ~/.dsh/sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
@@ -83,9 +83,9 @@ jobs:
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
-          npm install --global --yes deepseekharness-acp-interactive@1.4.1
-          npm install --global --yes dsh-permission-rules
-          dsh_llm_pi_ai="$(npm root -g)/deepseekharness-acp-interactive/node_modules/@deepseek-ai/dsh-llm-pi-ai" && patch --dry-run -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch && patch -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch
+          npm install --global --yes @deepseek-ai/dsh@0.2.0-rc.2
+          npm install --global --yes pnpm
+          dsh_llm_pi_ai="$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-llm-pi-ai" && patch --dry-run -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch && patch -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch
           nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-cordis-patch --out-link /tmp/dsh-cordis-patch && install -m 0644 /tmp/dsh-cordis-patch ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-cordis-patch
           overlays/dsh/providers-config.py
           npm install --global --yes @opencode/cli
@@ -138,16 +138,20 @@ jobs:
           skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent zed --global --yes
           skills add getpaseo/paseo --agent zed --global --yes
           export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
+          rm -rf ~/.dsh/profiles/web/
+          dsh --profile paseo --from-default-profile web
+          dsh plugin --profile paseo add dsh-permission-rules
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
             paseo onboard --relay --voice disable
           else
             paseo onboard --relay --voice disable > /dev/null
           fi
+          paseo plugin install https://github.com/Jecvay/paseo-dsh-direct
       - run: tail -f "$HOME/.paseo/daemon.log"
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         run: |
-          paseo daemon stop
           comm -13 <(paseo ls -g --json | jq -r '.[].id' | sort) <(paseo ls -ag --json | jq -r '.[].id' | sort) | xargs -r -n1 paseo delete
+          paseo daemon stop
           rm -rf ~/.paseo/paseo.pid ~/.paseo/daemon.log ~/.paseo/config.json ~/.paseo/worktrees ~/.local/state/maki/sessions/locks
       - if: ${{ always() && steps.onboard.outcome == 'success' }}
         uses: actions/cache/save@main
@@ -155,7 +159,7 @@ jobs:
           path: |
             ~/.paseo
             ~/.local/state/maki
-            ~/.dsh/acp-sessions
+            ~/.dsh/sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
