@@ -23,6 +23,7 @@ linkFarm "maki" [
           };
           telemetry.enabled = false;
           plugins = {
+            websearch.enabled = false;
             edit.insert_lines = true;
             task = {
               allow_model = true;

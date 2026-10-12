@@ -124,8 +124,7 @@
               argv = {
                 command = "git";
                 args = [
-                  "checkout"
-                  "--"
+                  "checkout --*"
                 ];
               };
             };

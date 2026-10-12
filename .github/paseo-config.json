@@ -59,9 +59,6 @@
 					"opencode"
 				]
 			},
-			"pi": {
-				"enabled": false
-			},
 			"antigravity": {
 				"enabled": false
 			},

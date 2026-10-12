@@ -1,5 +1,5 @@
 diff --git a/go.mod b/go.mod
-index 00a13aa..c2de570 100644
+index 2c17f79..5f6d3f7 100644
 --- a/go.mod
 +++ b/go.mod
 @@ -12,6 +12,7 @@ require (
@@ -11,7 +11,7 @@ index 00a13aa..c2de570 100644
  	github.com/aymanbagabas/go-udiff v0.4.1
  	github.com/bmatcuk/doublestar/v4 v4.10.2
 @@ -24,6 +25,7 @@ require (
- 	github.com/klauspost/compress v1.20.0
+ 	github.com/klauspost/compress v1.20.1
  	github.com/mattn/go-runewidth v0.0.30
  	github.com/pkg/sftp v1.13.11
 +	github.com/refraction-networking/utls v1.8.2
@@ -19,7 +19,7 @@ index 00a13aa..c2de570 100644
  	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
  	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 diff --git a/go.sum b/go.sum
-index 7f07616..0b83fee 100644
+index cf623ff..fca0cf4 100644
 --- a/go.sum
 +++ b/go.sum
 @@ -18,6 +18,8 @@ github.com/alecthomas/chroma/v2 v2.27.0 h1:FodwmyOBgJULFYmDqibcp9pvfDLWdtPRh9v/r
@@ -651,10 +651,10 @@ index 0000000..c963b7e
 +	}
 +}
 diff --git a/internal/frontend/acp/server_test.go b/internal/frontend/acp/server_test.go
-index b3ed60e..43b9f73 100644
+index 1e9864b..ccf168a 100644
 --- a/internal/frontend/acp/server_test.go
 +++ b/internal/frontend/acp/server_test.go
-@@ -1219,8 +1219,10 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+@@ -1250,8 +1250,10 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
  		t.Fatalf("initial agent_preset = %+v, want balanced", agentOpt)
  	}
  	approval, ok := findConfigOption(nr.ConfigOptions, "tool_approval")
@@ -668,7 +668,7 @@ index b3ed60e..43b9f73 100644
  
  	buildsBefore := factory.buildCount()
 diff --git a/internal/frontend/acp/session.go b/internal/frontend/acp/session.go
-index ed3f08c..a351c19 100644
+index c245d91..5a4a312 100644
 --- a/internal/frontend/acp/session.go
 +++ b/internal/frontend/acp/session.go
 @@ -55,7 +55,11 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
@@ -694,10 +694,10 @@ index ed3f08c..a351c19 100644
  		status:           newStatusTelemetry(),
  		modeID:           sessionModeNormal,
 diff --git a/internal/model/anthropic/anthropic.go b/internal/model/anthropic/anthropic.go
-index 24560e6..79222d1 100644
+index 56c6226..47dd50b 100644
 --- a/internal/model/anthropic/anthropic.go
 +++ b/internal/model/anthropic/anthropic.go
-@@ -125,10 +125,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -126,10 +126,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
  			}
  		}
  	}
@@ -716,7 +716,7 @@ index 24560e6..79222d1 100644
  	return &client{
  		name:             name,
  		apiKey:           cfg.APIKeyResolver(),
-@@ -149,12 +156,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -150,12 +157,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		defaultMaxTokens: maxOutputTokens,
  		http:             httpClient, // no overall timeout; lifecycle is ctx-driven
  		idleTimeout:      provider.IdleTimeoutFromExtra(cfg.Extra),
@@ -729,7 +729,7 @@ index 24560e6..79222d1 100644
 -func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 +func newHTTPClient(cfg provider.Config, opencode bool) (*http.Client, error) {
  	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
--	return netclient.NewHTTPClient(spec, netclient.TransportOptions{ResponseHeaderTimeout: provider.IdleTimeoutFromExtra(cfg.Extra)})
+-	return endpointclient.New(spec, netclient.TransportOptions{ResponseHeaderTimeout: provider.IdleTimeoutFromExtra(cfg.Extra)})
 +	opts := netclient.TransportOptions{
 +		ResponseHeaderTimeout: provider.IdleTimeoutFromExtra(cfg.Extra),
 +	}
@@ -741,11 +741,11 @@ index 24560e6..79222d1 100644
 +		opts.TLSHandshakeTimeout = 15 * time.Second
 +		opts.DialTLSContext = netclient.OpenCodeDialTLS(opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
 +	}
-+	return netclient.NewHTTPClient(spec, opts)
++	return endpointclient.New(spec, opts)
  }
  
  type client struct {
-@@ -178,6 +199,9 @@ type client struct {
+@@ -179,6 +200,9 @@ type client struct {
  	http             *http.Client
  	idleTimeout      time.Duration // SSE stall watchdog window; per-provider idle_timeout_seconds, else defaultStreamIdleTimeout
  	authed           atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -790,7 +790,7 @@ index 24560e6..79222d1 100644
 +		provider.ApplyClientIdentity(httpReq)
  		return httpReq, nil
  	}
- 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(wireReq.reasoningHint), newReq)
+ 	resp, err := provider.SendWithRetry(requestCtx, c.http, c.sendOpts(), newReq)
 diff --git a/internal/model/anthropic/opencode_wire_test.go b/internal/model/anthropic/opencode_wire_test.go
 new file mode 100644
 index 0000000..5b25222
@@ -895,10 +895,10 @@ index ee8b12b..d7e497e 100644
  	provider.ApplyClientIdentity(req)
  }
 diff --git a/internal/model/openai/openai.go b/internal/model/openai/openai.go
-index 9bc1856..15cb1b6 100644
+index 2f804ef..5c5ff26 100644
 --- a/internal/model/openai/openai.go
 +++ b/internal/model/openai/openai.go
-@@ -225,10 +225,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -228,10 +228,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		reasoningOn := thinkingType != "disabled" && effort != "disabled" && effort != "off" && effort != "none"
  		maxOutputTokens = provider.AutoOutputBudget(reasoningOn, effort)
  	}
@@ -917,7 +917,7 @@ index 9bc1856..15cb1b6 100644
  	return &client{
  		name:               name,
  		apiKey:             cfg.APIKeyResolver(),
-@@ -255,18 +262,27 @@ func New(cfg provider.Config) (provider.Provider, error) {
+@@ -259,18 +266,27 @@ func New(cfg provider.Config) (provider.Provider, error) {
  		requestEfforts:     requestEfforts,
  		http:               httpClient,
  		idleTimeout:        provider.IdleTimeoutFromExtra(cfg.Extra),
@@ -931,7 +931,7 @@ index 9bc1856..15cb1b6 100644
 -func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 +func newHTTPClient(cfg provider.Config, opencode bool) (*http.Client, error) {
  	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
--	return netclient.NewHTTPClient(spec, netclient.TransportOptions{
+-	return endpointclient.New(spec, netclient.TransportOptions{
 +	opts := netclient.TransportOptions{
  		DialTimeout:           30 * time.Second,
  		KeepAlive:             30 * time.Second,
@@ -945,11 +945,11 @@ index 9bc1856..15cb1b6 100644
 +		opts.DialTLSContext = netclient.OpenCodeDialTLS(
 +			opts.DialTimeout, opts.KeepAlive, opts.TLSHandshakeTimeout)
 +	}
-+	return netclient.NewHTTPClient(spec, opts)
++	return endpointclient.New(spec, opts)
  }
  
  type client struct {
-@@ -296,13 +312,15 @@ type client struct {
+@@ -301,13 +317,15 @@ type client struct {
  	requestEfforts     []string      // depth levels a per-request EffortOverride may take; empty = overrides ignored
  	idleTimeout        time.Duration // SSE stall watchdog window; per-provider idle_timeout_seconds, else defaultStreamIdleTimeout
  	openCodeSession    string        // x-opencode-session this client presents to OpenCode Go
@@ -966,7 +966,7 @@ index 9bc1856..15cb1b6 100644
  }
  
  func (c *client) RequiresReasoningRoundTrip() bool {
-@@ -400,6 +418,10 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
+@@ -394,6 +412,10 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
  	if apiKey == "" {
  		return
  	}
@@ -977,7 +977,7 @@ index 9bc1856..15cb1b6 100644
  	if IsMiMo(baseURL) {
  		h.Set("api-key", apiKey)
  		return
-@@ -650,6 +672,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
+@@ -644,6 +666,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
  }
  
  func (c *client) buildRequest(req provider.Request) chatRequest {
@@ -985,7 +985,7 @@ index 9bc1856..15cb1b6 100644
  	// Repair tool-call pairing before sending: an interrupted/resumed history can
  	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
  	// rejects with a 400 ("must be followed by tool messages …").
-@@ -849,6 +872,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -826,6 +849,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -1410,10 +1410,10 @@ index 0000000..fa83a45
 +	}
 +}
 diff --git a/internal/model/responses/responses.go b/internal/model/responses/responses.go
-index 28c92d8..483553d 100644
+index cecffe7..c22a648 100644
 --- a/internal/model/responses/responses.go
 +++ b/internal/model/responses/responses.go
-@@ -114,6 +114,9 @@ type client struct {
+@@ -116,6 +116,9 @@ type client struct {
  	apiKey                             func() string
  	baseURL, requestURL, model, effort string
  	vendor, mode                       string
@@ -1423,11 +1423,11 @@ index 28c92d8..483553d 100644
  	caps                               vendorCapabilities
  	webSearch                          bool
  	session                            sessionHeaders
-@@ -164,10 +167,23 @@ func New(cfg Config) provider.Provider {
+@@ -167,10 +170,23 @@ func New(cfg Config) provider.Provider {
  		vision = vision && provideropenai.DeepSeekTakesImages(cfg.Model)
  	}
- 	httpClient := &http.Client{Timeout: 300 * time.Second}
--	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
+ 	httpClient := &http.Client{Timeout: 300 * time.Second, CheckRedirect: redirectguard.StayOnOrigin()}
+-	if built, err := endpointclient.New(cfg.Proxy, netclient.TransportOptions{
 +	transport := netclient.TransportOptions{
  		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
  		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: provider.IdleTimeoutFromExtra(cfg.Extra),
@@ -1445,11 +1445,11 @@ index 28c92d8..483553d 100644
 +		// fingerprint here too.
 +		transport.DialTLSContext = netclient.OpenCodeDialTLS(transport.DialTimeout, transport.KeepAlive, transport.TLSHandshakeTimeout)
 +	}
-+	if built, err := netclient.NewHTTPClient(cfg.Proxy, transport); err == nil {
++	if built, err := endpointclient.New(cfg.Proxy, transport); err == nil {
  		httpClient = built
  	}
  	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
-@@ -178,7 +194,7 @@ func New(cfg Config) provider.Provider {
+@@ -181,7 +197,7 @@ func New(cfg Config) provider.Provider {
  	return &client{
  		name: cfg.Name, apiKey: cfg.apiKeyResolver(), keyEnv: cfg.KeyEnv, keySource: cfg.KeySource,
  		baseURL: baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
@@ -1458,7 +1458,7 @@ index 28c92d8..483553d 100644
  		vision: vision, reasoningModes: cfg.ReasoningModes,
  		http: httpClient, idleTimeout: provider.IdleTimeoutFromExtra(cfg.Extra),
  	}
-@@ -262,6 +278,7 @@ func (c *client) ResetContext() {
+@@ -265,6 +281,7 @@ func (c *client) ResetContext() {
  }
  
  func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
@@ -1466,7 +1466,7 @@ index 28c92d8..483553d 100644
  	requestCtx := provider.WithRequestAttemptCounter(ctx)
  	body, usedPrevious, wireMessages := c.buildRequestBody(req)
  	resp, err := c.send(requestCtx, body)
-@@ -296,11 +313,17 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
+@@ -299,11 +316,17 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  			return nil, err
  		}
  		req.Header.Set("Content-Type", "application/json")
@@ -1486,7 +1486,7 @@ index 28c92d8..483553d 100644
  		provider.ApplyClientIdentity(req)
  		return req, nil
  	}
-@@ -350,6 +373,15 @@ func (c *client) buildRequestBodyWithContinuation(req provider.Request, allowPre
+@@ -358,6 +381,15 @@ func (c *client) buildRequestBodyWithContinuation(req provider.Request, allowPre
  		reasoning["mode"] = mode
  	}
  	if len(reasoning) > 0 {
@@ -1502,7 +1502,7 @@ index 28c92d8..483553d 100644
  		body["reasoning"] = reasoning
  	}
  	maxOutputTokens := req.MaxTokens
-@@ -475,9 +507,14 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
+@@ -483,9 +515,14 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
  					"type":    "reasoning",
  					"content": []map[string]string{{"type": "reasoning_text", "text": message.ReasoningContent}},
  				}
@@ -1519,12 +1519,12 @@ index 28c92d8..483553d 100644
  				}
  				if message.ReasoningStatus != "" && !caps.omitReasoningIdentity {
 diff --git a/internal/model/responses/vendor.go b/internal/model/responses/vendor.go
-index 31dd990..27ca343 100644
+index b58590d..7f44656 100644
 --- a/internal/model/responses/vendor.go
 +++ b/internal/model/responses/vendor.go
-@@ -65,6 +65,13 @@ type vendorCapabilities struct {
- 	// refer to (DeepSeek). OpenAI marks Reasoning.id required — zero sends it.
- 	omitReasoningIdentity bool
+@@ -70,6 +70,13 @@ type vendorCapabilities struct {
+ 	// OpenAI host rather than by the vendor table, whose names key other state.
+ 	imageDetail bool
  
 +	// omitReasoningID marks vendors that reject replayed provider-issued
 +	// reasoning ids on stateless requests (opencode Zen: 400 "not found or
@@ -1536,7 +1536,7 @@ index 31dd990..27ca343 100644
  	// summary is the shape the `summary` field takes on an input reasoning
  	// item. The zero value is the OpenAI base shape, so an endpoint nobody
  	// has characterized still sends what the published schema asks for.
-@@ -126,6 +133,19 @@ var vendorTable = map[string]vendorCapabilities{
+@@ -131,6 +138,19 @@ var vendorTable = map[string]vendorCapabilities{
  	},
  	// "" (unknown OpenAI-compatible endpoint) → zero value = default behavior.
  	// Unknown gateways deliberately do NOT inherit a large max-output default.
@@ -1549,14 +1549,14 @@ index 31dd990..27ca343 100644
 +	// reasoning contracts the CLI wire shape would strip. Everything else
 +	// stays at the OpenAI default.
 +	"opencode": {
-+		stateless:         true,
-+		summary:           summaryEcho,
-+		omitReasoningID:   true,
++		stateless:       true,
++		summary:         summaryEcho,
++		omitReasoningID: true,
 +	},
  }
  
  // capabilitiesFor returns the wire capabilities for a detected vendor name.
-@@ -149,7 +169,24 @@ func DetectVendor(baseURL string) string {
+@@ -154,7 +174,24 @@ func DetectVendor(baseURL string) string {
  		return "deepseek"
  	case host == "api.xiaomimimo.com", strings.HasSuffix(host, ".xiaomimimo.com"):
  		return "mimo"
@@ -1582,10 +1582,10 @@ index 31dd990..27ca343 100644
  	}
  }
 diff --git a/internal/runtime/agent/execute_one.go b/internal/runtime/agent/execute_one.go
-index fc91d4f..ba9b2ad 100644
+index a491842..5559f3e 100644
 --- a/internal/runtime/agent/execute_one.go
 +++ b/internal/runtime/agent/execute_one.go
-@@ -148,6 +148,15 @@ func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider
+@@ -156,6 +156,15 @@ func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider
  // and applies repeat-success and stale-anchor guards.
  func (a *Agent) parseToolCall(ctx context.Context, plan *toolCallPlan) (toolOutcome, bool) {
  	t, canonicalName, ambiguous := a.svc.tools.ResolveCall(plan.call.Name)

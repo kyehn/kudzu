@@ -1,0 +1,7 @@
+- 参考 `overlays/maki/README.md` 中对 opencode 模拟的要求
+- 只显示 `cost.input == 0 && cost.output == 0` 的 opencode 模型
+- 只有一个 `opencode` provider，没有重复，没有 `opencode-patched` 或类似 providers
+- 使用 pi 提供的 api，比如使用 `ProviderModelConfig` `ProviderConfig` `refreshModels` 等，`api_key` 已在 `~/.pi/agent/auth.json`，不得重复造轮子，不增加 `pi.dev` `models.dev` 相关逻辑
+- 如果 opencode tls 指纹和 bun/nodejs 类似且无检测风险，则无需对 pi 修改 tls 指纹
+- transcript 里的 `reasoning.encrypted` / `encrypted_content` 可能需要剥离
+- 避免空 tool call id
