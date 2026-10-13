@@ -1,5 +1,5 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index dd91741..76e4abf 100644
+index 68b09e7..768b8ea 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
 @@ -10,7 +10,7 @@ homepage = "https://maki.sh"
@@ -11,15 +11,15 @@ index dd91741..76e4abf 100644
  
  [[bin]]
  name = "maki"
-@@ -71,7 +71,7 @@ edition = "2024"
+@@ -76,7 +76,7 @@ edition = "2024"
  authors = ["Tony Solomonik <tony.solomonik@gmail.com>"]
  license = "MIT"
  repository = "https://github.com/tontinton/maki"
 -rust-version = "1.99"
 +rust-version = "1.98"
  
- [workspace.dependencies]
- maki-agent = { path = "maki-agent" }
+ [workspace.lints.clippy]
+ 
 diff --git a/maki-agent/src/agent/compaction.rs b/maki-agent/src/agent/compaction.rs
 index 8b70bee..0ae611b 100644
 --- a/maki-agent/src/agent/compaction.rs
@@ -276,7 +276,7 @@ index 16f411b..76dd520 100644
      // No `base_url`: `resolve_custom_auth` already put the configured origin in
      // `auth.base_url`, which outranks anything the config could carry here, so
 diff --git a/maki-providers/src/providers/mod.rs b/maki-providers/src/providers/mod.rs
-index 2817f37..d5797b3 100644
+index 0305439..f700370 100644
 --- a/maki-providers/src/providers/mod.rs
 +++ b/maki-providers/src/providers/mod.rs
 @@ -1,7 +1,7 @@
@@ -292,14 +292,14 @@ index 2817f37..d5797b3 100644
  use futures_lite::StreamExt;
  use futures_lite::io::AsyncBufRead;
 @@ -41,6 +41,7 @@ const EMPTY_SSE_ERROR_MESSAGE: &str = "provider sent an error frame with no deta
- const UNAUTHORIZED_STATUS: u16 = 401;
+ pub(crate) const UNAUTHORIZED_STATUS: u16 = 401;
  const AUTHORIZATION_HEADER: &str = "authorization";
  const BEARER_PREFIX: &str = "Bearer ";
 +const USER_AGENT_HEADER: &str = "user-agent";
  
  fn bearer_value(api_key: &str) -> String {
      format!("{BEARER_PREFIX}{api_key}")
-@@ -55,6 +56,189 @@ pub fn user_agent() -> &'static str {
+@@ -55,6 +56,193 @@ pub fn user_agent() -> &'static str {
      )
  }
  
@@ -464,11 +464,15 @@ index 2817f37..d5797b3 100644
 +/// Custom zen-wire slugs live outside the builtin flow: any custom provider
 +/// pointed at the zen gateway gets the CLI wire identity by path match, so
 +/// renames — and local forward proxies to the real gateway — keep working
-+/// (the gateway still checks the headers; a fake just ignores them). The go
-+/// gateway (`/zen/go`) is a different product and never matches.
++/// (the gateway still checks the headers; a fake just ignores them). The free
++/// tier answers on both bases the gateway publishes: the legacy `/zen` and the
++/// shared `/inference` one models.dev now points `opencode` at. The go gateway
++/// (`/zen/go`, `/inference/go`) is a different product and never matches.
 +pub(crate) fn is_zen_base_url(url: Option<&str>) -> bool {
 +    let Some(u) = url else { return false };
-+    (u.contains("/zen/") || u.ends_with("/zen")) && !u.contains("/zen/go")
++    !(u.contains("/zen/go") || u.contains("/inference/go"))
++        && (u.contains("/zen/") || u.ends_with("/zen")
++            || u.contains("/inference/") || u.ends_with("/inference"))
 +}
 +
 +/// CLI session ids are `ses_` + 12 hex + 14 base62 chars
@@ -489,7 +493,7 @@ index 2817f37..d5797b3 100644
  #[derive(Debug, Clone, Copy)]
  pub struct Timeouts {
      pub connect: Duration,
-@@ -134,6 +318,12 @@ pub struct ResolvedAuth {
+@@ -145,6 +333,12 @@ pub struct ResolvedAuth {
      /// `[<slug>] top_p`, carried with the auth so whoever the slug's
      /// credentials reach (aperture routes, catalog sub-providers) sends it.
      pub top_p: Option<f64>,
@@ -502,7 +506,7 @@ index 2817f37..d5797b3 100644
  }
  
  impl ResolvedAuth {
-@@ -147,6 +337,7 @@ impl ResolvedAuth {
+@@ -158,6 +352,7 @@ impl ResolvedAuth {
              headers,
              config_headers: Vec::new(),
              top_p: None,
@@ -510,7 +514,7 @@ index 2817f37..d5797b3 100644
          };
          if let Some(def) = maki_config::providers::ProvidersConfig::load().get(slug) {
              auth.apply_config_headers(slug, &def.headers)?;
-@@ -195,6 +386,7 @@ impl ResolvedAuth {
+@@ -206,6 +401,7 @@ impl ResolvedAuth {
              headers: Vec::new(),
              config_headers: Vec::new(),
              top_p: None,
@@ -518,7 +522,7 @@ index 2817f37..d5797b3 100644
          }
      }
  
-@@ -237,11 +429,47 @@ impl ResolvedAuth {
+@@ -248,11 +444,47 @@ impl ResolvedAuth {
          }
      }
  
@@ -569,7 +573,7 @@ index 2817f37..d5797b3 100644
      }
  
      #[cfg(test)]
-@@ -251,10 +479,15 @@ impl ResolvedAuth {
+@@ -262,10 +494,15 @@ impl ResolvedAuth {
              headers,
              config_headers: Vec::new(),
              top_p: None,
@@ -585,7 +589,7 @@ index 2817f37..d5797b3 100644
  pub(crate) fn with_prefix<'a>(
      prefix: &Option<String>,
      system: &'a str,
-@@ -795,6 +1028,198 @@ mod tests {
+@@ -836,6 +1073,202 @@ mod tests {
          ResolvedAuth::for_test(None, vec![(AUTHORIZATION_HEADER.into(), bearer_value(key))])
      }
  
@@ -615,8 +619,12 @@ index 2817f37..d5797b3 100644
 +
 +    #[test_case(Some("https://opencode.ai/zen/v1"), true  ; "zen v1")]
 +    #[test_case(Some("https://opencode.ai/zen"), true  ; "bare zen")]
++    #[test_case(Some("https://opencode.ai/inference/v1"), true  ; "shared inference base")]
++    #[test_case(Some("https://opencode.ai/inference"), true  ; "bare inference")]
 +    #[test_case(Some("http://127.0.0.1:8080/zen/v1/chat/completions"), true  ; "local forward proxy")]
++    #[test_case(Some("http://127.0.0.1:8080/inference/v1/chat/completions"), true  ; "local forward proxy on the shared base")]
 +    #[test_case(Some("https://opencode.ai/zen/go/v1"), false  ; "go gateway excluded")]
++    #[test_case(Some("https://opencode.ai/inference/go/v1"), false  ; "go gateway excluded on the shared base")]
 +    #[test_case(Some("https://api.deepseek.com"), false  ; "other vendor")]
 +    #[test_case(None, false ; "no base url")]
 +    fn zen_base_url_match(url: Option<&str>, expected: bool) {

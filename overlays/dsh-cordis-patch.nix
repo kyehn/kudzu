@@ -111,9 +111,7 @@
           {
             match = {
               tools = [ "bash" ];
-              argv = {
-                command = "sleep";
-              };
+              argv.command = "sleep";
             };
             action = "deny";
             reason = "Permission denied";
@@ -124,7 +122,8 @@
               argv = {
                 command = "git";
                 args = [
-                  "checkout --*"
+                  "checkout"
+                  "--*"
                 ];
               };
             };

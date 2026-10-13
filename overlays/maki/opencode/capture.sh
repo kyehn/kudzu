@@ -230,7 +230,7 @@ trap 'kill $PROXY_PID 2>/dev/null || true; rm -f "$ADDON"; rm -rf "$FRESH_HOME"'
 sleep 3
 
 # chat-completions wire
-HOME="$FRESH_HOME" timeout 300 opencode run --model opencode/mimo-v2.5-free --format json \
+HOME="$FRESH_HOME" timeout 300 opencode run --model opencode/mimo-v2.6-flash-free --format json \
   "Reply with exactly: HI" >/dev/null 2>&1 || true
 # responses wire
 HOME="$FRESH_HOME" timeout 300 opencode run --model opencode/muse-spark-1.3-contributor-free --format json \
@@ -255,9 +255,12 @@ for f in chat-completions.json chat-completions-title.json responses.json respon
     fi
 done
 
-# quick self-check: every saved capture must be real zen TLS traffic
+# quick self-check: every saved capture must be real zen TLS traffic to a free-tier
+# base — the shared `/inference/v1` one models.dev publishes today, or the legacy
+# `/zen/v1` one the CLI may still be configured against
 python3 - << 'PY'
 import json, os, sys
+BASES = ("opencode.ai/inference/v1", "opencode.ai/zen/v1")
 ok = True
 for name in ("chat-completions.json", "chat-completions-title.json", "responses.json", "responses-title.json"):
     p = os.path.join(os.environ.get("OUT_DIR", "."), name)
@@ -266,7 +269,7 @@ for name in ("chat-completions.json", "chat-completions-title.json", "responses.
     d = json.load(open(p))
     r = d["request"]
     ok &= r["scheme_tls"] is True
-    ok &= "opencode.ai/zen/v1" in r["url"]
+    ok &= any(base in r["url"] for base in BASES)
     sys.stderr.write(f"{name}: tls={r['scheme_tls']} url={r['url']} req={r['content_length']} resp={d['response']['content_length']}\n")
 print("SELF-CHECK:", "PASS" if ok else "FAIL")
 sys.exit(0 if ok else 1)
