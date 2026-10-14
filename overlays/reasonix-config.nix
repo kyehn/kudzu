@@ -11,6 +11,7 @@
 (formats.toml { }).generate "config.toml" {
   default_model = "opencode-responses/muse-spark-1.3-contributor-free";
   language = "zh";
+  auto_submit = true;
   ui.show_reasoning = true;
   environment.enabled = false;
   telemetry.cli_metrics = "off";
@@ -36,63 +37,8 @@
   };
   permissions = {
     mode = "allow";
-    allow = [
-      "bash"
-      "bash_output"
-      "code_index"
-      "complete_step"
-      "delete_range"
-      "delete_symbol"
-      "edit_file"
-      "glob"
-      "grep"
-      "kill_shell"
-      "ls"
-      "move_file"
-      "multi_edit"
-      "notebook_edit"
-      "read_file"
-      "todo_write"
-      "update_goal"
-      "wait"
-      "web_fetch"
-      "write_file"
-      "Edit"
-      "lsp_definition"
-      "lsp_references"
-      "lsp_hover"
-      "lsp_diagnostics"
-      "task"
-      "read_only_task"
-      "parallel_tasks"
-      "fleet"
-      "read_subagent_result"
-      "ask"
-      "docs"
-      "history"
-      "list_sessions"
-      "read_session"
-      "memory"
-      "remember"
-      "forget"
-      "run_skill"
-      "read_skill"
-      "read_only_skill"
-      "install_skill"
-      "slash_command"
-      "explore"
-      "research"
-      "review"
-      "security_review"
-      "install_source"
-      "connect_tool_source"
-      "use_capability"
-    ];
+    allow = [ ];
     deny = [
-      "Bash(sleep:*)"
-      "Bash(git checkout --:*)"
-      "Bash(git restore:*)"
-      "Bash(git reset --hard:*)"
       "Bash(find /nix/store:*)"
       "Bash(ls /nix/store:*)"
       "Bash(find /:*)"

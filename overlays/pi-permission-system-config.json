@@ -10,10 +10,6 @@
 		},
 		"bash": {
 			"*": "allow",
-			"git checkout --*": "deny",
-			"git restore *": "deny",
-			"sleep *": "deny",
-			"git reset --hard*": "deny",
 			"find /nix/store *": "deny",
 			"ls /nix/store": "deny",
 			"ls /nix/store *": "deny",

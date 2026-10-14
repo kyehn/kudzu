@@ -111,53 +111,6 @@
           {
             match = {
               tools = [ "bash" ];
-              argv.command = "sleep";
-            };
-            action = "deny";
-            reason = "Permission denied";
-          }
-          {
-            match = {
-              tools = [ "bash" ];
-              argv = {
-                command = "git";
-                args = [
-                  "checkout"
-                  "--*"
-                ];
-              };
-            };
-            action = "deny";
-            reason = "Permission denied";
-          }
-          {
-            match = {
-              tools = [ "bash" ];
-              argv = {
-                command = "git";
-                args = [ "restore" ];
-              };
-            };
-            action = "deny";
-            reason = "Permission denied";
-          }
-          {
-            match = {
-              tools = [ "bash" ];
-              argv = {
-                command = "git";
-                args = [
-                  "reset"
-                  "--hard"
-                ];
-              };
-            };
-            action = "deny";
-            reason = "Permission denied";
-          }
-          {
-            match = {
-              tools = [ "bash" ];
               argv = {
                 command = "find";
                 args = [ "/nix/store" ];

@@ -3,11 +3,11 @@
     "bdwgc": {
       "flake": false,
       "locked": {
-        "lastModified": 1790015987,
-        "narHash": "sha256-bPVosUgucJR0hGSap3tJW84AR6eGYegVROV+O8VYX5A=",
+        "lastModified": 1791890853,
+        "narHash": "sha256-Wip2gE+2EJGC6trYxO9Pl36rkgA3BJJkAsiWTVGXFBc=",
         "owner": "DeterminateSystems",
         "repo": "bdwgc",
-        "rev": "373957929b9ca3b2ae69a3e16b830c44c15b42ca",
+        "rev": "d569c29c479acb44bcf4e992acfc776fb88fb857",
         "type": "github"
       },
       "original": {
@@ -81,11 +81,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791642191,
-        "narHash": "sha256-0bK0A59rVUn1SRZzo4cNi4VSqAe7vR1gL2/MZl53Frw=",
+        "lastModified": 1791940130,
+        "narHash": "sha256-hRCCi4fp5IjLz4cA8+RkUsaYAHzbd7M5FSAjKOq4E+k=",
         "owner": "nix-community",
         "repo": "home-manager",
-        "rev": "c58f54c733a7894d84fa2fdff26cc12088c4b78c",
+        "rev": "92a0ed1be12f1e20093faf8af63bae2c74ad521e",
         "type": "github"
       },
       "original": {
@@ -111,16 +111,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1791243198,
-        "narHash": "sha256-fuoqgE/DZMDByEYZyoOBNUxbf/JUMy2VLT8mFcYe0Fc=",
+        "lastModified": 1791922994,
+        "narHash": "sha256-Ir2Kf9gGrXqh48My/k5xMzKbWS9JSthDPjdBOmhnzrE=",
         "owner": "DeterminateSystems",
         "repo": "nix-src",
-        "rev": "1ef903401b3426fbca74a692e158cca82d7c98ab",
+        "rev": "b9ca37a0d89afc5a8cf4ee56c6702374aa9c9c87",
         "type": "github"
       },
       "original": {
         "owner": "DeterminateSystems",
-        "ref": "v3.23.1",
+        "ref": "v3.23.2",
         "repo": "nix-src",
         "type": "github"
       }
@@ -155,11 +155,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791374481,
-        "narHash": "sha256-vuWhDDCSF+mU4ObZaMpe9qC718HQICgg0H4LOhDCLzQ=",
+        "lastModified": 1791931578,
+        "narHash": "sha256-O8Pmeq7O7M4GW4XfBrGSNXLqAIIcVtlZ4TWKE63GU+Y=",
         "owner": "kyehn",
         "repo": "nix-on-droid",
-        "rev": "77cabf06d3cc8043658bd1b287e9921ddf4227d2",
+        "rev": "9695c72c136aed6c0541fc32efa27de226a103f0",
         "type": "github"
       },
       "original": {
