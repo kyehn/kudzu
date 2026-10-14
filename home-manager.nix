@@ -207,6 +207,7 @@
     };
     helix = {
       enable = true;
+      package = pkgs.steelix;
       defaultEditor = true;
       settings = {
         theme = "fleet_dark";
@@ -453,7 +454,7 @@
         python-downloads = "never";
         python-preference = "only-system";
         torch-backend = "cpu";
-        upgrade = true;
+        no-build = true;
         pip = {
           torch-backend = "auto";
           index-url = "https://mirror.nju.edu.cn/pypi/web/simple";
@@ -465,8 +466,9 @@
       settings = {
         fix = true;
         preview = true;
-        target-version = "py312";
+        target-version = "py${lib.replaceStrings [ "." ] [ "" ] pkgs.python3.pythonVersion}";
         unsafe-fixes = true;
+        output-prefer-rule-codes = true;
         analyze.preview = true;
         lint = {
           select = [ "ALL" ];

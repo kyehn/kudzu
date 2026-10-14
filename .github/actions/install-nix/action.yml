@@ -84,7 +84,6 @@ runs:
           require-sigs = false
           fsync-metadata = false
           sandbox = relaxed
-          show-trace = true
           ${{ runner.os == 'Linux' && 'use-cgroups = true' || '' }}
           warn-dirty = false
     - shell: bash

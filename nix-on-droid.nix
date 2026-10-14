@@ -57,7 +57,7 @@
     sessionVariables = {
       EDITOR = "hx";
       LESS = "-SR";
-      MANPAGER = "sh -c '${lib.getExe' pkgs.util-linux "col"} -bx | ${lib.getExe pkgs.bat} -l man -p'";
+      MANPAGER = "${lib.getExe pkgs.bat} -plman";
       MANROFFOPT = "-c";
     };
   };
