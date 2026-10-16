@@ -107,7 +107,12 @@
     );
   };
 
-  users.users.nix-on-droid.shell = lib.getExe pkgs.fish;
+  users.users.nix-on-droid = {
+    home = "/data/data/com.termux/files/home";
+    shell = lib.getExe pkgs.fish;
+  };
+
+  system.build.installationDir = "/data/data/com.termux/files/usr";
 
   time.timeZone = "Etc/GMT-8";
 }

@@ -73,6 +73,21 @@
     disabled = true;
   }
   {
+    id = "session-log-deepseek";
+    name = "@deepseek-ai/dsh-session-log-deepseek";
+    enabled = false;
+  }
+  {
+    id = "session-telemetry-otel";
+    name = "@deepseek-ai/dsh-session-telemetry-otel";
+    mode = "DISABLED";
+  }
+  {
+    id = "plugin-package-inventory-deepseek";
+    name = "@deepseek-ai/dsh-plugin-package-inventory-deepseek";
+    enabled = false;
+  }
+  {
     id = "agent-instructions";
     name = "@deepseek-ai/dsh-agent-instructions";
     config = {
@@ -101,6 +116,19 @@
       };
       defaultPreset = "danger-full-access";
     };
+  }
+  {
+    id = "workflow-ptc";
+    name = "@deepseek-ai/dsh-workflow-ptc";
+    config = {
+      maxConcurrentAgents = 4;
+      maxTotalAgents = 16;
+    };
+  }
+  {
+    id = "product-analytics";
+    name = "@deepseek-ai/dsh-client-product-analytics";
+    config.enabled = false;
   }
   {
     id = "permission-rules";

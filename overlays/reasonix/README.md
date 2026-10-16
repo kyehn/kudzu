@@ -1,2 +1,3 @@
 - 参考 `overlays/maki/README.md`
 - 默认 ToolApprovalYolo 包括 ACP
+- 正确发送 `Authorization: Bearer public`

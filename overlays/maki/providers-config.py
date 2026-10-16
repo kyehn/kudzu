@@ -51,7 +51,10 @@ def main(argv: list[str] | None = None) -> None:
     for provider in providers:
         entry = models_dev_data[provider]
         response = httpx.get(
-            f"{entry['api'].rstrip('/')}/models", headers={"User-Agent": USER_AGENT}
+            f"{entry['api'].rstrip('/')}/models"
+            if provider != "opencode"
+            else f"{entry['api'].replace('/openai', '').rstrip('/')}/models",
+            headers={"User-Agent": USER_AGENT},
         )
         response.raise_for_status()
         official_model_ids = sorted(model["id"] for model in response.json()["data"])
@@ -136,7 +139,9 @@ def main(argv: list[str] | None = None) -> None:
             provider_config = {
                 "display_name": f"{provider} {protocol}",
                 "protocol": protocol,
-                "base_url": entry["api"],
+                "base_url": next(iter(entry["models"].values()))
+                .get("provider", {})
+                .get("api", entry["api"]),
                 "api_key": "public" if provider == "opencode" else None,
                 "discover_models": False,
                 "models": model_configs,

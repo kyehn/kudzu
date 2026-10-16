@@ -23,7 +23,6 @@ USER_AGENTS = {
     )
 }
 USER_AGENT = USER_AGENTS["openai-completions"]
-THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 DSH_PATCH = Path.home() / ".dsh" / "cordis.patch.yml"
 PROVIDER_NAMES = ("opencode", "nvidia")
 
@@ -50,7 +49,9 @@ def main(argv: list[str] | None = None) -> None:
     for provider in providers:
         entry = models_dev_data[provider]
         response = httpx.get(
-            f"{entry['api'].rstrip('/')}/models",
+            f"{entry['api'].rstrip('/')}/models"
+            if provider != "opencode"
+            else f"{entry['api'].replace('/openai', '').rstrip('/')}/models",
             headers={"User-Agent": USER_AGENT},
         )
         response.raise_for_status()
@@ -119,23 +120,13 @@ def main(argv: list[str] | None = None) -> None:
                                     for value in effort_values
                                 }
                 model_configs.append(model_config)
-            common_levels: set[str] | None = None
-            for model_config in model_configs:
-                levels = set((model_config.get("reasoningEfforts") or {}).keys())
-                common_levels = (
-                    levels if common_levels is None else common_levels & levels
-                )
-            default_reasoning = None
-            if common_levels:
-                for level in reversed(THINKING_LEVELS):
-                    if level != "off" and level in common_levels:
-                        default_reasoning = level
-                        break
             route_key = f"{provider}-{bucket}"
             provider_config: dict[str, Any] = {
                 "displayName": f"{provider} {protocol}",
                 "api": protocol,
-                "baseURL": entry["api"],
+                "baseURL": next(iter(entry["models"].values()))
+                .get("provider", {})
+                .get("api", entry["api"]),
                 "apiKeyEnv": entry["env"][0],
                 "retryPolicy": {
                     "mode": "normal",
@@ -143,8 +134,6 @@ def main(argv: list[str] | None = None) -> None:
                 },
                 "models": model_configs,
             }
-            if default_reasoning is not None:
-                provider_config["reasoning"] = default_reasoning
             if provider == "opencode":
                 provider_config["headers"] = {
                     "User-Agent": USER_AGENTS[protocol],

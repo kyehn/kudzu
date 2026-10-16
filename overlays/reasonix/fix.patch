@@ -665,10 +665,10 @@ index 0000000..6b2d655
 +	}
 +}
 diff --git a/internal/frontend/acp/server_test.go b/internal/frontend/acp/server_test.go
-index 1e9864b..ccf168a 100644
+index 01b8643..f64fd10 100644
 --- a/internal/frontend/acp/server_test.go
 +++ b/internal/frontend/acp/server_test.go
-@@ -1250,8 +1250,10 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
+@@ -1249,8 +1249,10 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
  		t.Fatalf("initial agent_preset = %+v, want balanced", agentOpt)
  	}
  	approval, ok := findConfigOption(nr.ConfigOptions, "tool_approval")
@@ -937,7 +937,7 @@ index ee8b12b..d7e497e 100644
  	provider.ApplyClientIdentity(req)
  }
 diff --git a/internal/model/openai/openai.go b/internal/model/openai/openai.go
-index 2f804ef..5c5ff26 100644
+index 2f804ef..a6a30ef 100644
 --- a/internal/model/openai/openai.go
 +++ b/internal/model/openai/openai.go
 @@ -228,10 +228,17 @@ func New(cfg provider.Config) (provider.Provider, error) {
@@ -1008,18 +1008,19 @@ index 2f804ef..5c5ff26 100644
  }
  
  func (c *client) RequiresReasoningRoundTrip() bool {
-@@ -394,6 +412,10 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
+@@ -394,6 +412,11 @@ func applyAPIKeyHeader(h http.Header, baseURL, apiKey string) {
  	if apiKey == "" {
  		return
  	}
-+	// Zen free is anonymous like the CLI (no Authorization); only a real key is sent.
-+	if strings.EqualFold(apiKey, "public") && isZenHost(baseURL) {
-+		return
-+	}
++	// The zen free tier still wants the CLI's own credential: the real CLI
++	// sends "Authorization: Bearer public" and the gateway answers
++	// 403 FreeTierError ("free tier can only be used from within OpenCode")
++	// when that header is absent. "public" is therefore a real bearer value,
++	// not a signal to drop auth.
  	if IsMiMo(baseURL) {
  		h.Set("api-key", apiKey)
  		return
-@@ -644,6 +666,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
+@@ -644,6 +667,7 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
  }
  
  func (c *client) buildRequest(req provider.Request) chatRequest {
@@ -1027,7 +1028,7 @@ index 2f804ef..5c5ff26 100644
  	// Repair tool-call pairing before sending: an interrupted/resumed history can
  	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
  	// rejects with a 400 ("must be followed by tool messages …").
-@@ -826,6 +849,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
+@@ -826,6 +850,13 @@ func (c *client) buildPrefixRequest(req provider.Request, content, reasoning str
  func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<- provider.Chunk) (emitted bool, _ error) {
  	defer resp.Body.Close()
  
@@ -1043,10 +1044,10 @@ index 2f804ef..5c5ff26 100644
  	// hanging on a half-open connection. done lets the watchdog exit on a normal
 diff --git a/internal/model/openai/opencode.go b/internal/model/openai/opencode.go
 new file mode 100644
-index 0000000..e7e41c9
+index 0000000..757c931
 --- /dev/null
 +++ b/internal/model/openai/opencode.go
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,99 @@
 +package openai
 +
 +import (
@@ -1096,11 +1097,6 @@ index 0000000..e7e41c9
 +		return
 +	}
 +	provider.ApplyOpenCodeCLIHeaders(h, c.openCodeSession, c.opencodeProject, targetURL)
-+}
-+
-+// isZenHost reports the opencode Zen gateway (host-based IsOpenCode route).
-+func isZenHost(baseURL string) bool {
-+	return provider.OpenCodeFreeTier(baseURL)
 +}
 +
 +// decodedBody couples a Content-Encoding decoder with the underlying response
@@ -1153,10 +1149,10 @@ index 0000000..e7e41c9
 +}
 diff --git a/internal/model/openai/opencode_wire_test.go b/internal/model/openai/opencode_wire_test.go
 new file mode 100644
-index 0000000..5fa925e
+index 0000000..2162e40
 --- /dev/null
 +++ b/internal/model/openai/opencode_wire_test.go
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,129 @@
 +package openai
 +
 +import (
@@ -1233,8 +1229,10 @@ index 0000000..5fa925e
 +	if !strings.HasPrefix(h.Get("x-opencode-request"), "msg_") {
 +		t.Fatalf("x-opencode-request = %q, want msg_ prefix", h.Get("x-opencode-request"))
 +	}
-+	if h.Get("Authorization") != "" {
-+		t.Fatalf("Authorization = %q, want empty for anonymous zen", h.Get("Authorization"))
++	// The zen gate answers 403 FreeTierError without the CLI's own credential,
++	// so "public" must reach the wire verbatim rather than be dropped.
++	if got := h.Get("Authorization"); got != "Bearer public" {
++		t.Fatalf("Authorization = %q, want %q", got, "Bearer public")
 +	}
 +}
 +
@@ -1284,36 +1282,12 @@ index 0000000..5fa925e
 +		t.Fatalf("path-matched provider not renamed = %v", byPath.Tools)
 +	}
 +}
-+
-+func TestIsZenHost(t *testing.T) {
-+	for _, url := range []string{
-+		"https://opencode.ai/zen/v1",
-+		"https://opencode.ai/inference/v1",
-+		"http://127.0.0.1:8080/zen/v1",
-+		"http://127.0.0.1:8080/inference/v1",
-+		"https://gateway.zenmux.ai/v1",
-+	} {
-+		if !isZenHost(url) {
-+			t.Errorf("isZenHost(%q) = false, want true", url)
-+		}
-+	}
-+	for _, url := range []string{
-+		"https://api.deepseek.com",
-+		"https://opencode.ai/zen/go/v1",
-+		"https://opencode.ai/inference/go/v1",
-+		"https://example.com/v1",
-+	} {
-+		if isZenHost(url) {
-+			t.Errorf("isZenHost(%q) = true, want false", url)
-+		}
-+	}
-+}
 diff --git a/internal/model/responses/opencode_wire_test.go b/internal/model/responses/opencode_wire_test.go
 new file mode 100644
-index 0000000..5b84406
+index 0000000..14bc756
 --- /dev/null
 +++ b/internal/model/responses/opencode_wire_test.go
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,145 @@
 +package responses
 +
 +import (
@@ -1417,8 +1391,10 @@ index 0000000..5b84406
 +	if !strings.HasPrefix(h.Get("x-opencode-session"), "ses_") {
 +		t.Fatalf("x-opencode-session = %q, want ses_ prefix", h.Get("x-opencode-session"))
 +	}
-+	if h.Get("Authorization") != "" {
-+		t.Fatalf("Authorization = %q, want empty for anonymous zen", h.Get("Authorization"))
++	// The zen gate answers 403 FreeTierError without the CLI's own credential,
++	// so "public" must reach the wire verbatim rather than be dropped.
++	if got := h.Get("Authorization"); got != "Bearer public" {
++		t.Fatalf("Authorization = %q, want %q", got, "Bearer public")
 +	}
 +	reasoning, _ := seen.body["reasoning"].(map[string]any)
 +	if reasoning["summary"] != "auto" {
@@ -1458,7 +1434,7 @@ index 0000000..5b84406
 +	}
 +}
 diff --git a/internal/model/responses/responses.go b/internal/model/responses/responses.go
-index 3fa4c28..ba38ba1 100644
+index 3fa4c28..4f2e45b 100644
 --- a/internal/model/responses/responses.go
 +++ b/internal/model/responses/responses.go
 @@ -116,6 +116,9 @@ type client struct {
@@ -1514,14 +1490,10 @@ index 3fa4c28..ba38ba1 100644
  	requestCtx := provider.WithRequestAttemptCounter(ctx)
  	body, usedPrevious, wireMessages := c.buildRequestBody(req)
  	resp, err := c.send(requestCtx, body)
-@@ -302,11 +319,17 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
- 			return nil, err
+@@ -303,10 +320,14 @@ func (c *client) send(ctx context.Context, body map[string]any) (*http.Response,
  		}
  		req.Header.Set("Content-Type", "application/json")
--		req.Header.Set("Authorization", "Bearer "+c.apiKey())
-+		if !(c.opencode && strings.EqualFold(strings.TrimSpace(c.apiKey()), "public")) {
-+			req.Header.Set("Authorization", "Bearer "+c.apiKey())
-+		}
+ 		req.Header.Set("Authorization", "Bearer "+c.apiKey())
 +		if c.opencode {
 +			provider.ApplyOpenCodeCLIHeaders(req.Header, c.opencodeSession, c.opencodeProject, c.requestURL)
 +		} else {
@@ -1534,7 +1506,7 @@ index 3fa4c28..ba38ba1 100644
  		provider.ApplyClientIdentity(req)
  		return req, nil
  	}
-@@ -361,6 +384,15 @@ func (c *client) buildRequestBodyWithContinuation(req provider.Request, allowPre
+@@ -361,6 +382,15 @@ func (c *client) buildRequestBodyWithContinuation(req provider.Request, allowPre
  		reasoning["mode"] = mode
  	}
  	if len(reasoning) > 0 {
@@ -1550,7 +1522,7 @@ index 3fa4c28..ba38ba1 100644
  		body["reasoning"] = reasoning
  	}
  	maxOutputTokens := req.MaxTokens
-@@ -486,9 +518,14 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
+@@ -486,9 +516,14 @@ func messagesToInput(messages []provider.Message, vision, replayWebSearchItems b
  					"type":    "reasoning",
  					"content": []map[string]string{{"type": "reasoning_text", "text": message.ReasoningContent}},
  				}
@@ -1622,10 +1594,10 @@ index b58590d..c0af626 100644
 +	return ""
  }
 diff --git a/internal/runtime/agent/execute_one.go b/internal/runtime/agent/execute_one.go
-index a491842..5559f3e 100644
+index fba7cf0..bfe1470 100644
 --- a/internal/runtime/agent/execute_one.go
 +++ b/internal/runtime/agent/execute_one.go
-@@ -156,6 +156,15 @@ func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider
+@@ -160,6 +160,15 @@ func (a *Agent) executeOne(ctx context.Context, turn *turnRuntime, call provider
  // and applies repeat-success and stale-anchor guards.
  func (a *Agent) parseToolCall(ctx context.Context, plan *toolCallPlan) (toolOutcome, bool) {
  	t, canonicalName, ambiguous := a.svc.tools.ResolveCall(plan.call.Name)

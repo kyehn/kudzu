@@ -140,10 +140,11 @@ jobs:
           skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent zed --global --yes
           skills add getpaseo/paseo --agent zed --global --yes
           export PATH="${ANDROID_HOME:+$ANDROID_HOME/platform-tools:}$PATH"
-          opencode models
+          opencode models || true
           rm -rf ~/.dsh/profiles/web/
           dsh --profile paseo --from-default-profile web --dump-config > /dev/null
           dsh plugin --profile paseo add dsh-permission-rules
+          dsh plugin --profile paseo add @wenaixi/dsh-ponytail
           if [[ '${{ inputs.pair-link }}' == 'true' ]]; then
             paseo onboard --relay --voice disable
           else

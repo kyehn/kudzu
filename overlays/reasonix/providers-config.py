@@ -39,7 +39,9 @@ def _provider_dict(
     provider_config: dict[str, Any] = {
         "name": name,
         "kind": kind,
-        "base_url": entry["api"],
+        "base_url": next(iter(entry["models"].values()))
+        .get("provider", {})
+        .get("api", entry["api"]),
         "models": [model_id for model_id, _ in models],
         "default": models[0][0],
         "api_key_env": entry["env"][0],
@@ -126,7 +128,10 @@ def main(argv: list[str] | None = None) -> None:
     for provider in providers:
         entry = models_dev_data[provider]
         response = httpx.get(
-            f"{entry['api'].rstrip('/')}/models", headers={"User-Agent": USER_AGENT}
+            f"{entry['api'].rstrip('/')}/models"
+            if provider != "opencode"
+            else f"{entry['api'].replace('/openai', '').rstrip('/')}/models",
+            headers={"User-Agent": USER_AGENT},
         )
         response.raise_for_status()
         official_model_ids = sorted(model["id"] for model in response.json()["data"])

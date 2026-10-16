@@ -17,3 +17,12 @@ jobs:
           sed -i '/users\.users\.nix-on-droid\.shell = lib.getExe pkgs\.fish;/a users.users.nix-on-droid.uid = lib.mkForce 10377;' nix-on-droid.nix
           sed -i '/users\.users\.nix-on-droid\.shell = lib.getExe pkgs\.fish;/a users.groups.nix-on-droid.gid = lib.mkForce 10377;' nix-on-droid.nix
           nix build --verbose --print-build-logs --impure --print-out-paths .#nixosConfigurations.default.config.system.build.toplevel
+          nix-shell -p lixPackageSets.latest.lix
+          nix build --verbose --print-build-logs --impure --print-out-paths .#nixosConfigurations.default.config.system.build.toplevel
+          exit
+          nix-shell -p nix
+          nix build --verbose --print-build-logs --impure --print-out-paths .#nixosConfigurations.default.config.system.build.toplevel
+          exit
+          nix-shell -p nixVersions.latest
+          nix build --verbose --print-build-logs --impure --print-out-paths .#nixosConfigurations.default.config.system.build.toplevel
+          exit
