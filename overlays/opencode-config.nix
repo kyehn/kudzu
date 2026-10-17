@@ -7,18 +7,22 @@
 }:
 
 let
-  subagent_model = {
+  default_model = {
     providerID = "opencode";
-    model = "muse-spark-1.3-contributor-free";
-    variant = "xhigh";
+    model = "deepseek-v4.1-flash-free";
+    variant = "max";
   };
 in
 writeText "opencode.json" (
   builtins.toJSON {
-    general.model = subagent_model;
-    explore.model = subagent_model;
     "$schema" = "https://opencode.ai/config.json";
-    model = "opencode/muse-spark-1.3-contributor-free";
+    model = default_model;
+    general.model = default_model;
+    explore.model = {
+      providerID = "opencode";
+      model = "beam-free";
+      variant = "max";
+    };
     update = "disable";
     snapshots = false;
     formatter = false;

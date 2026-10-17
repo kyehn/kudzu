@@ -1,17 +1,8 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index 68b09e7..768b8ea 100644
+index 9f6c704..32a60d3 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -10,7 +10,7 @@ homepage = "https://maki.sh"
- readme = "README.md"
- keywords = ["ai", "agent", "cli", "tui", "coding"]
- categories = ["command-line-utilities", "development-tools"]
--rust-version = "1.99"
-+rust-version = "1.98"
- 
- [[bin]]
- name = "maki"
-@@ -76,7 +76,7 @@ edition = "2024"
+@@ -72,7 +72,7 @@ edition = "2024"
  authors = ["Tony Solomonik <tony.solomonik@gmail.com>"]
  license = "MIT"
  repository = "https://github.com/tontinton/maki"
@@ -114,7 +105,7 @@ index 8b70bee..0ae611b 100644
      const CARRY_UNSENT_MSG: &str = "carried input is not the summariser's to read";
      const CARRY_KEPT_MSG: &str = "carried input must outlive the summary verbatim";
 diff --git a/maki-providers/src/providers/anthropic/mod.rs b/maki-providers/src/providers/anthropic/mod.rs
-index 67d1271..bb95b7b 100644
+index 35b808e..48d5e14 100644
 --- a/maki-providers/src/providers/anthropic/mod.rs
 +++ b/maki-providers/src/providers/anthropic/mod.rs
 @@ -28,7 +28,7 @@ use crate::{
@@ -793,10 +784,10 @@ index 0305439..f700370 100644
      fn config_headers_append_unknown_and_replace_same_name() {
          let mut auth = test_bearer("sk-1");
 diff --git a/maki-providers/src/providers/openai/responses.rs b/maki-providers/src/providers/openai/responses.rs
-index ceb1ca6..d4bf4bc 100644
+index 00375a4..27b8928 100644
 --- a/maki-providers/src/providers/openai/responses.rs
 +++ b/maki-providers/src/providers/openai/responses.rs
-@@ -228,14 +228,17 @@ async fn post_responses(
+@@ -229,14 +229,17 @@ async fn post_responses(
  ) -> Result<StreamResponse, AgentError> {
      let json_body = serde_json::to_vec(body)?;
  
@@ -822,7 +813,7 @@ index ceb1ca6..d4bf4bc 100644
  
      debug!(
 diff --git a/maki-providers/src/providers/openai_compat.rs b/maki-providers/src/providers/openai_compat.rs
-index 3e21f06..a2cb894 100644
+index 92423a6..66afb8b 100644
 --- a/maki-providers/src/providers/openai_compat.rs
 +++ b/maki-providers/src/providers/openai_compat.rs
 @@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer};
@@ -831,10 +822,10 @@ index 3e21f06..a2cb894 100644
  
 -use super::ResolvedAuth;
 +use super::{ResolvedAuth, opencode_tls};
+ use super::copilot::copilot_usd;
  use crate::model::ModelFamily;
  use crate::types::rejects_sampling;
- use crate::{
-@@ -117,12 +117,14 @@ impl OpenAiCompatProvider {
+@@ -118,12 +118,14 @@ impl OpenAiCompatProvider {
          url: &str,
      ) -> Result<String, AgentError> {
          let request = auth
@@ -855,7 +846,7 @@ index 3e21f06..a2cb894 100644
              .body(())?;
          let mut response = self.client.send_async(request).await?;
          if response.status().as_u16() != 200 {
-@@ -138,13 +140,17 @@ impl OpenAiCompatProvider {
+@@ -139,13 +141,17 @@ impl OpenAiCompatProvider {
          content_type: &str,
          body: &[u8],
      ) -> Result<String, AgentError> {
@@ -880,7 +871,7 @@ index 3e21f06..a2cb894 100644
          let request = builder
              .header("content-type", content_type)
              .body(body.to_vec())?;
-@@ -213,12 +219,15 @@ impl OpenAiCompatProvider {
+@@ -214,12 +220,15 @@ impl OpenAiCompatProvider {
          auth: &ResolvedAuth,
      ) -> isahc::http::request::Builder {
          let base = self.base_url(auth);

@@ -9,7 +9,7 @@
 }:
 
 (formats.toml { }).generate "config.toml" {
-  default_model = "opencode-responses/muse-spark-1.3-contributor-free";
+  default_model = "opencode/deepseek-v4.1-flash-free";
   language = "zh";
   auto_submit = true;
   ui.show_reasoning = true;

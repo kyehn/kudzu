@@ -32,7 +32,7 @@ linkFarm "maki" [
             skill.plugin_dev = false;
           };
           provider = {
-            default_model = "opencode-openai-responses/muse-spark-1.3-contributor-free";
+            default_model = "opencode-openai/deepseek-v4.1-flash-free";
             allowed_models = [
               "opencode-*/*"
               "nvidia-*/*"

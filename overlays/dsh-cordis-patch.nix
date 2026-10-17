@@ -285,8 +285,9 @@
   {
     id = "agent-default-model";
     config = {
-      provider = "opencode-openai-responses";
-      model = "muse-spark-1.3-contributor-free";
+      provider = "opencode-openai";
+      model = "deepseek-v4.1-flash-free";
+      reasoningEffort = "max";
     };
   }
 ]

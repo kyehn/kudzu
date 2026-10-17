@@ -35,7 +35,7 @@ writeText "settings.json" (
       FFF_WARN_HOME_SCAN = 0;
     };
     defaultProvider = "opencode";
-    defaultModel = "muse-spark-1.3-contributor-free";
+    defaultModel = "deepseek-v4.1-flash-free";
     defaultThinkingLevel = "max";
   }
 )
