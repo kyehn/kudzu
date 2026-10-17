@@ -15,6 +15,8 @@ final: prev: {
   opencode-config = prev.callPackage ./opencode-config.nix { };
   reasonix = prev.callPackage ./reasonix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
+  pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
+  pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   rfv = prev.writeShellScriptBin "rfv" (
     builtins.readFile (
       prev.replaceVars ./rfv {

@@ -60,7 +60,20 @@
 				]
 			},
 			"pi": {
-				"enabled": false
+				"command": [
+					"systemd-run",
+					"--user",
+					"--scope",
+					"-p",
+					"MemoryMax=7G",
+					"-p",
+					"TasksMax=512",
+					"--",
+					"nice",
+					"-n",
+					"10",
+					"pi"
+				]
 			},
 			"antigravity": {
 				"enabled": false

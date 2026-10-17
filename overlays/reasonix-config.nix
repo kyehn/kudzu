@@ -21,7 +21,7 @@
     max_subagent_depth = 2;
     max_subagent_concurrency = 3;
     max_parallel_writers = 3;
-    compact_ratio = 0.6;
+    compact_ratio = 0.7;
   };
   tools = {
     enabled = [ ];

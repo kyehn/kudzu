@@ -19,7 +19,7 @@ linkFarm "maki" [
           always_thinking = "adaptive";
           agent = {
             max_continuation_turns = 19;
-            compaction_buffer = "40%";
+            compaction_buffer = "30%";
           };
           telemetry.enabled = false;
           plugins = {
