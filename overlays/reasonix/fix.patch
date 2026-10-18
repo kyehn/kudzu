@@ -664,49 +664,6 @@ index 0000000..6b2d655
 +		t.Fatal("file: URLs must not qualify")
 +	}
 +}
-diff --git a/internal/frontend/acp/server_test.go b/internal/frontend/acp/server_test.go
-index 01b8643..f64fd10 100644
---- a/internal/frontend/acp/server_test.go
-+++ b/internal/frontend/acp/server_test.go
-@@ -1249,8 +1249,10 @@ func TestServeSessionAxesStayIndependent(t *testing.T) {
- 		t.Fatalf("initial agent_preset = %+v, want balanced", agentOpt)
- 	}
- 	approval, ok := findConfigOption(nr.ConfigOptions, "tool_approval")
--	if !ok || approval.CurrentValue != control.ToolApprovalAsk {
--		t.Fatalf("initial tool approval = %+v, want ask", approval)
-+	// Overlay default: ACP sessions start in YOLO (no human watches the
-+	// approval cards), not upstream ask.
-+	if !ok || approval.CurrentValue != control.ToolApprovalYolo {
-+		t.Fatalf("initial tool approval = %+v, want yolo", approval)
- 	}
- 
- 	buildsBefore := factory.buildCount()
-diff --git a/internal/frontend/acp/session.go b/internal/frontend/acp/session.go
-index c245d91..5a4a312 100644
---- a/internal/frontend/acp/session.go
-+++ b/internal/frontend/acp/session.go
-@@ -55,7 +55,11 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
- 	if err != nil {
- 		return nil, &RPCError{Code: ErrInternal, Message: "session/new: " + err.Error()}
- 	}
--	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalAsk)
-+	// ACP sessions drive automation with no human watching the approval
-+	// cards: start in YOLO so permission-gated tool calls do not hang the
-+	// turn waiting for an answer that never comes. The client can still drop
-+	// back to Ask via session/set_config_option (switchSessionToolApproval).
-+	cfgState = withToolApprovalConfig(cfgState, control.ToolApprovalYolo)
- 	runtimeState, err := s.sessionRuntimeState(ctx, SessionRuntimeStateParams{
- 		Cwd: cwd, Model: cfgState.Model, RuntimeProfile: cfgState.RuntimeProfile,
- 	})
-@@ -99,7 +103,7 @@ func (s *service) sessionNew(ctx context.Context, raw json.RawMessage) (any, err
- 		model:            cfgState.Model,
- 		effortOverride:   cloneStringPtr(cfgState.EffortOverride),
- 		runtimeProfile:   cfgState.RuntimeProfile,
--		toolApprovalMode: control.ToolApprovalAsk,
-+		toolApprovalMode: control.ToolApprovalYolo,
- 		runtimeState:     runtimeState,
- 		status:           newStatusTelemetry(),
- 		modeID:           sessionModeNormal,
 diff --git a/internal/model/anthropic/anthropic.go b/internal/model/anthropic/anthropic.go
 index b906b0f..6206343 100644
 --- a/internal/model/anthropic/anthropic.go

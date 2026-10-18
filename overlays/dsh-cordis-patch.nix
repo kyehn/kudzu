@@ -104,7 +104,7 @@
   {
     id = "compaction-basic";
     name = "@deepseek-ai/dsh-compaction-basic";
-    config.thresholdRatio = 0.7;
+    config.thresholdRatio = 0.75;
   }
   {
     id = "permission";

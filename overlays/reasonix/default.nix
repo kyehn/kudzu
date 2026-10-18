@@ -12,18 +12,18 @@
 
 buildGoModule (finalAttrs: {
   pname = "reasonix";
-  version = "2.43.0";
+  version = "2.45.0";
 
   src = fetchFromGitHub {
     owner = "esengine";
     repo = "DeepSeek-Reasonix";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-DkVq9jkl3jCbE7Es418SOgf36AsosIMkdxJQpmSFuVk=";
+    hash = "sha256-4lJwnUj00teCQ3TAchwk3ml4jDGCdZohZlKHFirhh+M=";
   };
 
   patches = [ ./fix.patch ];
 
-  vendorHash = "sha256-fGtvx4+RNr/VVoVx8s5bx9Lvg8R2cokwAVb3qVPyrWY=";
+  vendorHash = "sha256-7EjcdyAvG+d5jTm8TEsWCc2sCTe/toNDbVdSEbmViso=";
 
   subPackages = [ "cmd/reasonix" ];
 

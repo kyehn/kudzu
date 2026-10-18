@@ -40,7 +40,9 @@
 					"-n",
 					"10",
 					"reasonix",
-					"acp"
+					"acp",
+					"--permission-mode",
+					"bypassPermissions"
 				]
 			},
 			"opencode": {
