@@ -30,6 +30,7 @@ writeText "opencode.json" (
     warming = false;
     plugins = [
       "@cortexkit/opencode-magic-context"
+      "@dietrichgebert/ponytail"
       {
         package = "@prevalentware/opencode-goal-plugin";
         options = {

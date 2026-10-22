@@ -36,6 +36,7 @@ linkFarm "maki" [
             allowed_models = [
               "opencode-*/*"
               "nvidia-*/*"
+              "kilo-*/*"
             ];
             max_retries = 12;
             max_timeout_retries = 17;

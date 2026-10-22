@@ -139,7 +139,7 @@
       settings = {
         opener.edit = [
           {
-            run = "$\{EDITOR:-hx\} \"$@\"";
+            run = "''${"EDITOR:-hx"} \"$@\"";
             block = true;
             for = "unix";
           }

@@ -26,7 +26,8 @@ USER_AGENTS = {
 }
 USER_AGENT = USER_AGENTS["openai"]
 MAKI_PROVIDERS = Path.home() / ".config" / "maki" / "providers.toml"
-PROVIDER_NAMES = ("opencode", "nvidia")
+PROVIDER_NAMES = ("opencode", "nvidia", "kilo")
+NO_AUTH_PROVIDERS = {"kilo"}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -136,13 +137,18 @@ def main(argv: list[str] | None = None) -> None:
                 model_config["pricing_input"] = 0.0
                 model_config["pricing_output"] = 0.0
                 model_configs.append(model_config)
+            if provider == "opencode":
+                api_key = "public"
+            elif provider in NO_AUTH_PROVIDERS:
+                api_key = ""
+            else:
+                api_key = os.getenv(entry["env"][0])
             provider_config = {
                 "display_name": f"{provider} {protocol}",
                 "protocol": protocol,
-                "base_url": next(iter(entry["models"].values()))
-                .get("provider", {})
-                .get("api", entry["api"]),
-                "api_key": "public" if provider == "opencode" else None,
+                "base_url": (provider_models[0][1].get("provider") or {}).get("api")
+                or entry["api"],
+                "api_key": api_key,
                 "discover_models": False,
                 "models": model_configs,
                 "default_model": provider_models[0][0],
@@ -152,8 +158,6 @@ def main(argv: list[str] | None = None) -> None:
                     "User-Agent": USER_AGENTS[protocol],
                     "x-opencode-client": "cli",
                 }
-            else:
-                provider_config["api_key"] = os.getenv(entry["env"][0])
             new_providers[f"{provider}-{protocol}"] = provider_config
     existing_raw = (
         tomllib.loads(MAKI_PROVIDERS.read_text(encoding="utf-8"))

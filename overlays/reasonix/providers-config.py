@@ -25,8 +25,8 @@ USER_AGENTS = {
 }
 USER_AGENT = USER_AGENTS["openai"]
 REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
-PROVIDER_NAMES = ("opencode", "nvidia")
-# models.dev cost 单位为美元 (USD)
+PROVIDER_NAMES = ("opencode", "nvidia", "kilo")
+NO_AUTH_PROVIDERS = {"kilo"}
 BILLING_CURRENCY = "USD"
 
 
@@ -39,12 +39,10 @@ def _provider_dict(
     provider_config: dict[str, Any] = {
         "name": name,
         "kind": kind,
-        "base_url": next(iter(entry["models"].values()))
-        .get("provider", {})
-        .get("api", entry["api"]),
+        "base_url": (models[0][1].get("provider") or {}).get("api") or entry["api"],
         "models": [model_id for model_id, _ in models],
         "default": models[0][0],
-        "api_key_env": entry["env"][0],
+        "api_key_env": "" if name in NO_AUTH_PROVIDERS else entry["env"][0],
         "context_window": max(
             model.get("limit", {}).get("context", 0) for _, model in models
         ),

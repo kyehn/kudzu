@@ -24,7 +24,8 @@ USER_AGENTS = {
 }
 USER_AGENT = USER_AGENTS["openai-completions"]
 DSH_PATCH = Path.home() / ".dsh" / "cordis.patch.yml"
-PROVIDER_NAMES = ("opencode", "nvidia")
+PROVIDER_NAMES = ("opencode", "nvidia", "kilo")
+NO_AUTH_PROVIDERS = {"kilo"}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -124,16 +125,18 @@ def main(argv: list[str] | None = None) -> None:
             provider_config: dict[str, Any] = {
                 "displayName": f"{provider} {protocol}",
                 "api": protocol,
-                "baseURL": next(iter(entry["models"].values()))
-                .get("provider", {})
-                .get("api", entry["api"]),
-                "apiKeyEnv": entry["env"][0],
+                "baseURL": (provider_models[0][1].get("provider") or {}).get("api")
+                or entry["api"],
                 "retryPolicy": {
                     "mode": "normal",
                     "maxRetries": 9,
                 },
                 "models": model_configs,
             }
+            if provider in NO_AUTH_PROVIDERS:
+                provider_config["headers"] = {"Authorization": "Bearer "}
+            else:
+                provider_config["apiKeyEnv"] = entry["env"][0]
             if provider == "opencode":
                 provider_config["headers"] = {
                     "User-Agent": USER_AGENTS[protocol],
