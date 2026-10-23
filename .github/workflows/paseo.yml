@@ -105,15 +105,21 @@ jobs:
           npm install --global --yes @tobilu/qmd
       - run: |
           overlays/maki/providers-config.py
-          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
+          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY) | .refs.TOKENPLAN_API_KEY = strenv(TOKENPLAN_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          TOKENPLAN_API_KEY: ${{ secrets.TOKENPLAN_API_KEY }}
       - run: overlays/reasonix/providers-config.py
         working-directory: ${{ github.event.repository.name }}
       - run: |
           echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
           echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
+          echo "TOKENPLAN_API_KEY=${{ secrets.TOKENPLAN_API_KEY }}" >> ~/.reasonix/.env
+      - run: overlays/intern-providers-config.py
+        working-directory: ${{ github.event.repository.name }}
+        env:
+          TOKENPLAN_API_KEY: ${{ secrets.TOKENPLAN_API_KEY }}
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -170,13 +176,19 @@ jobs:
           install -m 0644 overlays/pi-rtk-optimizer-config.json ~/.pi/agent/extensions/pi-rtk-optimizer/config.json
           install -m 0644 overlays/pi-permission-system-config.json ~/.pi/agent/extensions/pi-permission-system/config.json
           opencode models || true
+          pushd $HOME
           # warp -del
           warp -reg
-          sudo systemd-run --unit=warp --no-block --collect warp
-          opencode service set env HTTP_PROXY http://127.0.0.1:4000
-          opencode service set env HTTPS_PROXY http://127.0.0.1:4000
+          nohup warp > warp.log 2>&1 &
+          popd
+          PROXY_URL="http://127.0.0.1:4000"
+          # PROXY_URL="$(.github/get-proxy)"
+          opencode service set env HTTP_PROXY "$PROXY_URL"
+          opencode service set env HTTPS_PROXY "$PROXY_URL"
           opencode service set env NO_PROXY localhost,127.0.0.1,::1
           opencode service restart
+          # opencode service unset env HTTPS_PROXY
+          # opencode service unset env HTTP_PROXY
           rm -rf ~/.dsh/profiles/web/
           dsh --profile paseo --from-default-profile web --dump-config > /dev/null
           dsh plugin --profile paseo add dsh-permission-rules

@@ -28,4 +28,12 @@ final: prev: {
       }
     )
   );
+  proxy-one = prev.writeShellScriptBin "proxy-one" (
+    builtins.readFile (
+      prev.replaceVars ./proxy-one {
+        curl = prev.lib.getExe prev.curl;
+        python3 = prev.lib.getExe (prev.python3.withPackages (ps: [ ps.requests ]));
+      }
+    )
+  );
 }

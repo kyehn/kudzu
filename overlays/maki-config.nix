@@ -37,6 +37,7 @@ linkFarm "maki" [
               "opencode-*/*"
               "nvidia-*/*"
               "kilo-*/*"
+              "intern-ai/*"
             ];
             max_retries = 12;
             max_timeout_retries = 17;

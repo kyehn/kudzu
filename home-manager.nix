@@ -137,13 +137,6 @@
     yazi = {
       enable = true;
       settings = {
-        opener.edit = [
-          {
-            run = "''${"EDITOR:-hx"} \"$@\"";
-            block = true;
-            for = "unix";
-          }
-        ];
         mgr = {
           show_hidden = true;
           sort_dir_first = true;

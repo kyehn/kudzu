@@ -18,11 +18,6 @@ writeText "opencode.json" (
     "$schema" = "https://opencode.ai/config.json";
     model = default_model;
     general.model = default_model;
-    explore.model = {
-      providerID = "opencode";
-      model = "beam-free";
-      variant = "max";
-    };
     update = "disable";
     snapshots = false;
     formatter = false;
