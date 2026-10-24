@@ -59,6 +59,7 @@ jobs:
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
+            ~/.codebuddy
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl
@@ -78,7 +79,7 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit" "$HOME/.reasonix" "$HOME/.pi/agent/extensions"
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit" "$HOME/.reasonix" "$HOME/.pi/agent/extensions" "$HOME/.codebuddy"
           nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki .#reasonix nixpkgs#bun .#warp-go --impure
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
@@ -103,23 +104,22 @@ jobs:
           pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           npm install --global --yes @tobilu/qmd
+          npm install --global --yes @tencent-ai/codebuddy-code
+          install -m 0644 .github/codebuddy-settings.json ~/.codebuddy/settings.json
+          curl -L --output cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
       - run: |
           overlays/maki/providers-config.py
-          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY) | .refs.TOKENPLAN_API_KEY = strenv(TOKENPLAN_API_KEY)' ~/.dsh/.credentials.yaml
+          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          TOKENPLAN_API_KEY: ${{ secrets.TOKENPLAN_API_KEY }}
       - run: overlays/reasonix/providers-config.py
         working-directory: ${{ github.event.repository.name }}
       - run: |
           echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
           echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
-          echo "TOKENPLAN_API_KEY=${{ secrets.TOKENPLAN_API_KEY }}" >> ~/.reasonix/.env
-      - run: overlays/intern-providers-config.py
-        working-directory: ${{ github.event.repository.name }}
-        env:
-          TOKENPLAN_API_KEY: ${{ secrets.TOKENPLAN_API_KEY }}
       - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
@@ -137,6 +137,7 @@ jobs:
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
         env:
+          DISABLE_AUTOUPDATER: 1
           PI_SKIP_VERSION_CHECK: "1"
           PI_TELEMETRY: "0"
           DSH_TELEMETRY_DISABLED: 1
@@ -180,6 +181,8 @@ jobs:
           # warp -del
           warp -reg
           nohup warp > warp.log 2>&1 &
+          CODEBUDDY_CODE_CORS_ORIGINS="https://*.trycloudflare.com" nohup codebuddy --serve --auth none --host 0.0.0.0 --port 8080 > codebuddy.log 2>&1 &
+          nohup cloudflared tunnel --url http://localhost:8080 > cloudflared.log 2>&1 &
           popd
           PROXY_URL="http://127.0.0.1:4000"
           # PROXY_URL="$(.github/get-proxy)"
@@ -187,8 +190,8 @@ jobs:
           opencode service set env HTTPS_PROXY "$PROXY_URL"
           opencode service set env NO_PROXY localhost,127.0.0.1,::1
           opencode service restart
-          # opencode service unset env HTTPS_PROXY
-          # opencode service unset env HTTP_PROXY
+          opencode service unset env HTTPS_PROXY
+          opencode service unset env HTTP_PROXY
           rm -rf ~/.dsh/profiles/web/
           dsh --profile paseo --from-default-profile web --dump-config > /dev/null
           dsh plugin --profile paseo add dsh-permission-rules
@@ -216,6 +219,7 @@ jobs:
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
+            ~/.codebuddy
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl
