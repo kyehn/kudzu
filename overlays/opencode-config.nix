@@ -30,7 +30,7 @@ writeText "opencode.json" (
         package = "@prevalentware/opencode-goal-plugin";
         options = {
           max_auto_turns = 35;
-          max_prompt_failures = 7;
+          max_prompt_failures = 9;
           locale = "zh-CN";
           max_no_progress_turns = 5;
         };

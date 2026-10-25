@@ -9,7 +9,7 @@
 }:
 
 (formats.toml { }).generate "config.toml" {
-  default_model = "opencode/deepseek-v4.1-flash-free";
+  default_model = "nvidia/minimax-m3.1-flash";
   language = "zh";
   auto_submit = true;
   ui.show_reasoning = true;

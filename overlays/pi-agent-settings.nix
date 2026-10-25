@@ -11,8 +11,8 @@ writeText "settings.json" (
     fullscreenCopyOnSelect = false;
     enableSkillCommands = false;
     retry = {
-      maxRetries = 9;
-      provider.maxRetries = 9;
+      maxRetries = 12;
+      provider.maxRetries = 12;
     };
     packages = [
       "npm:pi-background-tasks"
@@ -34,8 +34,8 @@ writeText "settings.json" (
       FFF_ENABLE_HOME_SCAN = 0;
       FFF_WARN_HOME_SCAN = 0;
     };
-    defaultProvider = "opencode";
-    defaultModel = "deepseek-v4.1-flash-free";
+    defaultProvider = "nvidia";
+    defaultModel = "minimax-m3.1-flash";
     defaultThinkingLevel = "max";
   }
 )
