@@ -21,9 +21,7 @@ buildGoModule (finalAttrs: {
     hash = "sha256-gj6czLQq5jwnbD8pUtZ2YUv3CvaqMm5eCb5j+gxLlB8=";
   };
 
-  patches = [ ./fix.patch ];
-
-  vendorHash = "sha256-7EjcdyAvG+d5jTm8TEsWCc2sCTe/toNDbVdSEbmViso=";
+  vendorHash = "sha256-hODZ6AIcYb+ZfPpW+aSIiNyV27wIvCG+09WqqzCIAAs=";
 
   subPackages = [ "cmd/reasonix" ];
 

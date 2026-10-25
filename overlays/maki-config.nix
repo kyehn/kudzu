@@ -3,8 +3,6 @@
   linkFarm,
   writeText,
   formats,
-  mcp-nixos,
-  context7-mcp,
   open-websearch,
 }:
 
@@ -32,12 +30,13 @@ linkFarm "maki" [
             skill.plugin_dev = false;
           };
           provider = {
-            default_model = "opencode-openai/deepseek-v4.1-flash-free";
+            default_model = "nvidia/minimaxai/minimax-m3.1-flash";
             allowed_models = [
-              "opencode-*/*"
-              "nvidia-*/*"
-              "kilo-*/*"
-              "intern-ai/*"
+              "nvidia*/*"
+              "kilo*/*"
+            ];
+            excluded_models = [
+              "opencode*/*"
             ];
             max_retries = 12;
             max_timeout_retries = 17;
@@ -78,8 +77,6 @@ linkFarm "maki" [
     name = "mcp.toml";
     path = (formats.toml { }).generate "mcp.toml" {
       mcp = {
-        mcp-nixos.command = [ (lib.getExe mcp-nixos) ];
-        context7-mcp.command = [ (lib.getExe context7-mcp) ];
         mobile-mcp.command = [ "mcp-server-mobile" ];
         open-websearch = {
           command = [ (lib.getExe open-websearch) ];

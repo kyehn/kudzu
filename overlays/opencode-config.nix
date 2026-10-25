@@ -1,8 +1,6 @@
 {
   lib,
   writeText,
-  mcp-nixos,
-  context7-mcp,
   open-websearch,
 }:
 
@@ -111,14 +109,6 @@ writeText "opencode.json" (
     experimental.portable_shell_scanner = true;
     compaction.auto = false;
     mcp.servers = {
-      mcp-nixos = {
-        type = "local";
-        command = [ (lib.getExe mcp-nixos) ];
-      };
-      context7-mcp = {
-        type = "local";
-        command = [ (lib.getExe context7-mcp) ];
-      };
       mobile-mcp = {
         type = "local";
         command = [ "mcp-server-mobile" ];

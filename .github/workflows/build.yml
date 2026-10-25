@@ -38,7 +38,7 @@ jobs:
           nix flake update
       - if: ${{ inputs.package != '' }}
         run: |
-          nix build --verbose --print-build-logs --print-out-paths --impure .#${{ inputs.package }}
+          nix build --print-build-logs --print-out-paths --impure .#${{ inputs.package }}
       - if: ${{ inputs.command != '' }}
         run: ${{ inputs.command }}
-        # nix build --verbose --print-build-logs --print-out-paths --impure github:NixOS/nixpkgs/master#librewolf
+        # nix build --print-build-logs --print-out-paths --impure github:NixOS/nixpkgs/master#librewolf

@@ -9,11 +9,11 @@ final: prev: {
     else
       prev.nixVersions.latest;
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
-  maki = prev.callPackage ./maki { };
+  opencode-config = prev.callPackage ./opencode-config.nix { };
+  maki = prev.callPackage ./maki.nix { };
   maki-config = prev.callPackage ./maki-config.nix { };
   dsh-cordis-patch = prev.callPackage ./dsh-cordis-patch.nix { };
-  opencode-config = prev.callPackage ./opencode-config.nix { };
-  reasonix = prev.callPackage ./reasonix { };
+  reasonix = prev.callPackage ./reasonix.nix { };
   reasonix-config = prev.callPackage ./reasonix-config.nix { };
   warp-go = prev.callPackage ./warp-go.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
@@ -25,14 +25,6 @@ final: prev: {
         fzf = prev.lib.getExe prev.fzf;
         hx = prev.lib.getExe prev.helix;
         bat = prev.lib.getExe prev.bat;
-      }
-    )
-  );
-  proxy-one = prev.writeShellScriptBin "proxy-one" (
-    builtins.readFile (
-      prev.replaceVars ./proxy-one {
-        curl = prev.lib.getExe prev.curl;
-        python3 = prev.lib.getExe (prev.python3.withPackages (ps: [ ps.requests ]));
       }
     )
   );

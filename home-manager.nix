@@ -25,12 +25,12 @@
             installPhase = ''
               runHook preInstall
 
-              install MapleMonoNormal-NF-CN-Medium.ttf -D --target-directory $out/share/fonts/truetype
+              install MapleMonoNormal-NF-CN-Regular.ttf -D --target-directory $out/share/fonts/truetype
 
               runHook postInstall
             '';
           })
-        }/share/fonts/truetype/MapleMonoNormal-NF-CN-Medium.ttf";
+        }/share/fonts/truetype/MapleMonoNormal-NF-CN-Regular.ttf";
         termux-properties = lib.generators.toINIWithGlobalSection { } {
           globalSection.enforce-char-based-input = true;
         };

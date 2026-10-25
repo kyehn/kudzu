@@ -1,8 +1,6 @@
 {
   lib,
   writeText,
-  mcp-nixos,
-  context7-mcp,
   open-websearch,
 }:
 
@@ -18,8 +16,6 @@ writeText "mcp.json" (
       trace.enabled = false;
     };
     mcpServers = {
-      mcp-nixos.command = lib.getExe mcp-nixos;
-      context7-mcp.command = lib.getExe context7-mcp;
       mobile-mcp.command = "mcp-server-mobile";
       open-websearch = {
         command = lib.getExe open-websearch;

@@ -2,32 +2,12 @@
   lib,
   linkFarm,
   formats,
-  mcp-nixos,
-  context7-mcp,
   open-websearch,
 }:
 
 (formats.yaml { }).generate "cordis.patch.yml" [
   {
     insert = [
-      {
-        id = "mcp-nixos";
-        name = "@deepseek-ai/dsh-mcp-client";
-        config = {
-          transport = "stdio";
-          serverName = "mcp-nixos";
-          command = lib.getExe mcp-nixos;
-        };
-      }
-      {
-        id = "context7-mcp";
-        name = "@deepseek-ai/dsh-mcp-client";
-        config = {
-          transport = "stdio";
-          serverName = "context7-mcp";
-          command = lib.getExe context7-mcp;
-        };
-      }
       {
         id = "open-websearch";
         name = "@deepseek-ai/dsh-mcp-client";
@@ -285,8 +265,8 @@
   {
     id = "agent-default-model";
     config = {
-      provider = "opencode-openai";
-      model = "deepseek-v4.1-flash-free";
+      provider = "nvidia";
+      model = "minimaxai/minimax-m3.1-flash";
       reasoningEffort = "max";
     };
   }

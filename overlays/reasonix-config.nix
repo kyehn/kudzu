@@ -1,15 +1,13 @@
 {
   lib,
   formats,
-  mcp-nixos,
-  context7-mcp,
   ripgrep,
   bashNonInteractive,
   open-websearch,
 }:
 
 (formats.toml { }).generate "config.toml" {
-  default_model = "opencode/deepseek-v4.1-flash-free";
+  default_model = "nvidia/minimaxai/minimax-m3.1-flash";
   language = "zh";
   auto_submit = true;
   ui.show_reasoning = true;
@@ -66,17 +64,6 @@
     protect_sensitive_files = false;
   };
   plugins = [
-    {
-      name = "mcp-nixos";
-      type = "stdio";
-      command = lib.getExe mcp-nixos;
-    }
-    {
-      name = "context7-mcp";
-      type = "stdio";
-      command = lib.getExe context7-mcp;
-      concurrency = "serial";
-    }
     {
       name = "mobile-mcp";
       type = "stdio";

@@ -22,8 +22,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoHash = "sha256-Gfp8gE7brcs5lb4uojQqtcOzdTkd0JRQJkhREeLQc9M=";
 
-  patches = [ ./fix.patch ];
-
   nativeBuildInputs = [
     pkg-config
     perl

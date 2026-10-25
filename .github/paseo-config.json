@@ -45,22 +45,6 @@
 					"bypassPermissions"
 				]
 			},
-			"opencode": {
-				"command": [
-					"systemd-run",
-					"--user",
-					"--scope",
-					"-p",
-					"MemoryMax=7G",
-					"-p",
-					"TasksMax=512",
-					"--",
-					"nice",
-					"-n",
-					"10",
-					"opencode"
-				]
-			},
 			"pi": {
 				"command": [
 					"systemd-run",
@@ -94,9 +78,6 @@
 			},
 			"claude": {
 				"enabled": false
-			},
-			"codebuddy": {
-				"enabled": true
 			}
 		}
 	},

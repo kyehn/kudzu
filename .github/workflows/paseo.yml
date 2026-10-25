@@ -59,7 +59,6 @@ jobs:
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
-            ~/.codebuddy
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl
@@ -79,65 +78,45 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.config/cortexkit" "$HOME/.reasonix" "$HOME/.pi/agent/extensions" "$HOME/.codebuddy"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki .#reasonix nixpkgs#bun .#warp-go --impure
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.dsh" "$HOME/.config/cortexkit" "$HOME/.reasonix" "$HOME/.pi/agent/extensions"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki .#reasonix nixpkgs#bun nixpkgs#pnpm .#warp-go --impure
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
-          nix build --verbose --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
+          nix build --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           npm install --global --yes @deepseek-ai/dsh@latest
-          npm install --global --yes pnpm
-          dsh_llm_pi_ai="$(npm root -g)/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-llm-pi-ai" && patch --dry-run -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch && patch -p1 -d "$dsh_llm_pi_ai" < overlays/dsh/opencode-headers.patch
-          nix build --verbose --print-build-logs --print-out-paths --impure .#dsh-cordis-patch --out-link /tmp/dsh-cordis-patch && install -m 0644 /tmp/dsh-cordis-patch ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-cordis-patch
-          overlays/dsh/providers-config.py
+          nix build --print-build-logs --print-out-paths --impure .#dsh-cordis-patch --out-link /tmp/dsh-cordis-patch && install -m 0644 /tmp/dsh-cordis-patch ~/.dsh/cordis.patch.yml && rm -rf /tmp/dsh-cordis-patch
           npm install --global --yes @opencode/cli
           nix build --verbose --print-build-logs --print-out-paths --impure .#opencode-config --out-link /tmp/opencode-config && install -m 0644 /tmp/opencode-config ~/.config/opencode/opencode.json && rm -f /tmp/opencode-config
           install -m 0644 .github/AGENTS.md ~/.config/opencode/AGENTS.md
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           npm install --global --yes @mobilenext/mobile-mcp
-          nix build --verbose --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
+          nix build --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
           install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
-          nix build --verbose --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.pi/agent/mcp.json && rm -f /tmp/pi-agent-mcp
-          cp -r .github/pi-opencode ~/.pi/agent/extensions/pi-opencode
-          pushd ~/.pi/agent/extensions/pi-opencode && npm install --yes && popd
+          nix build --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
+          nix build --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.pi/agent/mcp.json && rm -f /tmp/pi-agent-mcp
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           npm install --global --yes @tobilu/qmd
-          npm install --global --yes @tencent-ai/codebuddy-code
-          install -m 0644 .github/codebuddy-settings.json ~/.codebuddy/settings.json
-          curl -L --output cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-          chmod +x cloudflared
-          sudo mv cloudflared /usr/local/bin/
-      - run: |
-          overlays/maki/providers-config.py
-          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
-        working-directory: ${{ github.event.repository.name }}
-        env:
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      - run: overlays/reasonix/providers-config.py
-        working-directory: ${{ github.event.repository.name }}
       - run: |
           echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
-          echo "OPENCODE_API_KEY=public" >> ~/.reasonix/.env
-      - run: |
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
-            "opencode": {
-              "type": "api_key",
-              "key": "public"
-            },
             "nvidia": {
               "type": "api_key",
               "key": "${{ secrets.NVIDIA_API_KEY }}"
             }
           }
           EOF
+          overlays/providers-config.py
+          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
+        working-directory: ${{ github.event.repository.name }}
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       - run: echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
       - id: onboard
         working-directory: ${{ github.event.repository.name }}
         env:
-          DISABLE_AUTOUPDATER: 1
           PI_SKIP_VERSION_CHECK: "1"
           PI_TELEMETRY: "0"
           DSH_TELEMETRY_DISABLED: 1
@@ -176,22 +155,15 @@ jobs:
           mkdir -p ~/.pi/agent/extensions/pi-rtk-optimizer ~/.pi/agent/extensions/pi-permission-system
           install -m 0644 overlays/pi-rtk-optimizer-config.json ~/.pi/agent/extensions/pi-rtk-optimizer/config.json
           install -m 0644 overlays/pi-permission-system-config.json ~/.pi/agent/extensions/pi-permission-system/config.json
-          opencode models || true
           pushd $HOME
           # warp -del
           warp -reg
           nohup warp > warp.log 2>&1 &
-          CODEBUDDY_CODE_CORS_ORIGINS="https://*.trycloudflare.com" nohup codebuddy --serve --auth none --host 0.0.0.0 --port 8080 > codebuddy.log 2>&1 &
-          nohup cloudflared tunnel --url http://localhost:8080 > cloudflared.log 2>&1 &
-          popd
-          PROXY_URL="http://127.0.0.1:4000"
-          # PROXY_URL="$(.github/get-proxy)"
-          opencode service set env HTTP_PROXY "$PROXY_URL"
-          opencode service set env HTTPS_PROXY "$PROXY_URL"
+          opencode service set env HTTP_PROXY "http://127.0.0.1:4000"
+          opencode service set env HTTPS_PROXY "http://127.0.0.1:4000"
           opencode service set env NO_PROXY localhost,127.0.0.1,::1
           opencode service restart
-          opencode service unset env HTTPS_PROXY
-          opencode service unset env HTTP_PROXY
+          popd
           rm -rf ~/.dsh/profiles/web/
           dsh --profile paseo --from-default-profile web --dump-config > /dev/null
           dsh plugin --profile paseo add dsh-permission-rules
@@ -219,7 +191,6 @@ jobs:
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
             ~/.reasonix/sessions
-            ~/.codebuddy
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl
