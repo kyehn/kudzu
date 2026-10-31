@@ -80,7 +80,6 @@
       ''
         always-allow-substitutes = true
         builders-use-substitutes = true
-        show-trace = true
         warn-dirty = false
         flake-registry = ${
           pkgs.writeText "flake-registry.json" (

@@ -3,7 +3,7 @@
 final: prev: {
   nix =
     if (prev.stdenv.hostPlatform.isLinux && prev.stdenv.targetPlatform.isAarch64) then
-      prev.lixPackageSets.latest.lix
+      prev.nixVersions.nix_2_34
     else if (prev.stdenv.hostPlatform.isLinux) then
       inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default
     else
