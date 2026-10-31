@@ -22,6 +22,7 @@ linkFarm "maki" [
           telemetry.enabled = false;
           plugins = {
             websearch.enabled = false;
+            memory.enabled = false;
             edit.insert_lines = true;
             task = {
               allow_model = true;
@@ -33,10 +34,7 @@ linkFarm "maki" [
             default_model = "nvidia/minimaxai/minimax-m3.1-flash";
             allowed_models = [
               "nvidia*/*"
-              "kilo*/*"
-            ];
-            excluded_models = [
-              "opencode*/*"
+              "kilo*/*free"
             ];
             max_retries = 12;
             max_timeout_retries = 17;

@@ -6,7 +6,7 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     nix = {
-      url = "github:DeterminateSystems/nix-src/v3.24.0";
+      url = "github:DeterminateSystems/nix-src/v3.24.1";
       # inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-regression.follows = "nixpkgs";
       inputs.nixpkgs-23-11.follows = "nixpkgs";
