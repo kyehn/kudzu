@@ -23,6 +23,13 @@ linkFarm "maki" [
           plugins = {
             websearch.enabled = false;
             memory.enabled = false;
+            deepseek.enabled = false;
+            mistral.enabled = false;
+            openrouter.enabled = false;
+            regolo.enabled = false;
+            requesty.enabled = false;
+            synthetic.enabled = false;
+            tensorx.enabled = false;
             edit.insert_lines = true;
             task = {
               allow_model = true;
@@ -35,6 +42,8 @@ linkFarm "maki" [
             allowed_models = [
               "nvidia*/*"
               "kilo*/*free"
+              "kilo*/*auto"
+              "kilo*stealth/*"
             ];
             max_retries = 12;
             max_timeout_retries = 17;
