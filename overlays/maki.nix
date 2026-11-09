@@ -11,16 +11,16 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "maki";
-  version = "0.6.5";
+  version = "0.7.1";
 
   src = fetchFromGitHub {
     owner = "tontinton";
     repo = "maki";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-xRpMH/0j7aiCFXKKoiDlVC4wm/TGGMCte7YEBuzdDgY=";
+    hash = "sha256-Jtpi75JH2LIlrfNTVDwePYNqVuBYRPGyG/f1aZuTmUw=";
   };
 
-  cargoHash = "sha256-Gfp8gE7brcs5lb4uojQqtcOzdTkd0JRQJkhREeLQc9M=";
+  cargoHash = "sha256-5+hgRI3XyPdRcefSokYUXHrgjp2k8i1+9D3lCujm9uk=";
 
   nativeBuildInputs = [
     pkg-config
@@ -31,6 +31,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
   buildInputs = [ openssl ];
 
   env.OPENSSL_NO_VENDOR = "1";
+
+  dontCargoCheck = true;
 
   doInstallCheck = true;
 

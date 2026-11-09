@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@main
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
       - uses: ./.github/actions/install-nix
       - uses: cachix/cachix-action@master
         timeout-minutes: 1

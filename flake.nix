@@ -6,7 +6,7 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     nix = {
-      url = "github:DeterminateSystems/nix-src/v3.24.1";
+      url = "github:DeterminateSystems/nix-src/v3.24.2";
       # inputs.nixpkgs.follows = "nixpkgs";
       inputs.nixpkgs-regression.follows = "nixpkgs";
       inputs.nixpkgs-23-11.follows = "nixpkgs";
@@ -49,7 +49,7 @@
             nixfmtPackage = pkgs.nixfmt-rs;
             runtimeInputs = with pkgs; [
               yamlfmt
-              biome
+              # biome
               ruff
             ];
             settings.formatter = {
@@ -61,8 +61,9 @@
                 ];
               };
               biome = {
-                command = "biome";
+                command = pkgs.lib.getExe' pkgs.nodejs "npx";
                 options = [
+                  "@biomejs/biome"
                   "check"
                   "--write"
                 ];
@@ -110,7 +111,6 @@
               fast-nix-gc
               maki
               reasonix
-              warp-go
               ;
           };
         };
