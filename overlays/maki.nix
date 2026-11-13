@@ -5,6 +5,7 @@
   pkg-config,
   perl,
   python3,
+  aws-lc,
   openssl,
   versionCheckHook,
 }:
@@ -28,7 +29,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
     python3
   ];
 
-  buildInputs = [ openssl ];
+  buildInputs = [
+    aws-lc
+    openssl
+  ];
 
   env.OPENSSL_NO_VENDOR = "1";
 
