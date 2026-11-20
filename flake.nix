@@ -49,7 +49,7 @@
             nixfmtPackage = pkgs.nixfmt-rs;
             runtimeInputs = with pkgs; [
               yamlfmt
-              # biome
+              biome
               ruff
             ];
             settings.formatter = {
@@ -61,9 +61,8 @@
                 ];
               };
               biome = {
-                command = pkgs.lib.getExe' pkgs.nodejs "npx";
+                command = "biome";
                 options = [
-                  "@biomejs/biome"
                   "check"
                   "--write"
                 ];

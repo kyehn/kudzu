@@ -8,6 +8,9 @@ final: prev: {
       inputs.nix.packages."${prev.stdenv.hostPlatform.system}".default
     else
       prev.nixVersions.latest;
+  nix-update = prev.nix-update.overrideAttrs (oldAttrs: {
+    patches = (oldAttrs.patches or [ ]) ++ [ ./nix-update-materialize-flake.patch ];
+  });
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   opencode-config = prev.callPackage ./opencode-config.nix { };
   maki = prev.callPackage ./maki.nix { };
