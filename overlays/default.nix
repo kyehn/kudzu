@@ -16,8 +16,6 @@ final: prev: {
   maki = prev.callPackage ./maki.nix { };
   maki-config = prev.callPackage ./maki-config.nix { };
   dsh-cordis-patch = prev.callPackage ./dsh-cordis-patch.nix { };
-  reasonix = prev.callPackage ./reasonix.nix { };
-  reasonix-config = prev.callPackage ./reasonix-config.nix { };
   pi-agent-settings = prev.callPackage ./pi-agent-settings.nix { };
   pi-agent-mcp = prev.callPackage ./pi-agent-mcp.nix { };
   rfv = prev.writeShellScriptBin "rfv" (

@@ -59,7 +59,6 @@ jobs:
             ~/.dsh/sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
-            ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl
@@ -79,8 +78,8 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.dsh" "$HOME/.config/cortexkit" "$HOME/.reasonix" "$HOME/.pi/agent/extensions"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki .#reasonix nixpkgs#bun nixpkgs#pnpm --impure
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.dsh" "$HOME/.config/cortexkit" "$HOME/.pi/agent/extensions"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki nixpkgs#bun nixpkgs#pnpm --impure
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
           nix build --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
@@ -93,15 +92,12 @@ jobs:
           cp .github/magic-context.jsonc ~/.config/cortexkit/magic-context.jsonc
           npm install --global --yes @mobilenext/mobile-mcp
           opencode models || true
-          nix build --print-build-logs --print-out-paths --impure .#reasonix-config --out-link /tmp/reasonix-config && install -m 0644 /tmp/reasonix-config ~/.reasonix/config.toml && rm -f /tmp/reasonix-config
-          install -m 0644 .github/AGENTS.md ~/.reasonix/AGENTS.md
           bun add -g --ignore-scripts @earendil-works/pi-coding-agent
           nix build --print-build-logs --print-out-paths --impure .#pi-agent-settings --out-link /tmp/pi-agent-settings && install -m 0644 /tmp/pi-agent-settings ~/.pi/agent/settings.json && rm -f /tmp/pi-agent-settings
           nix build --print-build-logs --print-out-paths --impure .#pi-agent-mcp --out-link /tmp/pi-agent-mcp && install -m 0644 /tmp/pi-agent-mcp ~/.pi/agent/mcp.json && rm -f /tmp/pi-agent-mcp
           install -m 0644 .github/AGENTS.md ~/.pi/agent/AGENTS.md
           npm install --global --yes @tobilu/qmd
       - run: |
-          echo "NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}" > ~/.reasonix/.env
           cat << 'EOF' > ~/.pi/agent/auth.json
           {
             "nvidia": {
@@ -183,7 +179,6 @@ jobs:
             ~/.dsh/sessions
             ~/.local/share/opencode/opencode.db
             ~/.local/share/cortexkit/magic-context
-            ~/.reasonix/sessions
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/build-cache-1
             ~/.gradle/caches/*/kotlin-dsl

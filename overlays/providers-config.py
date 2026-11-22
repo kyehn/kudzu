@@ -15,26 +15,21 @@ import yaml
 
 MODELS_DEV_URL = "https://models.dev/api.json"
 MAKI_PROVIDERS = Path.home() / ".config" / "maki" / "providers.toml"
-REASONIX_CONFIG = Path.home() / ".reasonix" / "config.toml"
 DSH_PATCH = Path.home() / ".dsh" / "cordis.patch.yml"
-HARNESSES = ("maki", "reasonix", "dsh")
+HARNESSES = ("maki", "dsh")
 PROVIDER_NAMES = ("nvidia", "kilo")
 NO_AUTH_PROVIDERS = {"kilo"}
-BILLING_CURRENCY = "USD"
 PROTOCOLS = {
     "openai": {
         "maki": "openai",
-        "reasonix": "openai",
         "dsh": "openai-completions",
     },
     "responses": {
         "maki": "openai-responses",
-        "reasonix": "responses",
         "dsh": "openai-responses",
     },
     "anthropic": {
         "maki": "anthropic",
-        "reasonix": "anthropic",
         "dsh": "anthropic-messages",
     },
 }
@@ -191,89 +186,6 @@ def configure_maki(routes: Routes) -> None:
         )
 
 
-def reasonix_provider_config(route: Route, provider: str) -> dict[str, Any]:
-    name, kind, base_url, api_key_env, provider_models = route
-    provider_config: dict[str, Any] = {
-        "name": name,
-        "kind": PROTOCOLS[kind]["reasonix"],
-        "base_url": base_url,
-        "models": [model_id for model_id, _ in provider_models],
-        "default": provider_models[0][0],
-        "api_key_env": "" if provider in NO_AUTH_PROVIDERS else api_key_env,
-        "context_window": max(
-            model_metadata(model)["context_window"] or 0 for _, model in provider_models
-        ),
-        "billing_currency": BILLING_CURRENCY,
-    }
-    if kind == "responses":
-        provider_config["responses_mode"] = "stateless"
-    prices = {}
-    overrides = {}
-    for model_id, model in provider_models:
-        metadata = model_metadata(model)
-        cost = model.get("cost") or {}
-        model_price: dict[str, Any] = {
-            "input": cost.get("input", 0),
-            "output": cost.get("output", 0),
-            "currency": BILLING_CURRENCY,
-        }
-        if cost.get("cache_read"):
-            model_price["cache_hit"] = cost["cache_read"]
-        if (
-            model_price["input"]
-            or model_price["output"]
-            or model_price.get("cache_hit")
-        ):
-            prices[model_id] = model_price
-        model_override: dict[str, Any] = {}
-        if metadata["context_window"]:
-            model_override["context_window"] = metadata["context_window"]
-        if metadata["max_output_tokens"]:
-            model_override["max_output_tokens"] = metadata["max_output_tokens"]
-        if metadata["reasoning"]:
-            model_override["reasoning_protocol"] = "openai"
-            efforts = metadata["efforts"]
-            if efforts:
-                model_override["supported_efforts"] = efforts
-                non_none_efforts = [effort for effort in efforts if effort != "none"]
-                model_override["default_effort"] = (
-                    non_none_efforts[-1] if non_none_efforts else efforts[-1]
-                )
-        if metadata["vision"]:
-            model_override["vision"] = True
-        if model_override:
-            overrides[model_id] = model_override
-    if prices:
-        provider_config["prices"] = prices
-    if overrides:
-        provider_config["model_overrides"] = overrides
-    return provider_config
-
-
-def configure_reasonix(routes: Routes) -> None:
-    new_providers = [
-        reasonix_provider_config(route, provider)
-        for provider, provider_routes in routes.items()
-        for route in provider_routes
-    ]
-    with REASONIX_CONFIG.open("rb") as config_file:
-        existing = tomllib.load(config_file)
-    existing["providers"] = [
-        provider_config
-        for provider_config in existing.get("providers", [])
-        if not belongs_to_provider(provider_config.get("name", ""), list(routes))
-    ]
-    existing["providers"].extend(new_providers)
-    REASONIX_CONFIG.write_text(tomli_w.dumps(existing), encoding="utf-8")
-    print(f"Wrote {len(new_providers)} provider(s) to {REASONIX_CONFIG}")
-    for provider_config in new_providers:
-        print(
-            f"  {provider_config['name']}: "
-            f"{len(provider_config['models'])} models, "
-            f"default {provider_config['default']}"
-        )
-
-
 def configure_dsh(routes: Routes) -> None:
     new_providers: dict[str, dict[str, Any]] = {}
     for provider, provider_routes in routes.items():
@@ -378,8 +290,6 @@ def main(argv: list[str] | None = None) -> None:
     for harness in args.harness or list(HARNESSES):
         if harness == "maki":
             configure_maki(routes)
-        elif harness == "reasonix":
-            configure_reasonix(routes)
         else:
             configure_dsh(routes)
 

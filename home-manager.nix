@@ -395,7 +395,6 @@
         ".longgraph/"
         ".pi/"
         ".pi-glla/"
-        ".reasonix/"
         ".slim/*"
         ".workflow/"
         ".sessions/"

@@ -24,27 +24,6 @@
 					"--yolo"
 				]
 			},
-			"reasonix": {
-				"extends": "acp",
-				"label": "Reasonix",
-				"command": [
-					"systemd-run",
-					"--user",
-					"--scope",
-					"-p",
-					"MemoryMax=7G",
-					"-p",
-					"TasksMax=512",
-					"--",
-					"nice",
-					"-n",
-					"10",
-					"reasonix",
-					"acp",
-					"--permission-mode",
-					"bypassPermissions"
-				]
-			},
 			"pi": {
 				"command": [
 					"systemd-run",

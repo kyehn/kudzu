@@ -109,7 +109,6 @@
             inherit (pkgs)
               fast-nix-gc
               maki
-              reasonix
               ;
           };
         };
