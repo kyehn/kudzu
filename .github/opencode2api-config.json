@@ -1,0 +1,16 @@
+{
+	"listen": "127.0.0.1:8080",
+	"server_keys": ["public"],
+	"anonymous": true,
+	"warp": {
+		"enabled": true,
+		"stack": "dual",
+		"pool_size": 3
+	},
+	"models": {
+		"free_only": true
+	},
+	"webui": {
+		"enabled": false
+	}
+}

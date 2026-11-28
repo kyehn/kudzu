@@ -17,8 +17,7 @@ MODELS_DEV_URL = "https://models.dev/api.json"
 MAKI_PROVIDERS = Path.home() / ".config" / "maki" / "providers.toml"
 DSH_PATCH = Path.home() / ".dsh" / "cordis.patch.yml"
 HARNESSES = ("maki", "dsh")
-PROVIDER_NAMES = ("nvidia", "kilo")
-NO_AUTH_PROVIDERS = {"kilo"}
+PROVIDER_NAMES = ("nvidia", "kilo", "opencode")
 PROTOCOLS = {
     "openai": {
         "maki": "openai",
@@ -154,12 +153,16 @@ def configure_maki(routes: Routes) -> None:
     new_providers: dict[str, dict[str, Any]] = {}
     for provider, provider_routes in routes.items():
         for name, kind, base_url, api_key_env, provider_models in provider_routes:
-            new_providers[name] = {
+            new_providers[("opencode2api" if (provider == "opencode") else name)] = {
                 "display_name": f"{provider} {PROTOCOLS[kind]['maki']}",
                 "protocol": PROTOCOLS[kind]["maki"],
-                "base_url": base_url,
+                "base_url": "http://127.0.0.1:8080/v1"
+                if (provider == "opencode")
+                else base_url,
                 "api_key": (
-                    "" if provider in NO_AUTH_PROVIDERS else os.getenv(api_key_env, "")
+                    "public"
+                    if (provider == "opencode")
+                    else ("" if (provider == "kilo") else os.getenv(api_key_env, ""))
                 ),
                 "discover_models": False,
                 "models": list(starmap(maki_model_config, provider_models)),
@@ -210,15 +213,19 @@ def configure_dsh(routes: Routes) -> None:
             provider_config: dict[str, Any] = {
                 "displayName": f"{provider} {PROTOCOLS[kind]['dsh']}",
                 "api": PROTOCOLS[kind]["dsh"],
-                "baseURL": base_url,
+                "baseURL": "http://127.0.0.1:8080/v1"
+                if (provider == "opencode")
+                else base_url,
                 "retryPolicy": {
                     "mode": "normal",
                     "maxRetries": 9,
                 },
                 "models": model_configs,
             }
-            if provider in NO_AUTH_PROVIDERS:
+            if provider == "kilo":
                 provider_config["headers"] = {"Authorization": "Bearer "}
+            elif provider == "opencode":
+                provider_config["headers"] = {"Authorization": "Bearer public"}
             else:
                 provider_config["apiKeyEnv"] = api_key_env
             new_providers[name] = provider_config

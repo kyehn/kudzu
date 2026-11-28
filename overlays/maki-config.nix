@@ -44,7 +44,9 @@ linkFarm "maki" [
               "kilo*/*free"
               "kilo*/*auto"
               "kilo*stealth/*"
+              "opencode*/*"
             ];
+            excluded_models = [ ];
             max_retries = 12;
             max_timeout_retries = 17;
           };

@@ -78,10 +78,12 @@ jobs:
       - working-directory: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.dsh" "$HOME/.config/cortexkit" "$HOME/.pi/agent/extensions"
-          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki nixpkgs#bun nixpkgs#pnpm --impure
+          mkdir -p "$HOME/.paseo" "$HOME/.config/maki" "$HOME/.dsh" "$HOME/.config/opencode" "$HOME/.dsh" "$HOME/.config/cortexkit" "$HOME/.pi/agent/extensions" "$HOME/.opencode2api"
+          nix profile add nixpkgs#fd nixpkgs#ripgrep nixpkgs#skills nixpkgs#openspec nixpkgs#rtk .#maki nixpkgs#bun nixpkgs#pnpm .#opencode2api --impure
           npm install --global --yes @getpaseo/cli
           install -m 0644 .github/paseo-config.json ~/.paseo/config.json
+          install -m 0644 .github/opencode2api-config.json ~/.opencode2api/config.json
+          nohup opencode2api -config "$HOME/.opencode2api/config.json" > "$HOME/.opencode2api/opencode2api.log" 2>&1 &
           nix build --print-build-logs --print-out-paths --impure .#maki-config --out-link /tmp/maki-config && install -m 0644 /tmp/maki-config/init.lua ~/.config/maki/init.lua && install -m 0644 /tmp/maki-config/permissions.toml ~/.config/maki/permissions.toml && install -m 0644 /tmp/maki-config/mcp.toml ~/.config/maki/mcp.toml && rm -rf /tmp/maki-config
           install -m 0644 .github/AGENTS.md ~/.config/maki/AGENTS.md
           npm install --global --yes @deepseek-ai/dsh@latest
@@ -107,7 +109,7 @@ jobs:
           }
           EOF
           overlays/providers-config.py
-          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
+          install -m 0600 /dev/null ~/.dsh/.credentials.yaml && yq -i '.version = 1 | .refs.OPENCODE_API_KEY = "public" | .refs.DEEPSEEK_API_KEY = "none" | .refs.NVIDIA_API_KEY = strenv(NVIDIA_API_KEY)' ~/.dsh/.credentials.yaml
         working-directory: ${{ github.event.repository.name }}
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -145,6 +147,7 @@ jobs:
           skills add morganlinton/BeautifulRust --agent zed --global --yes
           skills add maxrave-dev/kotlin-footguns --agent zed --global --yes
           skills add drjacky/claude-android-ninja --agent zed --global --yes
+          skills add amElnagdy/guard-skills --agent zed --global --yes
           skills add https://github.com/Aas-ee/open-webSearch --skill open-websearch --agent zed --global --yes
           skills add getpaseo/paseo --agent zed --global --yes
           export BUN_INSTALL="$HOME/.bun"

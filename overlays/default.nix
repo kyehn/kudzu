@@ -13,6 +13,7 @@ final: prev: {
   });
   fast-nix-gc = prev.callPackage ./fast-nix-gc.nix { };
   opencode-config = prev.callPackage ./opencode-config.nix { };
+  opencode2api = prev.callPackage ./opencode2api.nix { };
   maki = prev.callPackage ./maki.nix { };
   maki-config = prev.callPackage ./maki-config.nix { };
   dsh-cordis-patch = prev.callPackage ./dsh-cordis-patch.nix { };
